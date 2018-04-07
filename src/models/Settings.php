@@ -1,22 +1,22 @@
 <?php
 /**
- * Password Policy plugin for Craft CMS 3.x
+ * Password Policy plugin for Craft CMS 3.x.
  *
  * Enforce stronger passwords on your users.
  *
  * @link      https://rias.be
+ *
  * @copyright Copyright (c) 2018 Rias
  */
 
 namespace rias\passwordpolicy\models;
 
-use rias\passwordpolicy\PasswordPolicy;
-
 use Craft;
 use craft\base\Model;
+use rias\passwordpolicy\PasswordPolicy;
 
 /**
- * PasswordPolicy Settings Model
+ * PasswordPolicy Settings Model.
  *
  * This is a model used to define the plugin's settings.
  *
@@ -26,7 +26,7 @@ use craft\base\Model;
  * https://craftcms.com/docs/plugins/models
  *
  * @author    Rias
- * @package   PasswordPolicy
+ *
  * @since     1.0.0
  */
 class Settings extends Model
@@ -35,42 +35,42 @@ class Settings extends Model
     // =========================================================================
 
     /**
-     * Require a minimum length
+     * Require a minimum length.
      *
-     * @var integer
+     * @var int
      */
     public $minLength = 6;
 
     /**
-     * Require a maximum length
+     * Require a maximum length.
      *
-     * @var integer
+     * @var int
      */
     public $maxLength = 160;
 
     /**
-     * Require different cases in the password
+     * Require different cases in the password.
      *
      * @var bool
      */
     public $cases = false;
 
     /**
-     * Require numbers in the password
+     * Require numbers in the password.
      *
      * @var bool
      */
     public $numbers = false;
 
     /**
-     * Require symbols in the password
+     * Require symbols in the password.
      *
      * @var bool
      */
     public $symbols = false;
 
     /**
-     * Check the pwned database for this password
+     * Check the pwned database for this password.
      *
      * @var bool
      */
