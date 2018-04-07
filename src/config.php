@@ -24,7 +24,8 @@
 
 return [
 
-    "length" => 16,
+    "minLength" => 16,
+    "maxLength" => 160,
     "cases" => false,
     "numbers" => false,
     "symbols" => false,
