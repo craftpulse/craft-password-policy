@@ -11,15 +11,12 @@
 
 namespace rias\passwordpolicy\services;
 
-use AlgoliaSearch\Client;
 use Craft;
 use craft\base\Component;
-use craft\base\Element;
 use craft\feeds\GuzzleClient;
 use GuzzleHttp\Exception\ClientException;
 use rias\passwordpolicy\models\Settings;
 use rias\passwordpolicy\PasswordPolicy;
-use rias\scout\models\AlgoliaIndex;
 use rias\scout\Scout;
 
 /**
@@ -42,7 +39,8 @@ class PasswordService extends Component
         $this->settings = PasswordPolicy::$plugin->settings;
     }
 
-    public function getValidationErrors(string $password) : array {
+    public function getValidationErrors(string $password) : array
+    {
         $errors = [];
 
         if (strlen($password) < $this->settings->minLength) {
@@ -79,7 +77,7 @@ class PasswordService extends Component
 
     protected function containsNumbers(string $password) : bool
     {
-        return (bool) preg_match( '/\d/', $password);
+        return (bool) preg_match('/\d/', $password);
     }
 
     protected function containsSymbols(string $password) : bool
@@ -90,6 +88,7 @@ class PasswordService extends Component
     protected function hasBeenPwned(string $password) : bool
     {
         $client = new GuzzleClient();
+
         try {
             $response = $client->get("https://api.pwnedpasswords.com/pwnedpassword/{$password}");
         } catch (ClientException $e) {

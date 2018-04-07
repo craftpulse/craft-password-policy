@@ -1,27 +1,24 @@
 <?php
 /**
- * Password Policy plugin for Craft CMS 3.x
+ * Password Policy plugin for Craft CMS 3.x.
  *
  * Enforce stronger passwords on your users.
  *
  * @link      https://rias.be
+ *
  * @copyright Copyright (c) 2018 Rias
  */
 
 namespace rias\passwordpolicy;
 
-use craft\base\Element;
-use craft\elements\User;
-use rias\passwordpolicy\services\PasswordService;
-use yii\base\ModelEvent;
-use rias\passwordpolicy\models\Settings;
-
 use Craft;
 use craft\base\Plugin;
+use craft\elements\User;
 use craft\services\Plugins;
-use craft\events\PluginEvent;
-
+use rias\passwordpolicy\models\Settings;
+use rias\passwordpolicy\services\PasswordService;
 use yii\base\Event;
+use yii\base\ModelEvent;
 
 /**
  * Craft plugins are very much like little applications in and of themselves. We’ve made
@@ -34,11 +31,12 @@ use yii\base\Event;
  * https://craftcms.com/docs/plugins/introduction
  *
  * @author    Rias
- * @package   PasswordPolicy
+ *
  * @since     1.0.0
  *
  * @property  Settings $settings
  * @property  PasswordService $passwordService
+ *
  * @method    Settings getSettings()
  */
 class PasswordPolicy extends Plugin
@@ -48,7 +46,7 @@ class PasswordPolicy extends Plugin
 
     /**
      * Static property that is an instance of this plugin class so that it can be accessed via
-     * PasswordPolicy::$plugin
+     * PasswordPolicy::$plugin.
      *
      * @var PasswordPolicy
      */
@@ -69,14 +67,13 @@ class PasswordPolicy extends Plugin
 
     /**
      * Set our $plugin static property to this class so that it can be accessed via
-     * PasswordPolicy::$plugin
+     * PasswordPolicy::$plugin.
      *
      * Called after the plugin class is instantiated; do any one-time initialization
      * here such as hooks and events.
      *
      * If you have a '/vendor/autoload.php' file, it will be loaded for you automatically;
      * you do not need to load it in your init() method.
-     *
      */
     public function init()
     {
@@ -129,7 +126,7 @@ class PasswordPolicy extends Plugin
         return Craft::$app->view->renderTemplate(
             'password-policy/settings',
             [
-                'settings' => $this->getSettings()
+                'settings' => $this->getSettings(),
             ]
         );
     }
