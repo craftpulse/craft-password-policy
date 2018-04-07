@@ -1,0 +1,68 @@
+{# @var craft \craft\web\twig\variables\CraftVariable #}
+{#
+/**
+ * Password Policy plugin for Craft CMS 3.x
+ *
+ * Password Policy Settings.twig
+ *
+ * @author    Rias
+ * @copyright Copyright (c) 2018 Rias
+ * @link      https://rias.be
+ * @package   PasswordPolicy
+ * @since     1.0.0
+ */
+#}
+
+{% import "_includes/forms" as forms %}
+
+{% do view.registerAssetBundle("rias\\passwordpolicy\\assetbundles\\passwordpolicy\\PasswordPolicyAsset") %}
+
+{{ forms.textField({
+    label: 'Minimum password length'|t('password-policy'),
+    type: 'number',
+    instructions: 'Require a minimum password length'|t('password-policy'),
+    id: 'minLength',
+    name: 'minLength',
+    value: settings['minLength']})
+}}
+
+{{ forms.textField({
+    label: 'Maximum password length'|t('password-policy'),
+    type: 'number',
+    instructions: 'Require a maximum password length.'|t('password-policy'),
+    id: 'maxLength',
+    name: 'maxLength',
+    value: settings['maxLength']})
+}}
+
+{{ forms.lightSwitchField({
+    label: 'Cases'|t('password-policy'),
+    instructions: 'Require both upper-case and lower-case letters.'|t('password-policy'),
+    id: 'cases',
+    name: 'cases',
+    on: settings['cases']
+}) }}
+
+{{ forms.lightSwitchField({
+    label: 'Numbers'|t('password-policy'),
+    instructions: 'Require one or more numerical digits.'|t('password-policy'),
+    id: 'numbers',
+    name: 'numbers',
+    on: settings['numbers']
+}) }}
+
+{{ forms.lightSwitchField({
+    label: 'Symbols'|t('password-policy'),
+    instructions: 'Require special characters like @, #, $.'|t('password-policy'),
+    id: 'symbols',
+    name: 'symbols',
+    on: settings['symbols']
+}) }}
+
+{{ forms.lightSwitchField({
+    label: 'Check Pwned database'|t('password-policy'),
+    instructions: 'Check the [Pwned Passwords](https://haveibeenpwned.com/Passwords) database.'|t('password-policy'),
+    id: 'checkPwned',
+    name: 'checkPwned',
+    on: settings['checkPwned']
+}) }}

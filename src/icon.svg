@@ -1,0 +1,13 @@
+<svg width="94px" height="94px" viewBox="0 0 94 94" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+	<!-- Generator: Sketch 49.3 (51167) - http://www.bohemiancoding.com/sketch -->
+	<desc>Created with Sketch.</desc>
+	<defs></defs>
+	<g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+		<g id="Artboard" transform="translate(-45.000000, -258.000000)">
+			<g id="craft-password-policy" transform="translate(45.000000, 258.000000)">
+				<circle id="background" fill="#4DC0B5" cx="47" cy="47" r="47"></circle>
+				<path d="M47,23 C33.745166,23 23,33.745166 23,47 C23,60.254834 33.745166,71 47,71 C60.254834,71 71,60.254834 71,47 C71,33.745166 60.254834,23 47,23 Z M52,59 L41.0051277,59 L44.3219142,45.6245815 C41.9269846,44.5845656 40.5869424,41.9924257 41.113971,39.4192263 C41.6409996,36.8460269 43.8900427,35 46.4979827,35 C49.1059227,35 51.3549657,36.8460269 51.8819943,39.4192263 C52.4090229,41.9924257 51.0689808,44.5845656 48.6740511,45.6245815 L52,59 Z" id="Shape" fill="#FFFFFF" fill-rule="nonzero"></path>
+			</g>
+		</g>
+	</g>
+</svg>

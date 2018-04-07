@@ -1,0 +1,43 @@
+{
+    "name": "rias/craft-password-policy",
+    "description": "Enforce a password policy on your users.",
+    "type": "craft-plugin",
+    "version": "1.0.0",
+    "keywords": [
+        "craft",
+        "cms",
+        "craftcms",
+        "craft-plugin",
+        "strong passwords"
+    ],
+    "support": {
+        "docs": "https://github.com/Rias500/craft-password-policy/blob/master/README.md",
+        "issues": "https://github.com/Rias500/craft-password-policy/issues"
+    },
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Rias",
+            "homepage": "https://rias.be"
+        }
+    ],
+    "require": {
+        "craftcms/cms": "^3.0.0"
+    },
+    "autoload": {
+        "psr-4": {
+          "rias\\passwordpolicy\\": "src/"
+        }
+    },
+    "extra": {
+        "name": "Password Policy",
+        "handle": "password-policy",
+        "hasCpSettings": true,
+        "hasCpSection": false,
+        "changelogUrl": "https://raw.githubusercontent.com/Rias500/craft-password-policy/master/CHANGELOG.md",
+        "components": {
+            "passwordService": "rias\\passwordpolicy\\services\\PasswordService"
+        },
+        "class": "rias\\passwordpolicy\\PasswordPolicy"
+    }
+}
