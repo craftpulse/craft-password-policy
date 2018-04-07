@@ -1,10 +1,11 @@
 <?php
 /**
- * Password Policy plugin for Craft CMS 3.x
+ * Password Policy plugin for Craft CMS 3.x.
  *
  * Enforce stronger passwords on your users.
  *
  * @link      https://rias.be
+ *
  * @copyright Copyright (c) 2018 Rias
  */
 
@@ -15,7 +16,7 @@ use craft\web\AssetBundle;
 use craft\web\assets\cp\CpAsset;
 
 /**
- * PasswordPolicyAsset AssetBundle
+ * PasswordPolicyAsset AssetBundle.
  *
  * AssetBundle represents a collection of asset files, such as CSS, JS, images.
  *
@@ -29,7 +30,7 @@ use craft\web\assets\cp\CpAsset;
  * http://www.yiiframework.com/doc-2.0/guide-structure-assets.html
  *
  * @author    Rias
- * @package   PasswordPolicy
+ *
  * @since     1.0.0
  */
 class PasswordPolicyAsset extends AssetBundle
@@ -43,7 +44,7 @@ class PasswordPolicyAsset extends AssetBundle
     public function init()
     {
         // define the path that your publishable resources live
-        $this->sourcePath = "@rias/passwordpolicy/assetbundles/passwordpolicy/dist";
+        $this->sourcePath = '@rias/passwordpolicy/assetbundles/passwordpolicy/dist';
 
         // define the dependencies
         $this->depends = [

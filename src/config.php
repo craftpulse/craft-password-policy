@@ -1,15 +1,16 @@
 <?php
 /**
- * Password Policy plugin for Craft CMS 3.x
+ * Password Policy plugin for Craft CMS 3.x.
  *
  * Enforce stronger passwords on your users.
  *
  * @link      https://rias.be
+ *
  * @copyright Copyright (c) 2018 Rias
  */
 
 /**
- * Password Policy config.php
+ * Password Policy config.php.
  *
  * This file exists only as a template for the Password Policy settings.
  * It does nothing on its own.
@@ -23,12 +24,10 @@
  */
 
 return [
-
-    "minLength" => 16,
-    "maxLength" => 160,
-    "cases" => false,
-    "numbers" => false,
-    "symbols" => false,
-    "checkPwned" => true,
-
+    "minLength"     => 16,
+    "maxLength"     => 160,
+    "cases"         => false,
+    "numbers"       => false,
+    "symbols"       => false,
+    "checkPwned"    => true,
 ];
