@@ -9,7 +9,11 @@
 
 Enforce a password policy on your users. This plugin can also check the [Have I been Pwned database](https://haveibeenpwned.com/Passwords) to make sure users use a password that is secure.
 
+Policy Errors:
 ![Screenshot](resources/img/screenshot.png)
+
+Password Strength Indicator
+![Screenshot](resources/img/screenshot3.png)
 
 ## Support Open Source. Buy beer.
 
