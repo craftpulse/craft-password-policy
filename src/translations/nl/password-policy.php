@@ -38,6 +38,8 @@ return [
     'Require special characters like @, #, $.'                                    => 'Vereis speciale karakters zoals @, #, $.',
     'Check Pwned database'                                                        => 'Controleer de Pwned database',
     'Check the [Pwned Passwords](https://haveibeenpwned.com/Passwords) database.' => 'Controleer de [Pwned Passwords](https://haveibeenpwned.com/Passwords) database.',
+    'Show strength indicator'                                                     => 'Wachtwoord sterkte',
+    'Show a password strength indicator.'                                         => 'Toon een gekleurde balk om de wachtwoord sterkte aan te duiden.',
 
     // Errors
     'Password needs to be at least {min} characters.'                 => 'Wachtwoord moet minstens {min} tekens bevatten.',

@@ -14,6 +14,7 @@ namespace rias\passwordpolicy\assetbundles\PasswordPolicy;
 use Craft;
 use craft\web\AssetBundle;
 use craft\web\assets\cp\CpAsset;
+use rias\passwordpolicy\PasswordPolicy;
 
 /**
  * PasswordPolicyAsset AssetBundle.
@@ -54,8 +55,13 @@ class PasswordPolicyAsset extends AssetBundle
         // define the relative path to CSS/JS files that should be registered with the page
         // when this asset bundle is registered
         $this->js = [
+            'js/zxcvbn.min.js',
             'js/PasswordPolicy.js',
         ];
+
+        Craft::$app->view->registerJsVar('passwordpolicy', [
+            'showStrengthIndicator' => PasswordPolicy::$plugin->settings->showStrengthIndicator,
+        ]);
 
         $this->css = [
             'css/PasswordPolicy.css',

@@ -66,3 +66,11 @@
     name: 'checkPwned',
     on: settings['checkPwned']
 }) }}
+
+{{ forms.lightSwitchField({
+    label: 'Show strength indicator'|t('password-policy'),
+    instructions: 'Show a password strength indicator.'|t('password-policy'),
+    id: 'showStrengthIndicator',
+    name: 'showStrengthIndicator',
+    on: settings['showStrengthIndicator']
+}) }}
