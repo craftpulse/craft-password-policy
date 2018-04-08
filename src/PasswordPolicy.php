@@ -15,7 +15,6 @@ use Craft;
 use craft\base\Plugin;
 use craft\elements\User;
 use craft\services\Plugins;
-use craft\web\View;
 use rias\passwordpolicy\assetbundles\PasswordPolicy\PasswordPolicyAsset;
 use rias\passwordpolicy\models\Settings;
 use rias\passwordpolicy\services\PasswordService;
