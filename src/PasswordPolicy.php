@@ -15,6 +15,8 @@ use Craft;
 use craft\base\Plugin;
 use craft\elements\User;
 use craft\services\Plugins;
+use craft\web\View;
+use rias\passwordpolicy\assetbundles\PasswordPolicy\PasswordPolicyAsset;
 use rias\passwordpolicy\models\Settings;
 use rias\passwordpolicy\services\PasswordService;
 use yii\base\Event;
@@ -81,6 +83,10 @@ class PasswordPolicy extends Plugin
         self::$plugin = $this;
 
         $this->name = Craft::t('password-policy', 'Password Policy');
+
+        if (Craft::$app->request->isCpRequest) {
+            Craft::$app->view->registerAssetBundle(PasswordPolicyAsset::class);
+        }
 
         Event::on(
             User::class,

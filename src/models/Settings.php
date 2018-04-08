@@ -76,6 +76,13 @@ class Settings extends Model
      */
     public $checkPwned = false;
 
+    /**
+     * Show a strength indicator.
+     *
+     * @var bool
+     */
+    public $showStrengthIndicator = true;
+
     // Public Methods
     // =========================================================================
 
@@ -98,6 +105,7 @@ class Settings extends Model
             ['numbers', 'boolean'],
             ['symbols', 'boolean'],
             ['checkPwned', 'boolean'],
+            ['showStrengthIndicator', 'boolean'],
         ];
     }
 }

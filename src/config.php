@@ -24,10 +24,11 @@
  */
 
 return [
-    'minLength'     => 16,
-    'maxLength'     => 160,
-    'cases'         => false,
-    'numbers'       => false,
-    'symbols'       => false,
-    'checkPwned'    => true,
+    'minLength'             => 16,
+    'maxLength'             => 160,
+    'cases'                 => false,
+    'numbers'               => false,
+    'symbols'               => false,
+    'checkPwned'            => true,
+    'showStrengthIndicator' => true,
 ];

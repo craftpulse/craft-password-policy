@@ -50,17 +50,14 @@ return [
     
     // Check the Have I been Pwned database
     "checkPwned" => true,
+    
+    // Show a password strength indicator
+    "showStrengthIndicator" => true,
 ];
 ``` 
 
 Or through the plugin settings
 
 ![Screenshot](resources/img/screenshot2.png)
-
-## Password Policy Roadmap
-
-Upcoming features:
-
-* Showing a password strength indicator.
 
 Brought to you by [Rias](https://rias.be)
