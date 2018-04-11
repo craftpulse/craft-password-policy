@@ -48,7 +48,7 @@ class PasswordService extends Component
         }
 
         if (strlen($password) > $this->settings->maxLength) {
-            $errors[] = Craft::t('password-policy', 'Password needs to be less than {min} characters.', ['max' => $this->settings->maxLength]);
+            $errors[] = Craft::t('password-policy', 'Password needs to be less than {max} characters.', ['max' => $this->settings->maxLength]);
         }
 
         if ($this->settings->cases && !$this->containsDifferentCases($password)) {
