@@ -43,7 +43,7 @@ return [
 
     // Errors
     'Password needs to be at least {min} characters.'                 => 'Wachtwoord moet minstens {min} tekens bevatten.',
-    'Password needs to be less than {min} characters.'                => 'Wachtwoord mag maximum {max} tekens bevatten.',
+    'Password needs to be less than {max} characters.'                => 'Wachtwoord mag maximum {max} tekens bevatten.',
     'Password needs to be both upper- and lower-case.'                => 'Wachtwoord moet zowel hoofdletters als kleine letters bevatten.',
     'Password needs to contain at least 1 numeric character.'         => 'Wachtwoord moet minstens 1 nummer bevatten.',
     'Password needs to contain at least 1 symbol like @, #, $'        => 'Wachtwoord moet minstens 1 symbool zoals @, #, $ bevatten.',
