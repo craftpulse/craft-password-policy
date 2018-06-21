@@ -45,7 +45,7 @@ class PasswordPolicyAsset extends AssetBundle
     public function init()
     {
         // define the path that your publishable resources live
-        $this->sourcePath = '@rias/passwordpolicy/assetbundles/passwordpolicy/dist';
+        $this->sourcePath = '@rias/passwordpolicy/assetbundles/PasswordPolicy/dist';
 
         // define the dependencies
         $this->depends = [
