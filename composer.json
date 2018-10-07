@@ -2,7 +2,6 @@
     "name": "rias/craft-password-policy",
     "description": "Enforce a password policy on your users.",
     "type": "craft-plugin",
-    "version": "1.0.3",
     "keywords": [
         "craft",
         "cms",
