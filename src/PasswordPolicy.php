@@ -91,7 +91,7 @@ class PasswordPolicy extends Plugin
             User::class,
             User::EVENT_BEFORE_VALIDATE,
             function (ModelEvent $event) {
-                if ($event->sender->newPassword) {
+                if (!$event->sender->newPassword) {
                     $errors = $this->passwordService->getValidationErrors($event->sender->newPassword);
                     $event->isValid = count($errors) === 0;
 
