@@ -10,8 +10,8 @@
         "strong passwords"
     ],
     "support": {
-        "docs": "https://github.com/Rias500/craft-password-policy/blob/master/README.md",
-        "issues": "https://github.com/Rias500/craft-password-policy/issues"
+        "docs": "https://github.com/riasvdv/craft-password-policy/blob/master/README.md",
+        "issues": "https://github.com/riasvdv/craft-password-policy/issues"
     },
     "license": "MIT",
     "authors": [
@@ -33,7 +33,7 @@
         "handle": "password-policy",
         "hasCpSettings": true,
         "hasCpSection": false,
-        "changelogUrl": "https://raw.githubusercontent.com/Rias500/craft-password-policy/master/CHANGELOG.md",
+        "changelogUrl": "https://raw.githubusercontent.com/riasvdv/craft-password-policy/master/CHANGELOG.md",
         "components": {
             "passwordService": "rias\\passwordpolicy\\services\\PasswordService"
         },
