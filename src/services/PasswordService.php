@@ -17,7 +17,6 @@ use craft\feeds\GuzzleClient;
 use GuzzleHttp\Exception\ClientException;
 use rias\passwordpolicy\models\Settings;
 use rias\passwordpolicy\PasswordPolicy;
-use rias\scout\Scout;
 
 /**
  * @author    Rias
