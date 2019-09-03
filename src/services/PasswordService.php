@@ -88,9 +88,11 @@ class PasswordService extends Component
     protected function hasBeenPwned(string $password) : bool
     {
         $client = new GuzzleClient();
+        $sha1Password = strtoupper(sha1($password));
+        $substring = substr($sha1Password, 0, 5);
 
         try {
-            $response = $client->get("https://api.pwnedpasswords.com/pwnedpassword/{$password}");
+            $response = $client->get("https://api.pwnedpasswords.com/range/{$substring}");
         } catch (ClientException $e) {
             if ($e->getResponse()->getStatusCode() === 404) {
                 return false;
