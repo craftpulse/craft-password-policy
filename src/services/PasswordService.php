@@ -13,11 +13,9 @@ namespace rias\passwordpolicy\services;
 
 use Craft;
 use craft\base\Component;
-use craft\feeds\GuzzleClient;
-use GuzzleHttp\Exception\ClientException;
 use rias\passwordpolicy\models\Settings;
 use rias\passwordpolicy\PasswordPolicy;
-use rias\scout\Scout;
+use Dragonbe\Hibp\HibpFactory;
 
 /**
  * @author    Rias
@@ -87,20 +85,14 @@ class PasswordService extends Component
 
     protected function hasBeenPwned(string $password) : bool
     {
-        $client = new GuzzleClient();
+        $hibp = HibpFactory::create();
 
         try {
-            $response = $client->get("https://api.pwnedpasswords.com/pwnedpassword/{$password}");
-        } catch (ClientException $e) {
-            if ($e->getResponse()->getStatusCode() === 404) {
-                return false;
-            }
+            $pwnd = $hibp->isPwnedPassword($password);
+        } catch (\Exception $e) {
+            return false;
         }
 
-        if ($response->getStatusCode() !== 404) {
-            return true;
-        }
-
-        return false;
+        return $pwnd;
     }
 }
