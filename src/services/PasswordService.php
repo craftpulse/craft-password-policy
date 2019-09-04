@@ -13,9 +13,9 @@ namespace rias\passwordpolicy\services;
 
 use Craft;
 use craft\base\Component;
+use Dragonbe\Hibp\HibpFactory;
 use rias\passwordpolicy\models\Settings;
 use rias\passwordpolicy\PasswordPolicy;
-use Dragonbe\Hibp\HibpFactory;
 
 /**
  * @author    Rias
