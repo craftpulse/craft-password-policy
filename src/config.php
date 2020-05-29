@@ -4,9 +4,9 @@
  *
  * Enforce stronger passwords on your users.
  *
- * @link      https://rias.be
+ * @link      https://percipio.london
  *
- * @copyright Copyright (c) 2018 Rias
+ * @copyright Copyright (c) 2020 Percipio Global Ltd.
  */
 
 /**

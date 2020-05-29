@@ -4,21 +4,21 @@
  *
  * Craft Scout provides a simple solution for adding full-text search to your entries. Scout will automatically keep your search indexes in sync with your entries.
  *
- * @link      https://rias.be
+ * @link      https://percipio.london
  *
- * @copyright Copyright (c) 2017 Rias
+ * @copyright Copyright (c) 2020 Percipio Global Ltd.
  */
 
-namespace rias\passwordpolicy\services;
+namespace percipioglobal\passwordpolicy\services;
 
 use Craft;
 use craft\base\Component;
 use Dragonbe\Hibp\HibpFactory;
-use rias\passwordpolicy\models\Settings;
-use rias\passwordpolicy\PasswordPolicy;
+use percipioglobal\passwordpolicy\models\Settings;
+use percipioglobal\passwordpolicy\PasswordPolicy;
 
 /**
- * @author    Rias
+ * @author    Percipio Global Ltd.
  *
  * @since     0.1.0
  */
