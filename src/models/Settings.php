@@ -4,16 +4,16 @@
  *
  * Enforce stronger passwords on your users.
  *
- * @link      https://rias.be
+ * @link      https://percipio.london
  *
- * @copyright Copyright (c) 2018 Rias
+ * @copyright Copyright (c) 2020 Percipio Global Ltd.
  */
 
-namespace rias\passwordpolicy\models;
+namespace percipioglobal\passwordpolicy\models;
 
 use Craft;
 use craft\base\Model;
-use rias\passwordpolicy\PasswordPolicy;
+use percipioglobal\passwordpolicy\PasswordPolicy;
 
 /**
  * PasswordPolicy Settings Model.
@@ -25,7 +25,7 @@ use rias\passwordpolicy\PasswordPolicy;
  *
  * https://craftcms.com/docs/plugins/models
  *
- * @author    Rias
+ * @author    Percipio Global Ltd.
  *
  * @since     1.0.0
  */

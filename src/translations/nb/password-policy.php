@@ -4,9 +4,9 @@
  *
  * Enforce stronger passwords on your users.
  *
- * @link      https://rias.be
+ * @link      https://percipio.london
  *
- * @copyright Copyright (c) 2018 Rias
+ * @copyright Copyright (c) 2020 Percipio Global Ltd.
  */
 
 /**
@@ -17,7 +17,7 @@
  *
  * http://www.yiiframework.com/doc-2.0/guide-tutorial-i18n.html
  *
- * @author    Rias
+ * @author    Percipio Global Ltd.
  *
  * @since     1.0.0
  */

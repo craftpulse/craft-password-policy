@@ -1,5 +1,5 @@
 {
-    "name": "rias/craft-password-policy",
+    "name": "percipioglobal/craft-password-policy",
     "description": "Enforce a password policy on your users.",
     "type": "craft-plugin",
     "keywords": [
@@ -10,14 +10,14 @@
         "strong passwords"
     ],
     "support": {
-        "docs": "https://github.com/riasvdv/craft-password-policy/blob/master/README.md",
-        "issues": "https://github.com/riasvdv/craft-password-policy/issues"
+        "docs": "https://github.com/percipioglobal/craft-password-policy/blob/master/README.md",
+        "issues": "https://github.com/percipioglobal/craft-password-policy/issues"
     },
     "license": "MIT",
     "authors": [
         {
-            "name": "Rias",
-            "homepage": "https://rias.be"
+            "name": "Percipio Global Ltd.",
+            "homepage": "https://percipio.london"
         }
     ],
     "require": {
@@ -26,7 +26,7 @@
     },
     "autoload": {
         "psr-4": {
-          "rias\\passwordpolicy\\": "src/"
+            "percipioglobal\\passwordpolicy\\": "src/"
         }
     },
     "extra": {
@@ -34,10 +34,10 @@
         "handle": "password-policy",
         "hasCpSettings": true,
         "hasCpSection": false,
-        "changelogUrl": "https://raw.githubusercontent.com/riasvdv/craft-password-policy/master/CHANGELOG.md",
+        "changelogUrl": "https://raw.githubusercontent.com/percipioglobal/craft-password-policy/master/CHANGELOG.md",
         "components": {
-            "passwordService": "rias\\passwordpolicy\\services\\PasswordService"
+            "passwordService": "percipioglobal\\passwordpolicy\\services\\PasswordService"
         },
-        "class": "rias\\passwordpolicy\\PasswordPolicy"
+        "class": "percipioglobal\\passwordpolicy\\PasswordPolicy"
     }
 }

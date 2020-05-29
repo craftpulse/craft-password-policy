@@ -4,17 +4,17 @@
  *
  * Enforce stronger passwords on your users.
  *
- * @link      https://rias.be
+ * @link      https://percipio.london
  *
- * @copyright Copyright (c) 2018 Rias
+ * @copyright Copyright (c) 2020 Percipio Global Ltd.
  */
 
-namespace rias\passwordpolicy\assetbundles\PasswordPolicy;
+namespace percipioglobal\passwordpolicy\assetbundles\PasswordPolicy;
 
 use Craft;
 use craft\web\AssetBundle;
 use craft\web\assets\cp\CpAsset;
-use rias\passwordpolicy\PasswordPolicy;
+use percipioglobal\passwordpolicy\PasswordPolicy;
 
 /**
  * PasswordPolicyAsset AssetBundle.
@@ -30,7 +30,7 @@ use rias\passwordpolicy\PasswordPolicy;
  *
  * http://www.yiiframework.com/doc-2.0/guide-structure-assets.html
  *
- * @author    Rias
+ * @author    Percipio Global Ltd.
  *
  * @since     1.0.0
  */
@@ -45,7 +45,7 @@ class PasswordPolicyAsset extends AssetBundle
     public function init()
     {
         // define the path that your publishable resources live
-        $this->sourcePath = '@rias/passwordpolicy/assetbundles/PasswordPolicy/dist';
+        $this->sourcePath = '@percipioglobal/passwordpolicy/assetbundles/PasswordPolicy/dist';
 
         // define the dependencies
         $this->depends = [
