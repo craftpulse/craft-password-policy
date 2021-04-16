@@ -13,7 +13,6 @@ namespace percipioglobal\passwordpolicy\services;
 
 use Craft;
 use craft\base\Component;
-use Dragonbe\Hibp\HibpFactory;
 use percipioglobal\passwordpolicy\models\Settings;
 use percipioglobal\passwordpolicy\PasswordPolicy;
 
@@ -41,7 +40,7 @@ class PasswordService extends Component
     {
         $errors = [];
 
-        if (strlen($password) < $this->settings->minLength) {
+        if (strlen($password) === 0 || strlen($password) < $this->settings->minLength) {
             $errors[] = Craft::t('password-policy', 'Password needs to be at least {min} characters.', ['min' => $this->settings->minLength]);
         }
 
@@ -79,16 +78,4 @@ class PasswordService extends Component
         return (bool) preg_match('/[^a-zA-Z\d]/', $password);
     }
 
-    protected function hasBeenPwned(string $password) : bool
-    {
-        $hibp = HibpFactory::create();
-
-        try {
-            $pwnd = $hibp->isPwnedPassword($password);
-        } catch (\Exception $e) {
-            return false;
-        }
-
-        return $pwnd;
-    }
 }
