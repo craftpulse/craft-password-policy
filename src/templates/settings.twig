@@ -60,14 +60,6 @@
 }) }}
 
 {{ forms.lightSwitchField({
-    label: 'Check Pwned database'|t('password-policy'),
-    instructions: 'Check the [Pwned Passwords](https://haveibeenpwned.com/Passwords) database.'|t('password-policy'),
-    id: 'checkPwned',
-    name: 'checkPwned',
-    on: settings['checkPwned']
-}) }}
-
-{{ forms.lightSwitchField({
     label: 'Show strength indicator'|t('password-policy'),
     instructions: 'Show a password strength indicator.'|t('password-policy'),
     id: 'showStrengthIndicator',

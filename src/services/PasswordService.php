@@ -61,10 +61,6 @@ class PasswordService extends Component
             $errors[] = Craft::t('password-policy', 'Password needs to contain at least 1 symbol like @, #, $');
         }
 
-        if ($this->settings->checkPwned && $this->hasBeenPwned($password)) {
-            $errors[] = Craft::t('password-policy', 'Password has been Pwned (https://haveibeenpwned.com/Passwords).');
-        }
-
         return $errors;
     }
 

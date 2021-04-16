@@ -41,9 +41,6 @@ return [
     // Require at least one symbol
     "symbols" => false,
     
-    // Check the Have I been Pwned database
-    "checkPwned" => true,
-    
     // Show a password strength indicator
     "showStrengthIndicator" => true,
 ];
