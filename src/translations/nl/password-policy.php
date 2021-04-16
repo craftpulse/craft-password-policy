@@ -36,8 +36,6 @@ return [
     'Require one or more numerical digits.'                                       => 'Vereis minstens 1 numeriek karakter.',
     'Symbols'                                                                     => 'Symbolen',
     'Require special characters like @, #, $.'                                    => 'Vereis speciale karakters zoals @, #, $.',
-    'Check Pwned database'                                                        => 'Controleer de Pwned database',
-    'Check the [Pwned Passwords](https://haveibeenpwned.com/Passwords) database.' => 'Controleer de [Pwned Passwords](https://haveibeenpwned.com/Passwords) database.',
     'Show strength indicator'                                                     => 'Wachtwoord sterkte',
     'Show a password strength indicator.'                                         => 'Toon een gekleurde balk om de wachtwoord sterkte aan te duiden.',
 
@@ -47,5 +45,4 @@ return [
     'Password needs to be both upper- and lower-case.'                => 'Wachtwoord moet zowel hoofdletters als kleine letters bevatten.',
     'Password needs to contain at least 1 numeric character.'         => 'Wachtwoord moet minstens 1 nummer bevatten.',
     'Password needs to contain at least 1 symbol like @, #, $'        => 'Wachtwoord moet minstens 1 symbool zoals @, #, $ bevatten.',
-    'Password has been Pwned (https://haveibeenpwned.com/Passwords).' => 'Wachtwoord is gekend (https://haveibeenpwned.com/Passwords).',
 ];

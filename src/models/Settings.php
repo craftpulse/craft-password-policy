@@ -70,13 +70,6 @@ class Settings extends Model
     public $symbols = false;
 
     /**
-     * Check the pwned database for this password.
-     *
-     * @var bool
-     */
-    public $checkPwned = false;
-
-    /**
      * Show a strength indicator.
      *
      * @var bool
@@ -104,7 +97,6 @@ class Settings extends Model
             ['cases', 'boolean'],
             ['numbers', 'boolean'],
             ['symbols', 'boolean'],
-            ['checkPwned', 'boolean'],
             ['showStrengthIndicator', 'boolean'],
         ];
     }

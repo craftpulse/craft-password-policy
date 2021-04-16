@@ -29,6 +29,5 @@ return [
     'cases'                 => false,
     'numbers'               => false,
     'symbols'               => false,
-    'checkPwned'            => true,
     'showStrengthIndicator' => true,
 ];
