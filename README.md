@@ -1,4 +1,4 @@
-![Icon](./src/icon.svg)
+![icon](./resources/img/banner.png)
 
 # Password Policy plugin for Craft CMS 3
 
