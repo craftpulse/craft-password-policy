@@ -21,8 +21,13 @@
             "homepage": "https://percipio.london"
         }
     ],
+    "minimum-stability": "dev",
+    "prefer-stable": true,
     "require": {
         "craftcms/cms": "^3.0.0"
+    },
+    "require-dev": {
+        "craftcms/phpstan": "dev-main"
     },
     "autoload": {
         "psr-4": {
@@ -39,5 +44,14 @@
             "passwordService": "percipioglobal\\passwordpolicy\\services\\PasswordService"
         },
         "class": "percipioglobal\\passwordpolicy\\PasswordPolicy"
+    },
+    "scripts": {
+        "phpstan": "phpstan --memory-limit=1G"
+    },
+    "config": {
+        "allow-plugins": {
+            "yiisoft/yii2-composer": true,
+            "craftcms/plugin-installer": true
+        }
     }
 }
