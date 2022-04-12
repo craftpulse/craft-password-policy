@@ -92,12 +92,8 @@ class Settings extends Model
     public function rules()
     {
         return [
-            ['minLength', 'integer'],
-            ['maxLength', 'integer'],
-            ['cases', 'boolean'],
-            ['numbers', 'boolean'],
-            ['symbols', 'boolean'],
-            ['showStrengthIndicator', 'boolean'],
+            [['minLength', 'maxLength'], 'integer'],
+            [['cases', 'numbers', 'symbols', 'showStrengthIndicator'], 'boolean'],
         ];
     }
 }
