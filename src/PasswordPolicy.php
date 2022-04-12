@@ -9,15 +9,15 @@
  * @copyright Copyright (c) 2020 Percipio Global Ltd.
  */
 
-namespace percipioglobal\passwordpolicy;
+namespace percipiolondon\passwordpolicy;
 
 use Craft;
 use craft\base\Plugin;
 use craft\elements\User;
 use craft\services\Plugins;
-use percipioglobal\passwordpolicy\assetbundles\PasswordPolicy\PasswordPolicyAsset;
-use percipioglobal\passwordpolicy\models\Settings;
-use percipioglobal\passwordpolicy\services\PasswordService;
+use percipiolondon\passwordpolicy\assetbundles\PasswordPolicy\PasswordPolicyAsset;
+use percipiolondon\passwordpolicy\models\Settings;
+use percipiolondon\passwordpolicy\services\PasswordService;
 use yii\base\Event;
 use yii\base\ModelEvent;
 
@@ -51,7 +51,7 @@ class PasswordPolicy extends Plugin
      *
      * @var PasswordPolicy
      */
-    public static $plugin;
+    public static PasswordPolicy $plugin;
 
     // Public Properties
     // =========================================================================
@@ -61,7 +61,7 @@ class PasswordPolicy extends Plugin
      *
      * @var string
      */
-    public $schemaVersion = '1.0.0';
+    public string $schemaVersion = '1.0.0';
 
     // Public Methods
     // =========================================================================
@@ -76,12 +76,10 @@ class PasswordPolicy extends Plugin
      * If you have a '/vendor/autoload.php' file, it will be loaded for you automatically;
      * you do not need to load it in your init() method.
      */
-    public function init()
+    public function init(): void
     {
         parent::init();
         self::$plugin = $this;
-
-        $this->name = Craft::t('password-policy', 'Password Policy');
 
         if (Craft::$app->request->isCpRequest) {
             Craft::$app->view->registerAssetBundle(PasswordPolicyAsset::class);
@@ -105,6 +103,15 @@ class PasswordPolicy extends Plugin
                 }
             }
         );
+
+        Craft::info(
+            Craft::t(
+                'password-policy',
+                '{name} plugin loaded',
+                ['name' => $this->name]
+            ),
+            __METHOD__
+        );
     }
 
     // Protected Methods
@@ -113,9 +120,9 @@ class PasswordPolicy extends Plugin
     /**
      * Creates and returns the model used to store the plugin’s settings.
      *
-     * @return \craft\base\Model|null
+     * @return Settings|null
      */
-    protected function createSettingsModel()
+    protected function createSettingsModel(): Settings
     {
         return new Settings();
     }
@@ -124,14 +131,14 @@ class PasswordPolicy extends Plugin
      * Returns the rendered settings HTML, which will be inserted into the content
      * block on the settings page.
      *
-     * @return string The rendered settings HTML
+     * @return string|null The rendered settings HTML
      */
-    protected function settingsHtml(): string
+    protected function settingsHtml(): ?string
     {
-        return Craft::$app->view->renderTemplate(
+        return Craft::$app->getView()->renderTemplate(
             'password-policy/settings',
             [
-                'settings' => $this->getSettings(),
+                'settings' => $this->settings,
             ]
         );
     }
