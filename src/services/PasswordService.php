@@ -36,7 +36,7 @@ class PasswordService extends Component
         $this->settings = PasswordPolicy::$plugin->settings;
     }
 
-    public function getValidationErrors(string $password) : array
+    public function getValidationErrors(string $password): array
     {
         $errors = [];
 
@@ -63,19 +63,18 @@ class PasswordService extends Component
         return $errors;
     }
 
-    protected function containsDifferentCases(string $password) : bool
+    protected function containsDifferentCases(string $password): bool
     {
         return (bool) preg_match('/[A-Z]/', $password) && (bool) preg_match('/[a-z]/', $password);
     }
 
-    protected function containsNumbers(string $password) : bool
+    protected function containsNumbers(string $password): bool
     {
         return (bool) preg_match('/\d/', $password);
     }
 
-    protected function containsSymbols(string $password) : bool
+    protected function containsSymbols(string $password): bool
     {
         return (bool) preg_match('/[^a-zA-Z\d]/', $password);
     }
-
 }

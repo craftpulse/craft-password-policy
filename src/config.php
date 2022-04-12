@@ -24,10 +24,10 @@
  */
 
 return [
-    'minLength'             => 16,
-    'maxLength'             => 160,
-    'cases'                 => true,
-    'numbers'               => true,
-    'symbols'               => true,
+    'minLength' => 16,
+    'maxLength' => 160,
+    'cases' => true,
+    'numbers' => true,
+    'symbols' => true,
     'showStrengthIndicator' => true,
 ];
