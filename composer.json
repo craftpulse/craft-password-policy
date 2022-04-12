@@ -22,6 +22,7 @@
         }
     ],
     "require": {
+        "php": "^7.2.5 || ^8.0.2",
         "craftcms/cms": "^3.0.0"
     },
     "autoload": {
