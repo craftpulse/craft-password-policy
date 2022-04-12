@@ -1,8 +1,8 @@
 {
-    "name": "percipioglobal/craft-password-policy",
+    "name": "percipiolondon/craft-password-policy",
     "description": "Enforce a password policy on your users.",
     "type": "craft-plugin",
-    "version": "1.2.0",
+    "version": "4.0.0-beta.1",
     "keywords": [
         "craft",
         "cms",
@@ -22,12 +22,12 @@
         }
     ],
     "require": {
-        "php": "^7.2.5 || ^8.0.2",
-        "craftcms/cms": "^3.0.0"
+        "php": "^8.0.2",
+        "craftcms/cms": "^4.0.0-beta.1"
     },
     "autoload": {
         "psr-4": {
-            "percipioglobal\\passwordpolicy\\": "src/"
+            "percipiolondon\\passwordpolicy\\": "src/"
         }
     },
     "extra": {
@@ -37,8 +37,8 @@
         "hasCpSection": false,
         "changelogUrl": "https://raw.githubusercontent.com/percipioglobal/craft-password-policy/master/CHANGELOG.md",
         "components": {
-            "passwordService": "percipioglobal\\passwordpolicy\\services\\PasswordService"
+            "passwordService": "percipiolondon\\passwordpolicy\\services\\PasswordService"
         },
-        "class": "percipioglobal\\passwordpolicy\\PasswordPolicy"
+        "class": "percipiolondon\\passwordpolicy\\PasswordPolicy"
     }
 }
