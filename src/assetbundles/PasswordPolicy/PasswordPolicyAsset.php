@@ -9,12 +9,12 @@
  * @copyright Copyright (c) 2020 Percipio Global Ltd.
  */
 
-namespace percipioglobal\passwordpolicy\assetbundles\PasswordPolicy;
+namespace percipiolondon\passwordpolicy\assetbundles\PasswordPolicy;
 
 use Craft;
 use craft\web\AssetBundle;
 use craft\web\assets\cp\CpAsset;
-use percipioglobal\passwordpolicy\PasswordPolicy;
+use percipiolondon\passwordpolicy\PasswordPolicy;
 
 /**
  * PasswordPolicyAsset AssetBundle.
@@ -45,7 +45,7 @@ class PasswordPolicyAsset extends AssetBundle
     public function init()
     {
         // define the path that your publishable resources live
-        $this->sourcePath = '@percipioglobal/passwordpolicy/assetbundles/PasswordPolicy/dist';
+        $this->sourcePath = '@percipiolondon/passwordpolicy/assetbundles/PasswordPolicy/dist';
 
         // define the dependencies
         $this->depends = [

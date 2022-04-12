@@ -9,17 +9,17 @@
  * @copyright Copyright (c) 2020 Percipio Global Ltd.
  */
 
-namespace percipioglobal\passwordpolicy\services;
+namespace percipiolondon\passwordpolicy\services;
 
 use Craft;
 use craft\base\Component;
-use percipioglobal\passwordpolicy\models\Settings;
-use percipioglobal\passwordpolicy\PasswordPolicy;
+use percipiolondon\passwordpolicy\models\Settings;
+use percipiolondon\passwordpolicy\PasswordPolicy;
 
 /**
  * @author    Percipio Global Ltd.
  *
- * @since     0.1.0
+ * @since     1.0.0
  */
 class PasswordService extends Component
 {
@@ -29,9 +29,9 @@ class PasswordService extends Component
     /**
      * @var Settings
      */
-    private $settings;
+    private Settings $settings;
 
-    public function init()
+    public function init(): void
     {
         $this->settings = PasswordPolicy::$plugin->settings;
     }
@@ -40,7 +40,7 @@ class PasswordService extends Component
     {
         $errors = [];
 
-        if (strlen($password) === 0 || strlen($password) < $this->settings->minLength) {
+        if ($password === '' || strlen($password) < $this->settings->minLength) {
             $errors[] = Craft::t('password-policy', 'Password needs to be at least {min} characters.', ['min' => $this->settings->minLength]);
         }
 
@@ -65,7 +65,7 @@ class PasswordService extends Component
 
     protected function containsDifferentCases(string $password): bool
     {
-        return (bool) preg_match('/[A-Z]/', $password) && (bool) preg_match('/[a-z]/', $password);
+        return preg_match('/[A-Z]/', $password) && preg_match('/[a-z]/', $password);
     }
 
     protected function containsNumbers(string $password): bool

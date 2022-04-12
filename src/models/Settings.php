@@ -9,11 +9,11 @@
  * @copyright Copyright (c) 2020 Percipio Global Ltd.
  */
 
-namespace percipioglobal\passwordpolicy\models;
+namespace percipiolondon\passwordpolicy\models;
 
 use Craft;
 use craft\base\Model;
-use percipioglobal\passwordpolicy\PasswordPolicy;
+use percipiolondon\passwordpolicy\PasswordPolicy;
 
 /**
  * PasswordPolicy Settings Model.
@@ -39,42 +39,42 @@ class Settings extends Model
      *
      * @var int
      */
-    public $minLength = 6;
+    public int $minLength = 6;
 
     /**
      * Require a maximum length.
      *
      * @var int
      */
-    public $maxLength = 160;
+    public int $maxLength = 160;
 
     /**
      * Require different cases in the password.
      *
      * @var bool
      */
-    public $cases = false;
+    public bool $cases = false;
 
     /**
      * Require numbers in the password.
      *
      * @var bool
      */
-    public $numbers = false;
+    public bool $numbers = false;
 
     /**
      * Require symbols in the password.
      *
      * @var bool
      */
-    public $symbols = false;
+    public bool $symbols = false;
 
     /**
      * Show a strength indicator.
      *
      * @var bool
      */
-    public $showStrengthIndicator = true;
+    public bool $showStrengthIndicator = true;
 
     // Public Methods
     // =========================================================================
@@ -89,7 +89,7 @@ class Settings extends Model
      *
      * @return array
      */
-    public function rules()
+    public function rules(): array
     {
         return [
             [['minLength', 'maxLength'], 'integer'],

@@ -23,7 +23,7 @@
  */
 return [
     // Plugin name
-    'Password Policy' => 'Passordpolicy',
+    'Password Policy' => 'Passord Policy',
 
     // Settings
     'Minimum password length' => 'Minimum passordlengde',
