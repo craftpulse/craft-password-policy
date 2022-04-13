@@ -120,7 +120,7 @@ class PasswordPolicy extends Plugin
     /**
      * Creates and returns the model used to store the plugin’s settings.
      *
-     * @return Settings|null
+     * @return Settings
      */
     protected function createSettingsModel(): Settings
     {
