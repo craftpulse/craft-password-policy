@@ -43,6 +43,9 @@
         "handle": "password-policy",
         "hasCpSettings": true,
         "hasCpSection": false,
+        "developer": "percipiolondon",
+        "developerUrl": "https://percipio.london",
+        "documentationUrl": "https://github.com/percipioglobal/craft-password-policy/blob/v4/README.md",
         "changelogUrl": "https://raw.githubusercontent.com/percipioglobal/craft-password-policy/v4/CHANGELOG.md",
         "components": {
             "passwordService": "percipiolondon\\passwordpolicy\\services\\PasswordService"
