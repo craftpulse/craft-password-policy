@@ -8,10 +8,13 @@
         "cms",
         "craftcms",
         "craft-plugin",
-        "strong passwords"
+        "strong passwords",
+        "passwords",
+        "security"
     ],
     "support": {
-        "docs": "https://github.com/percipioglobal/craft-password-policy/blob/master/README.md",
+        "email": "support@percipio.london",
+        "docs": "https://github.com/percipioglobal/craft-password-policy/blob/v4/README.md",
         "issues": "https://github.com/percipioglobal/craft-password-policy/issues"
     },
     "license": "MIT",
@@ -21,9 +24,14 @@
             "homepage": "https://percipio.london"
         }
     ],
+    "minimum-stability": "dev",
+    "prefer-stable": true,
     "require": {
         "php": "^8.0.2",
         "craftcms/cms": "^4.0.0-beta.1"
+    },
+    "require-dev": {
+        "craftcms/phpstan": "dev-main"
     },
     "autoload": {
         "psr-4": {
@@ -35,10 +43,19 @@
         "handle": "password-policy",
         "hasCpSettings": true,
         "hasCpSection": false,
-        "changelogUrl": "https://raw.githubusercontent.com/percipioglobal/craft-password-policy/master/CHANGELOG.md",
+        "changelogUrl": "https://raw.githubusercontent.com/percipioglobal/craft-password-policy/v4/CHANGELOG.md",
         "components": {
             "passwordService": "percipiolondon\\passwordpolicy\\services\\PasswordService"
         },
         "class": "percipiolondon\\passwordpolicy\\PasswordPolicy"
+    },
+    "scripts": {
+        "phpstan": "phpstan --memory-limit=1G"
+    },
+    "config": {
+        "allow-plugins": {
+            "yiisoft/yii2-composer": true,
+            "craftcms/plugin-installer": true
+        }
     }
 }
