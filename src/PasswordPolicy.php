@@ -18,7 +18,12 @@ use craft\services\Plugins;
 use percipiolondon\passwordpolicy\assetbundles\PasswordPolicy\PasswordPolicyAsset;
 use percipiolondon\passwordpolicy\models\Settings;
 use percipiolondon\passwordpolicy\services\PasswordService;
+use Twig\Error\LoaderError;
+use Twig\Error\RuntimeError;
+use Twig\Error\SyntaxError;
 use yii\base\Event;
+use yii\base\Exception;
+use yii\base\InvalidConfigException;
 use yii\base\ModelEvent;
 
 /**
@@ -75,6 +80,8 @@ class PasswordPolicy extends Plugin
      *
      * If you have a '/vendor/autoload.php' file, it will be loaded for you automatically;
      * you do not need to load it in your init() method.
+     *
+     * @throws InvalidConfigException
      */
     public function init(): void
     {
@@ -132,6 +139,10 @@ class PasswordPolicy extends Plugin
      * block on the settings page.
      *
      * @return string|null The rendered settings HTML
+     * @throws Exception
+     * @throws LoaderError
+     * @throws RuntimeError
+     * @throws SyntaxError
      */
     protected function settingsHtml(): ?string
     {
