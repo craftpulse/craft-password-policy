@@ -2,7 +2,7 @@
     "name": "percipiolondon/craft-password-policy",
     "description": "Enforce a password policy on your users.",
     "type": "craft-plugin",
-    "version": "4.0.0-RC1",
+    "version": "4.0.0",
     "keywords": [
         "craft",
         "cms",
