@@ -13,6 +13,7 @@ namespace percipiolondon\passwordpolicy;
 
 use Craft;
 use craft\base\Plugin;
+use craft\console\Application as ConsoleApplication;
 use craft\elements\User;
 use craft\services\Plugins;
 use percipiolondon\passwordpolicy\assetbundles\PasswordPolicy\PasswordPolicyAsset;
@@ -110,6 +111,11 @@ class PasswordPolicy extends Plugin
                 }
             }
         );
+
+        // Add in our console commands
+        if (Craft::$app instanceof ConsoleApplication) {
+            $this->controllerNamespace = 'percipiolondon\passwordpolicy\console\controllers';
+        }
 
         Craft::info(
             Craft::t(

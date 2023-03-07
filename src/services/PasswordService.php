@@ -13,6 +13,7 @@ namespace percipiolondon\passwordpolicy\services;
 
 use Craft;
 use craft\base\Component;
+use craft\elements\User;
 use percipiolondon\passwordpolicy\models\Settings;
 use percipiolondon\passwordpolicy\PasswordPolicy;
 
@@ -34,6 +35,11 @@ class PasswordService extends Component
     public function init(): void
     {
         $this->settings = PasswordPolicy::$plugin->settings;
+    }
+
+    public function sendPasswordReset(): void
+    {
+
     }
 
     public function getValidationErrors(string $password): array

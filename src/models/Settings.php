@@ -76,6 +76,20 @@ class Settings extends Model
      */
     public bool $showStrengthIndicator = true;
 
+    /**
+     * Force user to reset their password after set days (default 90 days)
+     *
+     * @var bool
+     */
+    public bool $forcePasswordReset = false;
+
+    /**
+     * If force user to reset their password is on, provide the days for the recurring password to be reset
+     *
+     * @var int
+     */
+    public int $forcePasswordResetDays = 90;
+
     // Public Methods
     // =========================================================================
 

@@ -25,6 +25,7 @@ if (newPasswordField.length > 0 && passwordpolicy.showStrengthIndicator) {
 
         if (password) {
             var details = zxcvbn(password);
+            console.log(details);
             bar.addClass('strength-' + details.score);
         }
     });

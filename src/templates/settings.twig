@@ -66,3 +66,22 @@
     name: 'showStrengthIndicator',
     on: settings['showStrengthIndicator']
 }) }}
+
+<hr />
+
+{{ forms.lightSwitchField({
+    label: 'Force user to reset their password'|t('password-policy'),
+    instructions: 'The user will be unable to login after the set days. The user will receive a password reset email.'|t('password-policy'),
+    id: 'forcePasswordReset',
+    name: 'forcePasswordReset',
+    on: settings['forcePasswordReset']
+}) }}
+
+{{ forms.textField({
+    label: 'Days before password reset'|t('password-policy'),
+    type: 'number',
+    instructions: 'Provide amount of days for the recurring password to be reset'|t('password-policy'),
+    id: 'forcePasswordResetDays',
+    name: 'forcePasswordResetDays',
+    value: settings['forcePasswordResetDays']})
+}}
