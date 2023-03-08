@@ -1,6 +1,6 @@
 ![icon](./resources/img/banner.png)
 
-# Password Policy plugin for Craft CMS 3
+# Password Policy plugin for Craft CMS 4.x
 
 Enforce a password policy on your users. This plugin can also check the [Have I been Pwned database](https://haveibeenpwned.com/Passwords) to make sure users use a password that is secure.
 
@@ -43,6 +43,12 @@ return [
     
     // Show a password strength indicator
     "showStrengthIndicator" => true,
+    
+    // Force user to reset their password after x days
+    "forcePasswordReset" => false,
+    
+    // Provide amount of days for the recurring password to be reset -> default 90 days
+    "forcePasswordResetDays" => 90
 ];
 ``` 
 

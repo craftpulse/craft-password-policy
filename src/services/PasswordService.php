@@ -37,11 +37,6 @@ class PasswordService extends Component
         $this->settings = PasswordPolicy::$plugin->settings;
     }
 
-    public function sendPasswordReset(): void
-    {
-
-    }
-
     public function getValidationErrors(string $password): array
     {
         $errors = [];
