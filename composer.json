@@ -1,5 +1,5 @@
 {
-    "name": "percipiolondon/craft-password-policy",
+    "name": "craftpulse/craft-password-policy",
     "description": "Enforce a password policy on your users.",
     "type": "craft-plugin",
     "version": "4.1.0",
