@@ -1,8 +1,8 @@
 {
-    "name": "percipiolondon/craft-password-policy",
+    "name": "craftpulse/craft-password-policy",
     "description": "Enforce a password policy on your users.",
     "type": "craft-plugin",
-    "version": "4.0.0",
+    "version": "5.0.0-beta1",
     "keywords": [
         "craft",
         "cms",
@@ -13,29 +13,29 @@
         "security"
     ],
     "support": {
-        "email": "support@percipio.london",
-        "docs": "https://github.com/percipioglobal/craft-password-policy/blob/v4/README.md",
-        "issues": "https://github.com/percipioglobal/craft-password-policy/issues"
+        "email": "support@craftpulse.com",
+        "docs": "https://github.com/craftpulse/craft-password-policy/blob/v5/README.md",
+        "issues": "https://github.com/craftpulse/craft-password-policy/issues"
     },
     "license": "MIT",
     "authors": [
         {
-            "name": "Percipio Global Ltd.",
-            "homepage": "https://percipio.london"
+            "name": "CraftPulse",
+            "homepage": "https://craftpulse.com"
         }
     ],
     "minimum-stability": "dev",
     "prefer-stable": true,
     "require": {
         "php": "^8.0.2",
-        "craftcms/cms": "^4.0.0-beta.1"
+        "craftcms/cms": "^5.0.0"
     },
     "require-dev": {
         "craftcms/phpstan": "dev-main"
     },
     "autoload": {
         "psr-4": {
-            "percipiolondon\\passwordpolicy\\": "src/"
+            "craftpulse\\passwordpolicy\\": "src/"
         }
     },
     "extra": {
@@ -43,14 +43,14 @@
         "handle": "password-policy",
         "hasCpSettings": true,
         "hasCpSection": false,
-        "developer": "percipiolondon",
-        "developerUrl": "https://percipio.london",
-        "documentationUrl": "https://github.com/percipioglobal/craft-password-policy/blob/v4/README.md",
-        "changelogUrl": "https://raw.githubusercontent.com/percipioglobal/craft-password-policy/v4/CHANGELOG.md",
+        "developer": "craftpulse",
+        "developerUrl": "https://craftpulse.com",
+        "documentationUrl": "https://github.com/craftpulse/craft-password-policy/blob/v4/README.md",
+        "changelogUrl": "https://raw.githubusercontent.com/craftpulse/craft-password-policy/v4/CHANGELOG.md",
         "components": {
-            "passwordService": "percipiolondon\\passwordpolicy\\services\\PasswordService"
+            "passwordService": "craftpulse\\passwordpolicy\\services\\PasswordService"
         },
-        "class": "percipiolondon\\passwordpolicy\\PasswordPolicy"
+        "class": "craftpulse\\passwordpolicy\\PasswordPolicy"
     },
     "scripts": {
         "phpstan": "phpstan --memory-limit=1G"

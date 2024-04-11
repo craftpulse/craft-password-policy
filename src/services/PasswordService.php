@@ -1,23 +1,23 @@
 <?php
 /**
- * Scout plugin for Craft CMS 3.x.
+ * Scout plugin for Craft CMS 5.x.
  *
  * Craft Scout provides a simple solution for adding full-text search to your entries. Scout will automatically keep your search indexes in sync with your entries.
  *
- * @link      https://percipio.london
+ * @link      https://craftpulse.com
  *
- * @copyright Copyright (c) 2020 Percipio Global Ltd.
+ * @copyright Copyright (c) 2024 CraftPulse
  */
 
-namespace percipiolondon\passwordpolicy\services;
+namespace craftpulse\passwordpolicy\services;
 
 use Craft;
 use craft\base\Component;
-use percipiolondon\passwordpolicy\models\Settings;
-use percipiolondon\passwordpolicy\PasswordPolicy;
+use craftpulse\passwordpolicy\models\Settings;
+use craftpulse\passwordpolicy\PasswordPolicy;
 
 /**
- * @author    Percipio Global Ltd.
+ * @author   CraftPulse
  *
  * @since     1.0.0
  */

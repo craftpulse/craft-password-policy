@@ -1,20 +1,20 @@
 <?php
 /**
- * Password Policy plugin for Craft CMS 3.x.
+ * Password Policy plugin for Craft CMS 5.x.
  *
  * Enforce stronger passwords on your users.
  *
- * @link      https://percipio.london
+ * @link      https://craftpulse.com
  *
- * @copyright Copyright (c) 2020 Percipio Global Ltd.
+ * @copyright Copyright (c) 2024 CraftPulse
  */
 
-namespace percipiolondon\passwordpolicy\assetbundles\PasswordPolicy;
+namespace craftpulse\passwordpolicy\assetbundles\PasswordPolicy;
 
 use Craft;
 use craft\web\AssetBundle;
 use craft\web\assets\cp\CpAsset;
-use percipiolondon\passwordpolicy\PasswordPolicy;
+use craftpulse\passwordpolicy\PasswordPolicy;
 
 /**
  * PasswordPolicyAsset AssetBundle.
@@ -30,7 +30,7 @@ use percipiolondon\passwordpolicy\PasswordPolicy;
  *
  * http://www.yiiframework.com/doc-2.0/guide-structure-assets.html
  *
- * @author    Percipio Global Ltd.
+ * @author    CraftPulse
  *
  * @since     1.0.0
  */
@@ -45,7 +45,7 @@ class PasswordPolicyAsset extends AssetBundle
     public function init()
     {
         // define the path that your publishable resources live
-        $this->sourcePath = '@percipiolondon/passwordpolicy/assetbundles/PasswordPolicy/dist';
+        $this->sourcePath = '@craftpulse/passwordpolicy/assetbundles/PasswordPolicy/dist';
 
         // define the dependencies
         $this->depends = [

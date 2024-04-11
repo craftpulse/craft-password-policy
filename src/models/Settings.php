@@ -1,19 +1,19 @@
 <?php
 /**
- * Password Policy plugin for Craft CMS 3.x.
+ * Password Policy plugin for Craft CMS 5.x.
  *
  * Enforce stronger passwords on your users.
  *
- * @link      https://percipio.london
+ * @link      https://craftpulse.com
  *
- * @copyright Copyright (c) 2020 Percipio Global Ltd.
+ * @copyright Copyright (c) 2024 CraftPulse
  */
 
-namespace percipiolondon\passwordpolicy\models;
+namespace craftpulse\passwordpolicy\models;
 
 use Craft;
 use craft\base\Model;
-use percipiolondon\passwordpolicy\PasswordPolicy;
+use craftpulse\passwordpolicy\PasswordPolicy;
 
 /**
  * PasswordPolicy Settings Model.
@@ -25,7 +25,7 @@ use percipiolondon\passwordpolicy\PasswordPolicy;
  *
  * https://craftcms.com/docs/plugins/models
  *
- * @author    Percipio Global Ltd.
+ * @author    CraftPulse
  *
  * @since     1.0.0
  */

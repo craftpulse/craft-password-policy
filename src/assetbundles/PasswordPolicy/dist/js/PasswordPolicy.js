@@ -3,9 +3,9 @@
  *
  * Password Policy JS
  *
- * @author    Percipio Global Ltd.
- * @copyright Copyright (c) 2020 Percipio Global Ltd.
- * @link      https://percipio.london
+ * @author    CraftPulse
+ * @copyright Copyright (c) 2024 CraftPulse
+ * @link      https://craftpulse.com
  * @package   PasswordPolicy
  * @since     1.0.0
  */
