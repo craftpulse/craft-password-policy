@@ -1,6 +1,6 @@
-![icon](./resources/img/banner.png)
+![icon](./resources/img/password-policy.jpg)
 
-# Password Policy plugin for Craft CMS 3
+# Password Policy plugin for Craft CMS 5
 
 Enforce a password policy on your users. This plugin can also check the [Have I been Pwned database](https://haveibeenpwned.com/Passwords) to make sure users use a password that is secure.
 
@@ -50,4 +50,4 @@ Or through the plugin settings
 
 ![Screenshot](resources/img/screenshot2.png)
 
-Brought to you by [Percipio Global Ltd.](https://percipio.london)
+Brought to you by CraftPulse

@@ -1,0 +1,14 @@
+{
+  "src/js/indicator.css": {
+    "file": "assets/indicator-b0f69606.css",
+    "src": "src/js/indicator.css"
+  },
+  "src/js/indicator.ts": {
+    "css": [
+      "assets/indicator-b0f69606.css"
+    ],
+    "file": "assets/strengthIndicator-d691cd8c.js",
+    "isEntry": true,
+    "src": "src/js/indicator.ts"
+  }
+}

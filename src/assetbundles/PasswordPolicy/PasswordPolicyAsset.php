@@ -1,38 +1,28 @@
 <?php
 /**
- * Password Policy plugin for Craft CMS 3.x.
+ * Password policy plugin for Craft CMS
  *
- * Enforce stronger passwords on your users.
+ * Enforce a password policy on your users. This plugin is aimed to make sure users use a password that is secure.
  *
- * @link      https://percipio.london
- *
- * @copyright Copyright (c) 2020 Percipio Global Ltd.
+ * @link      https://craftpulse.com
+ * @copyright Copyright (c) 2024 CraftPulse
  */
 
-namespace percipiolondon\passwordpolicy\assetbundles\PasswordPolicy;
+namespace craftpulse\passwordpolicy\assetbundles\passwordpolicy;
 
 use Craft;
 use craft\web\AssetBundle;
 use craft\web\assets\cp\CpAsset;
-use percipiolondon\passwordpolicy\PasswordPolicy;
+use craft\web\assets\vue\VueAsset;
+
+use craftpulse\passwordpolicy\PasswordPolicy;
 
 /**
- * PasswordPolicyAsset AssetBundle.
+ * Class PasswordPolicyAsset
  *
- * AssetBundle represents a collection of asset files, such as CSS, JS, images.
- *
- * Each asset bundle has a unique name that globally identifies it among all asset bundles used in an application.
- * The name is the [fully qualified class name](http://php.net/manual/en/language.namespaces.rules.php)
- * of the class representing it.
- *
- * An asset bundle can depend on other asset bundles. When registering an asset bundle
- * with a view, all its dependent asset bundles will be automatically registered.
- *
- * http://www.yiiframework.com/doc-2.0/guide-structure-assets.html
- *
- * @author    Percipio Global Ltd.
- *
- * @since     1.0.0
+ * @author      CraftPulse
+ * @package     PasswordPolicy
+ * @since       5.0.0
  */
 class PasswordPolicyAsset extends AssetBundle
 {
@@ -40,32 +30,19 @@ class PasswordPolicyAsset extends AssetBundle
     // =========================================================================
 
     /**
-     * Initializes the bundle.
+     * @inheritdoc
      */
-    public function init()
+    public function init(): void
     {
-        // define the path that your publishable resources live
-        $this->sourcePath = '@percipiolondon/passwordpolicy/assetbundles/PasswordPolicy/dist';
-
-        // define the dependencies
+        $this->sourcePath = '@craftpulse/passwordpolicy/web/assets/dist';
         $this->depends = [
             CpAsset::class,
         ];
 
-        // define the relative path to CSS/JS files that should be registered with the page
-        // when this asset bundle is registered
-        $this->js = [
-            'js/zxcvbn.min.js',
-            'js/PasswordPolicy.js',
-        ];
-
+        // Register Javascript variable
         Craft::$app->view->registerJsVar('passwordpolicy', [
             'showStrengthIndicator' => PasswordPolicy::$plugin->settings->showStrengthIndicator,
         ]);
-
-        $this->css = [
-            'css/PasswordPolicy.css',
-        ];
 
         parent::init();
     }

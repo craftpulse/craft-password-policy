@@ -1,49 +1,17 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Generator: Adobe Illustrator 26.1.0, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
-<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
-	 viewBox="0 0 1000 1000" enable-background="new 0 0 1000 1000" xml:space="preserve">
-<g>
-	<g>
-		<g>
-			
-				<radialGradient id="SVGID_1_" cx="1010.0317" cy="648.8622" r="445.3288" fx="1392.3479" fy="647.5929" gradientTransform="matrix(0.8377 -0.5462 -1.2737 -1.9536 499.7894 2306.623)" gradientUnits="userSpaceOnUse">
-				<stop  offset="3.745849e-02" style="stop-color:#D51E69"/>
-				<stop  offset="0.1445" style="stop-color:#B41E7C"/>
-				<stop  offset="0.2727" style="stop-color:#921D90"/>
-				<stop  offset="0.3423" style="stop-color:#851D97"/>
-				<stop  offset="0.4122" style="stop-color:#7C209D"/>
-				<stop  offset="0.526" style="stop-color:#6426AE"/>
-				<stop  offset="0.6508" style="stop-color:#4230C5"/>
-				<stop  offset="0.7123" style="stop-color:#3C39CC"/>
-				<stop  offset="0.8102" style="stop-color:#2A50E0"/>
-				<stop  offset="0.8792" style="stop-color:#1B64F2"/>
-			</radialGradient>
-			<polygon fill="url(#SVGID_1_)" points="852.1,296.7 852.1,703.3 500,906.6 147.9,703.3 147.9,296.7 500,93.4 			"/>
-			
-				<radialGradient id="SVGID_00000024683511004241235780000008622429949610447796_" cx="1014.4863" cy="652.0038" r="547.4185" fx="1484.4468" fy="650.4435" gradientTransform="matrix(0.8377 -0.5462 -1.2737 -1.9536 504.2101 2311.8242)" gradientUnits="userSpaceOnUse">
-				<stop  offset="3.745849e-02" style="stop-color:#D51E69"/>
-				<stop  offset="0.1445" style="stop-color:#B41E7C"/>
-				<stop  offset="0.2727" style="stop-color:#921D90"/>
-				<stop  offset="0.3423" style="stop-color:#851D97"/>
-				<stop  offset="0.4122" style="stop-color:#7C209D"/>
-				<stop  offset="0.526" style="stop-color:#6426AE"/>
-				<stop  offset="0.6508" style="stop-color:#4230C5"/>
-				<stop  offset="0.7123" style="stop-color:#3C39CC"/>
-				<stop  offset="0.8102" style="stop-color:#2A50E0"/>
-				<stop  offset="0.8792" style="stop-color:#1B64F2"/>
-			</radialGradient>
-			<path fill="url(#SVGID_00000024683511004241235780000008622429949610447796_)" d="M500.2,0L67.3,249.9V749l432.2,251l432.7-250.9
-				l0.5-499.2L500.2,0z M892.9,726.9L500,953.7L107.1,726.8V273.2L500,46.3l392.9,226.9V726.9L892.9,726.9z"/>
-		</g>
-		<g opacity="0.2">
-			<polygon fill="#FFFFFF" points="852.1,296.7 852.1,703.3 500,906.6 147.9,703.3 147.9,296.7 500,93.4 			"/>
-		</g>
-	</g>
-	<path fill="#FFFFFF" d="M500,953.7L107.1,726.9V273.2L500,46.3l392.9,226.9v453.7L500,953.7z M147.9,703.3L500,906.6l352.1-203.3
-		V296.7L500,93.4L147.9,296.7V703.3z"/>
+<svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_399_4176)">
+<g clip-path="url(#clip1_399_4176)">
+<path d="M8 8H152V152H8V8Z" fill="#141414"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M16 0H24H120H128H136H144V8L136 8H128L120 7.99999L24 8H16V0ZM8 16V8H16V16H8ZM8 144H0V136L1.25889e-05 24L0 16H8V24L8 136V144ZM16 152L16 144H8L8 152H16ZM24 152H16V160L24 160L120 160H128H136H144V152H152V144H160L160 136L160 24V16H152V8L144 8V16H152V24V136V144H144V152H136H128H120H24Z" fill="#00FC19"/>
 </g>
-<path fill="#FFFFFF" d="M673.9,357.6l-158.6-66.1c-4-1.7-10.9-3-15.2-3c-4.4,0-11.2,1.4-15.3,3l-158.6,66.1
-	c-14.8,6.1-24.5,20.6-24.5,35.9c0,213.3,156.3,318,197.6,318c43,0,199-105.9,199-318C698.3,378.2,688.6,363.7,673.9,357.6z
-	 M519.8,502v57.5c0,10.9-8.9,19.8-19.8,19.8s-19.8-8.9-19.8-19.8V502c-15.6-7.4-26.4-23.2-26.4-41.6c0-25.6,20.7-46.3,46.3-46.3
-	s46.3,20.7,46.3,46.3C546.3,478.8,535.4,494.5,519.8,502z"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M80 32H88V40H80H72V32H80ZM40 56H48H56V48H64H72V40H64H56H48V48H40V56ZM48 88V80V72H40V64V56H32V64L32 72V80H40V88V96H48V104V112H56V120H64V128H72H80H88H96V120H104V112H112V104V96H120V88V80H128V72V64V56H120V48H112V40H104H96H88V48H96H104V56H112H120V64V72H112V80V88H104V96V104H96V112H88V120H80H72V112H64V104H56V96V88H48ZM88 64V56H80H72V64H64V72V80L72 80V88H76L76 112H84L84 88H88V80L96 80V72V64H88ZM88 64V72H80V64H88Z" fill="#00FC19"/>
+</g>
+<defs>
+<clipPath id="clip0_399_4176">
+<rect width="160" height="160" fill="white"/>
+</clipPath>
+<clipPath id="clip1_399_4176">
+<rect width="160" height="160" fill="white"/>
+</clipPath>
+</defs>
 </svg>
