@@ -64,8 +64,7 @@ class RetentionService extends Component
         if ($user->id !== 1) {
             $user->passwordResetRequired = true;
             Craft::$app->getElements()->saveElement($user);
-            echo 'peekaboo';
-            $this->resets += 1;
+            $this->resets++;
         }
     }
 }
