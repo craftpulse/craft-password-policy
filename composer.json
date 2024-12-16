@@ -2,7 +2,7 @@
     "name": "craftpulse/craft-password-policy",
     "description": "Password Policy plugin",
     "type": "craft-plugin",
-    "version": "5.0.0",
+    "version": "5.0.1",
     "keywords": [
         "craft",
         "cms",
