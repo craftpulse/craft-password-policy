@@ -13,7 +13,6 @@ namespace craftpulse\passwordpolicy\rules;
 use Craft;
 
 use craftpulse\passwordpolicy\PasswordPolicy;
-use craftpulse\passwordpolicy\services\PasswordService;
 use craftpulse\passwordpolicy\validators\PwnedValidator;
 
 /**

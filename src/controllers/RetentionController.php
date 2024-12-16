@@ -122,5 +122,4 @@ class RetentionController extends Controller
 
         return $this->redirectToPostedUrl();
     }
-
 }

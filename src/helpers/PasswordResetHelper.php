@@ -10,14 +10,10 @@
 
 namespace craftpulse\passwordpolicy\helpers;
 
-use Craft;
-use craft\elements\User;
-use craft\elements\db\UserQuery;
-use craftpulse\passwordpolicy\models\SettingsModel;
-use craftpulse\passwordpolicy\PasswordPolicy;
-
 use Carbon\Carbon;
-use DateInterval;
+use craft\elements\User;
+
+use craftpulse\passwordpolicy\PasswordPolicy;
 use DateTime;
 
 /**
@@ -40,16 +36,20 @@ class PasswordResetHelper
         $users = User::find()->addSelect('lastPasswordChangeDate')->collect();
 
         // only get the active users
-        $users = $users->filter(function ($user) { return $user->active === true; });
+        $users = $users->filter(function($user) {
+            return $user->active === true;
+        });
 
         // now only get the ones where their password is changed at least 90 days ago (how lol?);
-        $users = $users->filter(function ($user) { return self::checkIfExpired($user->lastPasswordChangeDate); })->all();
+        $users = $users->filter(function($user) {
+            return self::checkIfExpired($user->lastPasswordChangeDate);
+        })->all();
 
         return $users;
     }
 
-    private static function checkIfExpired(?DateTime $lastPasswordChangeDate = null): bool {
-
+    private static function checkIfExpired(?DateTime $lastPasswordChangeDate = null): bool
+    {
         if ($lastPasswordChangeDate === null) {
             return false;
         }
@@ -66,7 +66,8 @@ class PasswordResetHelper
         }
     }
 
-    private static function createInterval(): ?string {
+    private static function createInterval(): ?string
+    {
         $settings = PasswordPolicy::$plugin->settings;
         $period = null;
 

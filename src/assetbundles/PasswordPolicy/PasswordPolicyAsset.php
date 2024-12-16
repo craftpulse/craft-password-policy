@@ -13,7 +13,6 @@ namespace craftpulse\passwordpolicy\assetbundles\passwordpolicy;
 use Craft;
 use craft\web\AssetBundle;
 use craft\web\assets\cp\CpAsset;
-use craft\web\assets\vue\VueAsset;
 
 use craftpulse\passwordpolicy\PasswordPolicy;
 

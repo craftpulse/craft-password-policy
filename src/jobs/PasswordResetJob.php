@@ -10,16 +10,11 @@
 
 namespace craftpulse\passwordpolicy\jobs;
 
-use craft\base\Batchable;
-use craft\db\Query;
-use craft\db\QueryBatcher;
-use craft\elements\db\UserQuery;
-use craft\helpers\Queue as QueueHelper;
 use craft\queue\BaseBatchedJob;
 
-use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\batchers\PasswordResetBatcher;
 use craftpulse\passwordpolicy\helpers\PasswordResetHelper;
+use craftpulse\passwordpolicy\PasswordPolicy;
 
 use yii\queue\Queue;
 use yii\queue\RetryableJobInterface;

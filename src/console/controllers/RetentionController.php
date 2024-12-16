@@ -11,9 +11,7 @@
 namespace craftpulse\passwordpolicy\console\controllers;
 
 use Craft;
-use craft\helpers\Console;
 use craftpulse\passwordpolicy\PasswordPolicy;
-use craftpulse\passwordpolicy\helpers\PasswordResetHelper;
 
 use yii\console\Controller;
 use yii\console\ExitCode;

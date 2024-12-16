@@ -15,11 +15,9 @@ use craft\base\Component;
 use craft\elements\User as UserElement;
 use craft\helpers\Queue;
 
-use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\jobs\PasswordResetJob;
 use craftpulse\passwordpolicy\models\SettingsModel;
-
-use Illuminate\Support\Collection;
+use craftpulse\passwordpolicy\PasswordPolicy;
 
 /**
  * Class RetentionService
@@ -30,8 +28,6 @@ use Illuminate\Support\Collection;
  */
 class RetentionService extends Component
 {
-
-
     /**
      * @var SettingsModel
      */
@@ -48,7 +44,8 @@ class RetentionService extends Component
     /**
      * @inheritdoc
      */
-    public function resetPasswords(): void {
+    public function resetPasswords(): void
+    {
         // @TODO create job priority setting
         // @TODO create job ttr setting
         Queue::push(
@@ -64,13 +61,11 @@ class RetentionService extends Component
     public function requirePasswordReset(UserElement $user): void
     {
         // In the free version we will never force the reset of our main admin account!
-        if ($user->id !== 1)
-        {
+        if ($user->id !== 1) {
             $user->passwordResetRequired = true;
             Craft::$app->getElements()->saveElement($user);
             echo 'peekaboo';
             $this->resets += 1;
         }
     }
-
 }

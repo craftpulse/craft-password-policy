@@ -83,7 +83,7 @@ class SettingsModel extends Model
             'parser' => [
                 'class' => EnvAttributeParserBehavior::class,
                 'attributes' => ['minLength', 'maxLength'],
-            ]
+            ],
         ];
     }
 
@@ -107,7 +107,7 @@ class SettingsModel extends Model
                 'integerOnly' => true,
                 'min' => 6,
                 'message' => Craft::t('password-policy', 'The minimum length can not be less than 6.'),
-                'when' => function ($setting) {
+                'when' => function($setting) {
                     return $setting->maxLength !== null || $setting->maxLength > 0;
                 },
             ],
@@ -117,7 +117,7 @@ class SettingsModel extends Model
                 'compareAttribute' => 'minLength',
                 'operator' => '>=',
                 'message' => Craft::t('password-policy', 'The minimum length must be less than or equal to the maximum length.'),
-                'when' => function ($setting) {
+                'when' => function($setting) {
                     return $setting->maxLength !== null || $setting->maxLength > 0;
                 },
             ],

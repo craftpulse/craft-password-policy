@@ -21,7 +21,6 @@ use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
 use craft\events\TemplateEvent;
 use craft\helpers\Json;
-use craft\helpers\Queue;
 use craft\log\MonologTarget;
 use craft\services\Plugins;
 use craft\services\UserPermissions;
@@ -30,20 +29,19 @@ use craft\web\twig\variables\CraftVariable;
 use craft\web\UrlManager;
 use craft\web\View;
 
+use craftpulse\passwordpolicy\assetbundles\passwordpolicy\PasswordPolicyAsset;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
 use craftpulse\passwordpolicy\services\PasswordService;
 use craftpulse\passwordpolicy\services\RetentionService;
 use craftpulse\passwordpolicy\utilities\RetentionUtility;
 use craftpulse\passwordpolicy\variables\PasswordPolicyVariable;
-use craftpulse\passwordpolicy\assetbundles\passwordpolicy\PasswordPolicyAsset;
-
-use nystudio107\pluginvite\services\VitePluginService;
 
 use Monolog\Formatter\LineFormatter;
+
+use nystudio107\pluginvite\services\VitePluginService;
 use Psr\Log\LogLevel;
 use yii\base\Event;
-use yii\base\InvalidConfigException;
 use yii\base\InvalidRouteException;
 use yii\log\Dispatcher;
 use yii\log\Logger;
@@ -115,7 +113,7 @@ class PasswordPolicy extends Plugin
                     'devServerInternal' => 'http://craft-password-policy-v5-buildchain-dev:3005',
                     'checkDevServer' => true,
                 ],
-            ]
+            ],
         ];
     }
 
@@ -125,7 +123,7 @@ class PasswordPolicy extends Plugin
         self::$plugin = $this;
 
         $request = Craft::$app->getRequest();
-        if($request->getIsConsoleRequest()) {
+        if ($request->getIsConsoleRequest()) {
             $this->controllerNamespace = 'craftpulse\passwordpolicy\console\controllers';
         }
 
@@ -160,7 +158,7 @@ class PasswordPolicy extends Plugin
             $params['username'] = $user->username;
         }
 
-        $encoded_params =  str_replace('\\', '', Json::encode($params));
+        $encoded_params = str_replace('\\', '', Json::encode($params));
 
         $message = Craft::t('password-policy', $message . ' ' . $encoded_params, $params);
 
@@ -244,7 +242,7 @@ class PasswordPolicy extends Plugin
         Event::on(
             Plugins::class,
             Plugins::EVENT_AFTER_SAVE_PLUGIN_SETTINGS,
-            function (PluginEvent $event) {
+            function(PluginEvent $event) {
                 if ($event->plugin === $this) {
                     Craft::debug(
                         'Plugins::EVENT_AFTER_SAVE_PLUGIN_SETTINGS',
@@ -270,7 +268,7 @@ class PasswordPolicy extends Plugin
         Event::on(
             User::class,
             User::EVENT_DEFINE_RULES,
-            static function (DefineRulesEvent $event) {
+            static function(DefineRulesEvent $event) {
                 self::$plugin->passwords->pwned('testtest');
                 foreach (UserRules::defineRules() as $rule) {
                     $event->rules[] = $rule;
@@ -282,7 +280,7 @@ class PasswordPolicy extends Plugin
         Event::on(
             View::class,
             View::EVENT_BEFORE_RENDER_PAGE_TEMPLATE,
-            function (TemplateEvent $event) {
+            function(TemplateEvent $event) {
                 // Get view
                 $view = Craft::$app->getView();
 
@@ -336,8 +334,8 @@ class PasswordPolicy extends Plugin
                         ],
                         'pp:force-reset-passwords' => [
                             'label' => Craft::t('password-policy', 'Force reset passwords retention access.'),
-                        ]
-                    ]
+                        ],
+                    ],
                 ];
             }
         );

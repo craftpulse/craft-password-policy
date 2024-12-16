@@ -67,7 +67,7 @@ class RetentionUtility extends Utility
         $actions[] = [
             'id' => 'force-reset-passwords',
             'label' => Craft::t('password-policy', 'Force Reset Passwords'),
-            'instructions' => Craft::t('password-policy', "Force reset passwords that don't comply with your expiration settings.")
+            'instructions' => Craft::t('password-policy', "Force reset passwords that don't comply with your expiration settings."),
         ];
 
         return $actions;
