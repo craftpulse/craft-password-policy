@@ -29,7 +29,7 @@ use yii\log\Logger;
  */
 class PasswordService extends Component
 {
-    public const string PWNED_ENDPOINT = 'https://api.pwnedpasswords.com/range/';
+    public const PWNED_ENDPOINT = 'https://api.pwnedpasswords.com/range/';
 
     /**
      * @var SettingsModel

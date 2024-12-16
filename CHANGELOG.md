@@ -1,5 +1,9 @@
 # Release Notes for Password Policy
 
+## 5.0.2 - 2024-12-16
+### Fixed
+- Fixed native type class constant as those are only allowed from PHP8.3+
+
 ## 5.0.1.1 - 2024-12-16
 ### Fixed
 - More ECS fixes after PHPStan fixes
