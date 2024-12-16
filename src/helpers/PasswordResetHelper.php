@@ -62,8 +62,9 @@ class PasswordResetHelper
             if ($lastPasswordChangeDate->lessThan($requiredLastPasswordChangeDate)) {
                 return true;
             };
-            return false;
         }
+
+        return false;
     }
 
     private static function createInterval(): ?string
@@ -86,6 +87,6 @@ class PasswordResetHelper
                 break;
         }
 
-        return "P4M";
+        return $period;
     }
 }

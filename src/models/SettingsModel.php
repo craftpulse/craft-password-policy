@@ -24,14 +24,14 @@ use craft\behaviors\EnvAttributeParserBehavior;
 class SettingsModel extends Model
 {
     /**
-     * @var int|null the minimum length for the password, can't be lower than 6 (Craft Standard)
+     * @var int the minimum length for the password, can't be lower than 6 (Craft Standard)
      */
-    public ?int $minLength = 6;
+    public int $minLength = 6;
 
     /**
-     * @var int|null the maximum length for the password, it's advised against setting a max length, but could help in cases where users know generated passwords always have a specific length.
+     * @var int the maximum length for the password, it's advised against setting a max length, but could help in cases where users know generated passwords always have a specific length.
      */
-    public ?int $maxLength = null;
+    public int $maxLength = 0;
 
     /**
      * @var bool if the password should contain different cases when chosen
@@ -69,7 +69,7 @@ class SettingsModel extends Model
     public ?int $expiryAmount = null;
 
     /**
-     * @var string|null the selected retention period value
+     * @var string the selected retention period value
      */
     public string $expiryPeriod = 'day';
 
@@ -108,7 +108,7 @@ class SettingsModel extends Model
                 'min' => 6,
                 'message' => Craft::t('password-policy', 'The minimum length can not be less than 6.'),
                 'when' => function($setting) {
-                    return $setting->maxLength !== null || $setting->maxLength > 0;
+                    return $setting->maxLength > 0;
                 },
             ],
             [
@@ -118,7 +118,7 @@ class SettingsModel extends Model
                 'operator' => '>=',
                 'message' => Craft::t('password-policy', 'The minimum length must be less than or equal to the maximum length.'),
                 'when' => function($setting) {
-                    return $setting->maxLength !== null || $setting->maxLength > 0;
+                    return $setting->maxLength > 0;
                 },
             ],
             [

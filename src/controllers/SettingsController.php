@@ -13,8 +13,13 @@ namespace craftpulse\passwordpolicy\controllers;
 use Craft;
 use craft\helpers\UrlHelper;
 use craft\web\Controller;
+use craft\web\UrlManager;
 
 use craftpulse\passwordpolicy\PasswordPolicy;
+use yii\base\InvalidConfigException;
+use yii\web\BadRequestHttpException;
+use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
 /**

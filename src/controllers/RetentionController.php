@@ -15,8 +15,11 @@ use craft\web\Controller;
 
 use craft\web\View;
 use craftpulse\passwordpolicy\PasswordPolicy;
+use craftpulse\passwordpolicy\services\RetentionService;
 use yii\web\BadRequestHttpException;
 use yii\web\Response;
+
+use Throwable;
 
 /**
  * Class RetentionController
@@ -24,6 +27,8 @@ use yii\web\Response;
  * @author      CraftPulse
  * @package     PasswordPolicy
  * @since       5.0.0
+ *
+ * @property RetentionService $retention
 */
 class RetentionController extends Controller
 {
@@ -96,6 +101,17 @@ class RetentionController extends Controller
         $this->setSuccessFlash(Craft::t('password-policy', $message));
 
         return $this->getResponse($message);
+    }
+
+    /**
+     * Returns a failure response
+     * @throws BadRequestHttpException
+     */
+    private function getFailureResponse(string $message, ?int $vacancyId = null): ?Response
+    {
+        $this->setFailFlash(Craft::t('password-policy', $message));
+
+        return $this->getResponse($message, false);
     }
 
     /**

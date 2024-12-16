@@ -13,6 +13,7 @@ namespace craftpulse\passwordpolicy\console\controllers;
 use Craft;
 use craftpulse\passwordpolicy\PasswordPolicy;
 
+use craftpulse\passwordpolicy\services\RetentionService;
 use yii\console\Controller;
 use yii\console\ExitCode;
 use yii\helpers\BaseConsole;
@@ -23,6 +24,8 @@ use yii\helpers\BaseConsole;
  * @author      CraftPulse
  * @package     PasswordPolicy
  * @since       5.0.0
+ *
+ * @property RetentionService $retention
 */
 class RetentionController extends Controller
 {

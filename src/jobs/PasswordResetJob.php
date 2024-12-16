@@ -25,6 +25,8 @@ use yii\queue\RetryableJobInterface;
  * @author      CraftPulse
  * @package     PasswordPolicy
  * @since       5.0.0
+ *
+ * @property Queue $queue
  */
 class PasswordResetJob extends BaseBatchedJob implements RetryableJobInterface
 {
@@ -32,13 +34,6 @@ class PasswordResetJob extends BaseBatchedJob implements RetryableJobInterface
      * @var array
      */
     public array $users;
-
-    /**
-     * Used to set the progress on the appropriate queue.
-     *
-     * @see self::setProgressHandler()
-     */
-    private Queue $queue;
 
     /**
      * @inheritdoc
@@ -80,7 +75,7 @@ class PasswordResetJob extends BaseBatchedJob implements RetryableJobInterface
     protected function loadData(): PasswordResetBatcher
     {
         $users = PasswordResetHelper::getAllUsersToExpire();
-        if ($users === null) {
+        if (!empty($users)) {
             return new PasswordResetBatcher([]);
         }
 

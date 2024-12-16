@@ -18,6 +18,7 @@ use craftpulse\passwordpolicy\PasswordPolicy;
 
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Support\Collection;
+use yii\log\Logger;
 
 /**
  * Class PasswordService
@@ -49,7 +50,7 @@ class PasswordService extends Component
         // build the regexp dynamically
         $pattern = $this->patterns()
             ->reject(function(string $value, string $key) {
-                return $this->settings?->{$key} === false;
+                return $this->settings->{$key} === false;
             })
             ->implode('');
 
@@ -65,7 +66,7 @@ class PasswordService extends Component
         // build the regexp dynamically
         $message = $this->messages()
             ->reject(function(string $value, string $key) {
-                return $this->settings?->{$key} === false;
+                return $this->settings->{$key} === false;
             })
             ->implode(', ');
 
@@ -101,7 +102,7 @@ class PasswordService extends Component
                 });
 
             return $passwords->count() > 0 ? true : false;
-        } catch (GuzzleException $error) {
+        } catch (GuzzleException $exception) {
             PasswordPolicy::$plugin->log($exception->getMessage(), [], Logger::LEVEL_ERROR);
             return false;
         }

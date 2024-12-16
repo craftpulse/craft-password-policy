@@ -29,18 +29,10 @@ use craftpulse\passwordpolicy\PasswordPolicy;
 class RetentionService extends Component
 {
     /**
-     * @var SettingsModel
+     * @var int
      */
-    private SettingsModel $settings;
-
-    /**
-     * @inheritdoc
-     */
-    public function init(): void
-    {
-        $this->settings = PasswordPolicy::$plugin->settings;
-    }
-
+    public int $resets = 0;
+    
     /**
      * @inheritdoc
      */
@@ -52,8 +44,8 @@ class RetentionService extends Component
             job: new PasswordResetJob([
                 'description' => Craft::t('password-policy', 'Resetting passwords'),
             ]),
-            priority: $priority ?? 10,
-            ttr: $ttr ?? 300,
+            priority: 10,
+            ttr: 300,
             queue: PasswordPolicy::$plugin->queue,
         );
     }

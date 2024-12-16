@@ -40,11 +40,13 @@ use craftpulse\passwordpolicy\variables\PasswordPolicyVariable;
 use Monolog\Formatter\LineFormatter;
 
 use nystudio107\pluginvite\services\VitePluginService;
+use nystudio107\pluginvite\services\ViteService;
 use Psr\Log\LogLevel;
 use yii\base\Event;
 use yii\base\InvalidRouteException;
 use yii\log\Dispatcher;
 use yii\log\Logger;
+use Throwable;
 
 /**
  * Class PasswordPolicy
@@ -52,6 +54,11 @@ use yii\log\Logger;
  * @author      CraftPulse
  * @package     PasswordPolicy
  * @since       5.0.0
+ *
+ * @property-read ViteService $vite
+ * @property RetentionService $retention
+ * @property PasswordService $passwords
+ *
  */
 class PasswordPolicy extends Plugin
 {
@@ -121,6 +128,9 @@ class PasswordPolicy extends Plugin
     {
         parent::init();
         self::$plugin = $this;
+
+        // Register custom log target
+        $this->registerLogTarget();
 
         $request = Craft::$app->getRequest();
         if ($request->getIsConsoleRequest()) {
@@ -269,7 +279,6 @@ class PasswordPolicy extends Plugin
             User::class,
             User::EVENT_DEFINE_RULES,
             static function(DefineRulesEvent $event) {
-                self::$plugin->passwords->pwned('testtest');
                 foreach (UserRules::defineRules() as $rule) {
                     $event->rules[] = $rule;
                 }
