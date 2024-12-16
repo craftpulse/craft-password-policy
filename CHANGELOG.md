@@ -1,5 +1,9 @@
 # Release Notes for Password Policy
 
+## 5.0.1.1 - 2024-12-16
+### Fixed
+- More ECS fixes after PHPStan fixes
+
 ## 5.0.1 - 2024-12-16
 ### Fixed
 - ECS Style fixes
