@@ -32,7 +32,7 @@ class RetentionService extends Component
      * @var int
      */
     public int $resets = 0;
-    
+
     /**
      * @inheritdoc
      */
