@@ -16,10 +16,10 @@ use craft\web\Controller;
 use craft\web\View;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\services\RetentionService;
-use yii\web\BadRequestHttpException;
-use yii\web\Response;
-
 use Throwable;
+use yii\web\BadRequestHttpException;
+
+use yii\web\Response;
 
 /**
  * Class RetentionController

@@ -16,7 +16,6 @@ use craft\elements\User as UserElement;
 use craft\helpers\Queue;
 
 use craftpulse\passwordpolicy\jobs\PasswordResetJob;
-use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
 
 /**

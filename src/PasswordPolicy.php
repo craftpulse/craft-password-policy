@@ -42,11 +42,11 @@ use Monolog\Formatter\LineFormatter;
 use nystudio107\pluginvite\services\VitePluginService;
 use nystudio107\pluginvite\services\ViteService;
 use Psr\Log\LogLevel;
+use Throwable;
 use yii\base\Event;
 use yii\base\InvalidRouteException;
 use yii\log\Dispatcher;
 use yii\log\Logger;
-use Throwable;
 
 /**
  * Class PasswordPolicy
