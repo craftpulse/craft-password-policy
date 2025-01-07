@@ -28,6 +28,7 @@ trait ServicesTrait
                 'vite' => [
                     'assetClass' => PasswordPolicyAsset::class,
                     'checkDevServer' => true,
+                    'useForAllRequests' => true,
                     'class' => VitePluginService::class,
                     'devServerInternal' => 'http://craft-password-policy-v5-buildchain-dev:3005',
                     'devServerPublic' => 'http://localhost:3005',
