@@ -11,7 +11,7 @@ use yii\base\InvalidConfigException;
  * @package   Password Policy
  * @since     5.0.3
  *
- * @property PasswordsService $passwords
+ * @property PasswordService $passwords
  * @property RetentionService $retention
  * @property VitePluginService $vite
  */
@@ -45,10 +45,10 @@ trait ServicesTrait
     /**
      * Returns the passwords service
      *
-     * @return PasswordsService The passwords service
+     * @return PasswordService The passwords service
      * @throws InvalidConfigException
      */
-    public function getPasswords(): PasswordsService
+    public function getPasswords(): PasswordService
     {
         return $this->get('passwords');
     }
