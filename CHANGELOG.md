@@ -1,6 +1,6 @@
 # Release Notes for Password Policy
 
-## 5.0.3 - unreleased
+## 5.0.3 - 2025-01-07
 ### Changed
 - Added services to a service trait
 
