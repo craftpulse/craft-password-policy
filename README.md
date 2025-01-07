@@ -52,4 +52,4 @@ You can determine the period in days,weeks,months or years when a password shoul
 Or if you want to use this utility through the CLI for e.g. a cronjob you can use `craft password-policy/retention/force-reset-passwords`.
 
 
-Brought to you by [CraftPulse](https://craftpulse.com/)
+Brought to you by [CraftPulse](https://craft-pulse.com/)
