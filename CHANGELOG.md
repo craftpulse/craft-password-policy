@@ -1,10 +1,14 @@
 # Release Notes for Password Policy
 
 ## 5.0.3 - unreleased
+### Changed
+- Added services to a service trait
+
 ### Fixed
 - Fixed a bug that could occur if the max length wasn't set, passwords always said "could not contain more than 0 characters".
 - Removed the "playground" from the settings to test the strength indicator, this was only meant for development.
 - Fixed an issue where the pwned option would always return that the password was compromised.
+- Fixed the issue where the assets would throw an error on the front-end, not finding the manifest path. (Thanks to Andrew Welch) [#34](https://github.com/craftpulse/craft-password-policy/issues/34)
 
 ## 5.0.2.1 - 2024-12-19
 ### Fixed
