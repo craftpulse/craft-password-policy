@@ -28,21 +28,16 @@ use craft\services\Utilities;
 use craft\web\twig\variables\CraftVariable;
 use craft\web\UrlManager;
 use craft\web\View;
-
 use craftpulse\passwordpolicy\assetbundles\passwordpolicy\PasswordPolicyAsset;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
 use craftpulse\passwordpolicy\services\ServicesTrait;
 use craftpulse\passwordpolicy\utilities\RetentionUtility;
 use craftpulse\passwordpolicy\variables\PasswordPolicyVariable;
-
 use Monolog\Formatter\LineFormatter;
-
-use nystudio107\pluginvite\services\VitePluginService;
 use nystudio107\pluginvite\services\ViteService;
 use Psr\Log\LogLevel;
 use Throwable;
-use Yii;
 use yii\base\Event;
 use yii\base\InvalidRouteException;
 use yii\log\Dispatcher;
@@ -77,29 +72,25 @@ class PasswordPolicy extends Plugin
     // Public Properties
     // =========================================================================
     /**
+     * @var null|SettingsModel
+     */
+    public static ?SettingsModel $settings = null;
+    /**
      * @var string
      */
     public string $schemaVersion = '1.0.0';
-
     /**
      * @var bool
      */
     public bool $hasCpSection = true;
-
     /**
      * @var bool
      */
     public bool $hasCpSettings = true;
-
     /**
      * @var mixed|object|null
      */
     public mixed $queue = null;
-
-    /**
-     * @var null|SettingsModel
-     */
-    public static ?SettingsModel $settings = null;
 
     public function init(): void
     {
@@ -208,7 +199,7 @@ class PasswordPolicy extends Plugin
     {
         return Craft::$app->getView()->renderTemplate(
             'password-policy/_settings',
-            [ 'settings' => $this->getSettings() ]
+            ['settings' => $this->getSettings()]
         );
     }
 
@@ -284,13 +275,6 @@ class PasswordPolicy extends Plugin
                 // Register Asset Bundle
                 $view->registerAssetBundle(PasswordPolicyAsset::class);
 
-                //$tagOptions = [
-                //    'depends' => [
-                //        'craftpulse\\passwordpolicy\\assetbundles\\passwordpolicy\\PasswordPolicyAsset'
-                //    ],
-                //];
-                $manifestPath = '@craftpulse/passwordpolicy/web/assets/dist/';
-                $this->vite->manifestPath = rtrim(Yii::getAlias($manifestPath), '/\\');
                 //$this->vite->manifestPath = $manifestPath;
                 $this->vite->register('src/js/indicator.ts', false);
             }
