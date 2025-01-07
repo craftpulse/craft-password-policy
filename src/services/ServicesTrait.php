@@ -45,7 +45,7 @@ trait ServicesTrait
     /**
      * Returns the passwords service
      *
-     * @return Passwords The passwords service
+     * @return PasswordsService The passwords service
      * @throws InvalidConfigException
      */
     public function getPasswords(): PasswordsService
@@ -56,7 +56,7 @@ trait ServicesTrait
     /**
      * Returns the retention service
      *
-     * @return Retention The retention service
+     * @return RetentionService The retention service
      * @throws InvalidConfigException
      */
     public function getRetention(): RetentionService
