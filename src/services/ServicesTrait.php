@@ -28,6 +28,7 @@ trait ServicesTrait
                 'vite' => [
                     'assetClass' => PasswordPolicyAsset::class,
                     'checkDevServer' => true,
+                    'useForAllRequests' => true,
                     'class' => VitePluginService::class,
                     'devServerInternal' => 'http://craft-password-policy-v5-buildchain-dev:3005',
                     'devServerPublic' => 'http://localhost:3005',
@@ -44,10 +45,10 @@ trait ServicesTrait
     /**
      * Returns the passwords service
      *
-     * @return Events The events service
+     * @return Passwords The passwords service
      * @throws InvalidConfigException
      */
-    public function getPasswords(): Events
+    public function getPasswords(): Passwords
     {
         return $this->get('passwords');
     }
@@ -55,10 +56,10 @@ trait ServicesTrait
     /**
      * Returns the retention service
      *
-     * @return Redirects The redirects service
+     * @return Retention The retention service
      * @throws InvalidConfigException
      */
-    public function getRetention(): Redirects
+    public function getRetention(): Retention
     {
         return $this->get('retention');
     }
