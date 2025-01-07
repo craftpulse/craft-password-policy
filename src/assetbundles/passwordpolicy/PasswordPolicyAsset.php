@@ -33,7 +33,7 @@ class PasswordPolicyAsset extends AssetBundle
      */
     public function init(): void
     {
-        $this->sourcePath = '@craftpulse/passwordpolicy/web/assets/dist';
+        $this->sourcePath = '@craftpulse/passwordpolicy/web/assets/dist/';
         $this->depends = [
             CpAsset::class,
         ];
