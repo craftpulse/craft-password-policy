@@ -32,8 +32,7 @@ use craft\web\View;
 use craftpulse\passwordpolicy\assetbundles\passwordpolicy\PasswordPolicyAsset;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
-use craftpulse\passwordpolicy\services\PasswordService;
-use craftpulse\passwordpolicy\services\RetentionService;
+use craftpulse\passwordpolicy\services\ServicesTrait;
 use craftpulse\passwordpolicy\utilities\RetentionUtility;
 use craftpulse\passwordpolicy\variables\PasswordPolicyVariable;
 
@@ -43,6 +42,7 @@ use nystudio107\pluginvite\services\VitePluginService;
 use nystudio107\pluginvite\services\ViteService;
 use Psr\Log\LogLevel;
 use Throwable;
+use Yii;
 use yii\base\Event;
 use yii\base\InvalidRouteException;
 use yii\log\Dispatcher;
@@ -64,6 +64,8 @@ class PasswordPolicy extends Plugin
 {
     // Traits
     // =========================================================================
+
+    use ServicesTrait;
 
     // Static Properties
     // =========================================================================
@@ -99,31 +101,6 @@ class PasswordPolicy extends Plugin
      */
     public static ?SettingsModel $settings = null;
 
-    /**
-     * @inheritdoc
-     */
-    public static function config(): array
-    {
-        return [
-            'components' => [
-                'passwords' => PasswordService::class,
-                'retention' => RetentionService::class,
-                // Register the vite service
-                // @TODO devServerPublic / devServerInternal / serverPublic would benefit of `.env` vars for local dev
-                'vite' => [
-                    'class' => VitePluginService::class,
-                    'assetClass' => PasswordPolicyAsset::class,
-                    'useDevServer' => true,
-                    'devServerPublic' => 'http://localhost:3005',
-                    'serverPublic' => 'http://localhost:8000',
-                    'errorEntry' => 'src/js/PasswordPolicy.js',
-                    'devServerInternal' => 'http://craft-password-policy-v5-buildchain-dev:3005',
-                    'checkDevServer' => true,
-                ],
-            ],
-        ];
-    }
-
     public function init(): void
     {
         parent::init();
@@ -137,12 +114,14 @@ class PasswordPolicy extends Plugin
             $this->controllerNamespace = 'craftpulse\passwordpolicy\console\controllers';
         }
 
-        // Install our global evnet handlers
+        // Install our global event handlers
         $this->installEventHandlers();
+        $this->installCpEventHandlers();
 
         // Register control panel events
         if (Craft::$app->getRequest()->getIsCpRequest()) {
             $this->registerCpUrlRules();
+            $this->installCpEventHandlers();
         }
 
         // Log that the plugin has loaded
@@ -285,6 +264,15 @@ class PasswordPolicy extends Plugin
             }
         );
 
+        $this->registerUserPermissions();
+        $this->registerUtilities();
+    }
+
+    /**
+     * @return void
+     */
+    protected function installCpEventHandlers(): void
+    {
         // Load asset before page template is rendered
         Event::on(
             View::class,
@@ -296,13 +284,17 @@ class PasswordPolicy extends Plugin
                 // Register Asset Bundle
                 $view->registerAssetBundle(PasswordPolicyAsset::class);
 
-                // Load Asset
+                //$tagOptions = [
+                //    'depends' => [
+                //        'craftpulse\\passwordpolicy\\assetbundles\\passwordpolicy\\PasswordPolicyAsset'
+                //    ],
+                //];
+                $manifestPath = '@craftpulse/passwordpolicy/web/assets/dist/';
+                $this->vite->manifestPath = rtrim(Yii::getAlias($manifestPath), '/\\');
+                //$this->vite->manifestPath = $manifestPath;
                 $this->vite->register('src/js/indicator.ts', false);
             }
         );
-
-        $this->registerUserPermissions();
-        $this->registerUtilities();
     }
 
     // Private Methods
