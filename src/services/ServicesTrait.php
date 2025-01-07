@@ -45,10 +45,10 @@ trait ServicesTrait
     /**
      * Returns the passwords service
      *
-     * @return Events The events service
+     * @return Passwords The passwords service
      * @throws InvalidConfigException
      */
-    public function getPasswords(): Events
+    public function getPasswords(): Passwords
     {
         return $this->get('passwords');
     }
@@ -56,10 +56,10 @@ trait ServicesTrait
     /**
      * Returns the retention service
      *
-     * @return Redirects The redirects service
+     * @return Retention The retention service
      * @throws InvalidConfigException
      */
-    public function getRetention(): Redirects
+    public function getRetention(): Retention
     {
         return $this->get('retention');
     }

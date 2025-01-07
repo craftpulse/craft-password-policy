@@ -35,7 +35,6 @@ use craftpulse\passwordpolicy\services\ServicesTrait;
 use craftpulse\passwordpolicy\utilities\RetentionUtility;
 use craftpulse\passwordpolicy\variables\PasswordPolicyVariable;
 use Monolog\Formatter\LineFormatter;
-use nystudio107\pluginvite\services\ViteService;
 use Psr\Log\LogLevel;
 use Throwable;
 use yii\base\Event;
@@ -50,10 +49,7 @@ use yii\log\Logger;
  * @package     PasswordPolicy
  * @since       5.0.0
  *
- * @property-read ViteService $vite
- * @property RetentionService $retention
- * @property PasswordService $passwords
- *
+ * @method Settings getSettings()
  */
 class PasswordPolicy extends Plugin
 {
@@ -107,7 +103,6 @@ class PasswordPolicy extends Plugin
 
         // Install our global event handlers
         $this->installEventHandlers();
-        $this->installCpEventHandlers();
 
         // Register control panel events
         if (Craft::$app->getRequest()->getIsCpRequest()) {
