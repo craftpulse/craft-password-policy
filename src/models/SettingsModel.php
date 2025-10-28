@@ -106,7 +106,7 @@ class SettingsModel extends Model
                 'number',
                 'integerOnly' => true,
                 'min' => 6,
-                'message' => Craft::t('password-policy', 'The minimum length can not be less than 6.'),
+                'message' => Craft::t('password-policy', 'The maximum length can not be less than 6.'),
                 'when' => function($setting) {
                     return $setting->maxLength > 0;
                 },
