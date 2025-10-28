@@ -23,6 +23,7 @@ trait ServicesTrait
             'components' => [
                 'passwords' => PasswordService::class,
                 'retention' => RetentionService::class,
+                'security' => SecurityService::class,
                 // Register the vite service
                 // @TODO devServerPublic / devServerInternal / serverPublic would benefit of `.env` vars for local dev
                 'vite' => [
@@ -62,6 +63,17 @@ trait ServicesTrait
     public function getRetention(): RetentionService
     {
         return $this->get('retention');
+    }
+
+    /**
+     * Returns the security service
+     *
+     * @return SecurityService The security service
+     * @throws InvalidConfigException
+     */
+    public function getSecurity(): SecurityService
+    {
+        return $this->get('security');
     }
 
     /**

@@ -1,7 +1,11 @@
-// Declarations
-declare let passwordpolicy: {
-    showStrengthIndicator: boolean;
-};
+// Type declaration for window.passwordpolicy
+declare global {
+    interface Window {
+        passwordpolicy: {
+            showStrengthIndicator: boolean;
+        };
+    }
+}
 
 // Import our CSS
 import '~/css/app.css';
@@ -48,7 +52,7 @@ function generatePasswordBar(score: number | null): string {
         </div>`;
 }
 
-if (newPasswordField && passwordpolicy.showStrengthIndicator) {
+if (newPasswordField && window.passwordpolicy.showStrengthIndicator) {
     wrapper?.insertAdjacentHTML('afterend', generatePasswordBar(passwordStrength.score))
 
     newPasswordField.addEventListener('input', function (event) {

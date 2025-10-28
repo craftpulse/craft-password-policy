@@ -1,5 +1,18 @@
 # Release Notes for Password Policy
 
+## 5.1.0 - 2025-10-28
+### Added
+- Added optional CSP (Content Security Policy) nonce support for the password indicator script [#39](https://github.com/craftpulse/craft-password-policy/issues/39)
+- Added `SecurityService` to generate and manage CSP nonces per request
+- Added `cspNonce` configuration option to enable CSP nonce generation
+
+### Changed
+- Made sure that the rules thrown by Password Policy all show at once, rather than one by one.
+
+### Fixed
+- Fixed an issue where the native Craft errors would still display when password policy was active [#40](https://github.com/craftpulse/craft-password-policy/issues/40)
+- Fixed an issue where the retention feature never actually got processed [#41](https://github.com/craftpulse/craft-password-policy/issues/41)
+
 ## 5.0.3 - 2025-01-07
 ### Changed
 - Added services to a service trait

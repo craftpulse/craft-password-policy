@@ -29,26 +29,28 @@ class UserRules
         $settings = PasswordPolicy::$plugin->settings;
 
         $rules[] =
-        [
-            ['password', 'newPassword'],
-            'string',
-            'min' => $settings->minLength,
-            'tooShort' => Craft::t(
-                'password-policy',
-                Craft::t('password-policy','Password must contain at least {min} characters.'),
-                ['min' => $settings->minLength]
-            ),
-        ];
+            [
+                ['password', 'newPassword'],
+                'string',
+                'min' => $settings->minLength,
+                'tooShort' => Craft::t(
+                    'password-policy',
+                    Craft::t('password-policy','Password must contain at least {min} characters.'),
+                    ['min' => $settings->minLength]
+                ),
+                'skipOnError' => false,
+            ];
         $rules[] =
-        [
-            ['password', 'newPassword'],
-            'match',
-            'pattern' => PasswordPolicy::$plugin->passwords->generatePattern(),
-            'message' => Craft::t(
-                'password-policy',
-                'Your password must contain at least one of each of the following: '
-            ) . PasswordPolicy::$plugin->passwords->generateMessage(),
-        ];
+            [
+                ['password', 'newPassword'],
+                'match',
+                'pattern' => PasswordPolicy::$plugin->passwords->generatePattern(),
+                'message' => Craft::t(
+                        'password-policy',
+                        'Your password must contain at least one of each of the following: '
+                    ) . PasswordPolicy::$plugin->passwords->generateMessage(),
+                'skipOnError' => false,
+            ];
 
         if ($settings->maxLength > $settings->minLength) {
             $rules[] =
@@ -61,11 +63,16 @@ class UserRules
                         Craft::t('password-policy','Password can maximum contain {max} characters.'),
                         ['max' => $settings->maxLength]
                     ),
+                    'skipOnError' => false,
                 ];
         }
 
         if ($settings->pwned) {
-            $rules[] = [['password', 'newPassword'], PwnedValidator::class];
+            $rules[] = [
+                ['password', 'newPassword'],
+                PwnedValidator::class,
+                'skipOnError' => false,
+            ];
         }
 
         return $rules;

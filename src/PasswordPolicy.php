@@ -20,6 +20,7 @@ use craft\events\RegisterComponentTypesEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
 use craft\events\TemplateEvent;
+use craft\helpers\ArrayHelper;
 use craft\helpers\Json;
 use craft\log\MonologTarget;
 use craft\services\Plugins;
@@ -49,7 +50,7 @@ use yii\log\Logger;
  * @package     PasswordPolicy
  * @since       5.0.0
  *
- * @method Settings getSettings()
+ * @method SettingsModel getSettings()
  */
 class PasswordPolicy extends Plugin
 {
@@ -87,6 +88,9 @@ class PasswordPolicy extends Plugin
      * @var mixed|object|null
      */
     public mixed $queue = null;
+
+    // Private Properties
+    // =========================================================================
 
     public function init(): void
     {
@@ -244,6 +248,11 @@ class PasswordPolicy extends Plugin
             User::class,
             User::EVENT_DEFINE_RULES,
             static function(DefineRulesEvent $event) {
+                $event->rules = ArrayHelper::where($event->rules, function($rule) {
+                    $attributes = is_array($rule[0] ?? null) ? $rule[0] : [$rule[0] ?? null];
+                    return !array_intersect($attributes, ['password', 'newPassword']);
+                });
+
                 foreach (UserRules::defineRules() as $rule) {
                     $event->rules[] = $rule;
                 }
@@ -269,9 +278,9 @@ class PasswordPolicy extends Plugin
 
                 // Register Asset Bundle
                 $view->registerAssetBundle(PasswordPolicyAsset::class);
+                $options = $this->settings->cspNonce ? ['nonce' => $this->getSecurity()->getNonce()] : [];
 
-                //$this->vite->manifestPath = $manifestPath;
-                $this->vite->register('src/js/indicator.ts', false);
+                $this->vite->register('src/js/indicator.ts', false, $options);
             }
         );
     }

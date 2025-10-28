@@ -11,8 +11,10 @@
 namespace craftpulse\passwordpolicy\assetbundles\passwordpolicy;
 
 use Craft;
+use craft\helpers\Json;
 use craft\web\AssetBundle;
 use craft\web\assets\cp\CpAsset;
+use craft\web\View;
 
 use craftpulse\passwordpolicy\PasswordPolicy;
 
@@ -38,10 +40,13 @@ class PasswordPolicyAsset extends AssetBundle
             CpAsset::class,
         ];
 
-        // Register Javascript variable
-        Craft::$app->view->registerJsVar('passwordpolicy', [
-            'showStrengthIndicator' => PasswordPolicy::$plugin->settings->showStrengthIndicator,
-        ]);
+        // Register Javascript variable with nonce support
+        Craft::$app->view->registerJs(
+            'window.passwordpolicy = ' . Json::encode([
+                'showStrengthIndicator' => PasswordPolicy::$plugin->settings->showStrengthIndicator,
+            ]) . ';',
+            View::POS_HEAD
+        );
 
         parent::init();
     }
