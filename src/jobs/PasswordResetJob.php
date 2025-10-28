@@ -75,7 +75,7 @@ class PasswordResetJob extends BaseBatchedJob implements RetryableJobInterface
     protected function loadData(): PasswordResetBatcher
     {
         $users = PasswordResetHelper::getAllUsersToExpire();
-        if (!empty($users)) {
+        if (empty($users)) {
             return new PasswordResetBatcher([]);
         }
 
