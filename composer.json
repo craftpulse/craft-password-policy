@@ -2,7 +2,7 @@
     "name": "craftpulse/craft-password-policy",
     "description": "Password Policy plugin",
     "type": "craft-plugin",
-    "version": "5.0.3",
+    "version": "5.1.0",
     "keywords": [
         "craft",
         "cms",
@@ -21,7 +21,7 @@
     "authors": [
         {
             "name": "CraftPulse",
-            "email": "support@craftpulse.com"
+            "email": "support@craft-pulse.com"
         }
     ],
     "minimum-stability": "dev",
@@ -47,7 +47,7 @@
         "name": "Password Policy",
         "handle": "password-policy",
         "developer": "CraftPulse",
-        "developerUrl": "https://craftpulse.com",
+        "developerUrl": "https://craft-pulse.com",
         "documentationUrl": "https://github.com/craftpulse/craft-password-policy/blob/v5/README.md",
         "changelogUrl": "https://github.com/craftpulse/craft-password-policy/blob/v5/CHANGELOG.md",
         "class": "craftpulse\\passwordpolicy\\PasswordPolicy"

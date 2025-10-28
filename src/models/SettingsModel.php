@@ -74,6 +74,12 @@ class SettingsModel extends Model
     public string $expiryPeriod = 'day';
 
     /**
+     * @var bool if csp nonces should be generated
+     * @since 5.1.0
+     */
+    public bool $cspNonce = false;
+
+    /**
      * @return array[]
      */
 
@@ -106,7 +112,7 @@ class SettingsModel extends Model
                 'number',
                 'integerOnly' => true,
                 'min' => 6,
-                'message' => Craft::t('password-policy', 'The maximum length can not be less than 6.'),
+                'message' => Craft::t('password-policy', 'The minimum length can not be less than 6.'),
                 'when' => function($setting) {
                     return $setting->maxLength > 0;
                 },
@@ -127,7 +133,7 @@ class SettingsModel extends Model
                 'range' => ['day', 'week', 'month', 'year'], // Define acceptable values
                 'message' => Craft::t('password-policy', 'The selected expiry period is invalid.'),
             ],
-            [['cases', 'numbers', 'symbols', 'retentionUtilities'], 'boolean'],
+            [['cases', 'cspNonce', 'numbers', 'symbols', 'retentionUtilities'], 'boolean'],
         ];
     }
 }

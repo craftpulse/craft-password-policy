@@ -27,12 +27,26 @@
             }) }}
         </div>
 
+        <hr>
+
         <div class="field">
             {{ forms.lightswitchField({
                 label: 'Show password strength indicator.'|t('password-policy'),
                 instructions: "A password strength indicator helps giving users feedback about the safety of their chosen password.?"|t('password-policy'),
                 name: 'settings[showStrengthIndicator]',
                 on: settings.showStrengthIndicator,
+            }) }}
+        </div>
+
+        <hr>
+
+        <div class="field">
+            {{ forms.lightswitchField({
+                label: 'Enable CSP Nonce'|t('password-policy'),
+                instructions: 'Generates a Content Security Policy nonce for the password indicator script. Useful for strict CSP policies that don\'t use `script-src \'self\'` and instead require nonces for all scripts, even external ones.'|t('password-policy'),
+                name: 'settings[cspNonce]',
+                on: settings.cspNonce,
+                tip: 'Most users don\'t need this. Only enable if you have a strict CSP policy that requires nonces for external scripts instead of allowing `\'self\'`.'|t('password-policy'),
             }) }}
         </div>
     </div>

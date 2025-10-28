@@ -1,6 +1,6 @@
 # Password Policy plugin for Craft CMS 5.x
 
-The Password Policy plugin is a powerful tool for enforcing secure password policies within your Craft CMS 5 installation. 
+The Password Policy plugin is a powerful tool for enforcing secure password policies within your Craft CMS 5 installation.
 It helps administrators define and manage password rules for users, enhancing security and compliance in multi-user environments.
 
 ![Screenshot](./resources/img/password-policy.jpg)
@@ -42,6 +42,11 @@ The following requirements can be enabled in the plugin settings:
 
 ### Password Strength Indicator
 A password strength indicator can be enabled to aid your users into choosing a stronger password
+
+### Content Security Policy (CSP) Nonce Support
+For sites with strict Content Security Policy requirements, the plugin supports CSP nonces for the password indicator script. This is useful for CSP policies that require nonces for all external scripts instead of allowing `'self'`. **The plugin does NOT set CSP headers** - you must configure these yourself.
+
+**Note:** Most users don't need this feature. Only enable if you have strict CSP policies that require nonces for external scripts. This should only be activated if it's available on the front-end.
 
 ### Have I been pwned?
 Enhance your security by ensuring users can not select any leaked password. This employs the k-Anonymity method to validate passwords against the Pwned Passwords API without compromising user privacy by revealing passwords to an external service.
