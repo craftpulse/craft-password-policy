@@ -80,6 +80,18 @@ class SettingsModel extends Model
     public bool $cspNonce = false;
 
     /**
+     * @var bool if password reuse should be prevented
+     * @since 5.2.0
+     */
+    public bool $preventPasswordReuse = false;
+
+    /**
+     * @var int the number of previous passwords to check against
+     * @since 5.2.0
+     */
+    public int $preventPasswordReuseCount = 5;
+
+    /**
      * @return array[]
      */
 
@@ -133,7 +145,17 @@ class SettingsModel extends Model
                 'range' => ['day', 'week', 'month', 'year'], // Define acceptable values
                 'message' => Craft::t('password-policy', 'The selected expiry period is invalid.'),
             ],
-            [['cases', 'cspNonce', 'numbers', 'symbols', 'retentionUtilities'], 'boolean'],
+            [['cases', 'cspNonce', 'numbers', 'symbols', 'retentionUtilities', 'preventPasswordReuse'], 'boolean'],
+            [
+                ['preventPasswordReuseCount'],
+                'number',
+                'integerOnly' => true,
+                'min' => 1,
+                'message' => Craft::t('password-policy', 'The password history count must be at least 1.'),
+                'when' => function($setting) {
+                    return $setting->preventPasswordReuse;
+                },
+            ],
         ];
     }
 }

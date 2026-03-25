@@ -15,6 +15,7 @@ use craft\base\Model;
 use craft\base\Plugin;
 use craft\elements\User;
 use craft\events\DefineRulesEvent;
+use craft\events\ModelEvent;
 use craft\events\PluginEvent;
 use craft\events\RegisterComponentTypesEvent;
 use craft\events\RegisterUrlRulesEvent;
@@ -75,7 +76,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '1.0.0';
+    public string $schemaVersion = '1.1.0';
     /**
      * @var bool
      */
@@ -256,6 +257,45 @@ class PasswordPolicy extends Plugin
                 foreach (UserRules::defineRules() as $rule) {
                     $event->rules[] = $rule;
                 }
+            }
+        );
+
+        // Keyed by user ID; pre-computed during BEFORE_SAVE while newPassword is still
+        // available, then committed to the DB in AFTER_SAVE once the save is confirmed.
+        $pendingPasswordHashes = [];
+
+        Event::on(
+            User::class,
+            User::EVENT_BEFORE_SAVE,
+            function(ModelEvent $event) use (&$pendingPasswordHashes) {
+                /** @var User $user */
+                $user = $event->sender;
+
+                if (!$user->id || $user->newPassword === null) {
+                    return;
+                }
+
+                // Pre-hash here while the plain-text password is still available.
+                // The actual DB insert is deferred to EVENT_AFTER_SAVE so the hash
+                // is only recorded once the save has fully succeeded.
+                $pendingPasswordHashes[$user->id] = Craft::$app->getSecurity()->hashPassword($user->newPassword);
+            }
+        );
+
+        Event::on(
+            User::class,
+            User::EVENT_AFTER_SAVE,
+            function(ModelEvent $event) use (&$pendingPasswordHashes) {
+                /** @var User $user */
+                $user = $event->sender;
+
+                if (!isset($pendingPasswordHashes[$user->id])) {
+                    return;
+                }
+
+                $hash = $pendingPasswordHashes[$user->id];
+                unset($pendingPasswordHashes[$user->id]);
+                $this->passwordHistory->savePasswordHash($user->id, $hash);
             }
         );
 

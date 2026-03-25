@@ -100,6 +100,32 @@
                 on: settings.symbols,
             }) }}
         </div>
+
+        <hr>
+
+        <div class="field">
+            {{ forms.lightswitchField({
+                label: 'Prevent password reuse.'|t('password-policy'),
+                instructions: "Prevent users from reusing a recently used password."|t('password-policy'),
+                name: 'settings[preventPasswordReuse]',
+                on: settings.preventPasswordReuse,
+                toggle: 'password-reuse-options',
+            }) }}
+        </div>
+
+        <div id="password-reuse-options"{% if not settings.preventPasswordReuse %} class="hidden"{% endif %}>
+            <div class="field">
+                {{ forms.textField({
+                    label: 'Password history count.'|t('password-policy'),
+                    instructions: "The number of previous passwords that cannot be reused."|t('password-policy'),
+                    name: 'settings[preventPasswordReuseCount]',
+                    type: 'number',
+                    size: 3,
+                    min: 1,
+                    value: settings.preventPasswordReuseCount,
+                }) }}
+            </div>
+        </div>
     </div>
 
     <div id="retention" class="hidden flex-fields">

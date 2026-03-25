@@ -56,5 +56,8 @@ Enhance your security by ensuring users can not select any leaked password. This
 You can determine the period in days,weeks,months or years when a password should expire. If you want to make use of this functionality, you can find this under Utilities → Password Retention → Force Reset Passwords.
 Or if you want to use this utility through the CLI for e.g. a cronjob you can use `craft password-policy/retention/force-reset-passwords`.
 
+### Prevent Password Reuse
+
+This feature allows you to prevent users from reusing their old passwords. The default number of passwords to check against is 5, this can be changed in the settings.  
 
 Brought to you by [CraftPulse](https://craft-pulse.com/)

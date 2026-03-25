@@ -11,6 +11,7 @@ use yii\base\InvalidConfigException;
  * @package   Password Policy
  * @since     5.0.3
  *
+ * @property PasswordHistoryService $passwordHistory
  * @property PasswordService $passwords
  * @property RetentionService $retention
  * @property VitePluginService $vite
@@ -21,6 +22,7 @@ trait ServicesTrait
     {
         return [
             'components' => [
+                'passwordHistory' => PasswordHistoryService::class,
                 'passwords' => PasswordService::class,
                 'retention' => RetentionService::class,
                 'security' => SecurityService::class,
@@ -42,6 +44,17 @@ trait ServicesTrait
 
     // Public Methods
     // =========================================================================
+
+    /**
+     * Returns the password history service
+     *
+     * @return PasswordHistoryService The password history service
+     * @throws InvalidConfigException
+     */
+    public function getPasswordHistory(): PasswordHistoryService
+    {
+        return $this->get('passwordHistory');
+    }
 
     /**
      * Returns the passwords service

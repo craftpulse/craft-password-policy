@@ -13,6 +13,7 @@ namespace craftpulse\passwordpolicy\rules;
 use Craft;
 
 use craftpulse\passwordpolicy\PasswordPolicy;
+use craftpulse\passwordpolicy\validators\PasswordReuseValidator;
 use craftpulse\passwordpolicy\validators\PwnedValidator;
 
 /**
@@ -71,6 +72,14 @@ class UserRules
             $rules[] = [
                 ['password', 'newPassword'],
                 PwnedValidator::class,
+                'skipOnError' => false,
+            ];
+        }
+
+        if ($settings->preventPasswordReuse) {
+            $rules[] = [
+                ['password', 'newPassword'],
+                PasswordReuseValidator::class,
                 'skipOnError' => false,
             ];
         }
