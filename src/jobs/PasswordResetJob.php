@@ -25,6 +25,8 @@ use yii\queue\RetryableJobInterface;
  * @author      CraftPulse
  * @package     PasswordPolicy
  * @since       5.0.0
+ *
+ * @property \yii\queue\Queue $queue
  */
 class PasswordResetJob extends BaseBatchedJob implements RetryableJobInterface
 {

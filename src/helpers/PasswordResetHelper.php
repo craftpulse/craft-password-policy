@@ -64,7 +64,7 @@ class PasswordResetHelper
      */
     private static function _createInterval(): ?string
     {
-        $settings = PasswordPolicy::$plugin->settings;
+        $settings = PasswordPolicy::$plugin->getSettings();
 
         return match ($settings->expiryPeriod) {
             'day' => "P{$settings->expiryAmount}D",
