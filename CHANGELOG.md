@@ -4,7 +4,7 @@
 ### Changed
 - Symbols regex now accepts any non-alphanumeric character (hyphens, underscores, etc.) instead of a limited set [#46](https://github.com/craftpulse/craft-password-policy/issues/46)
 - Console `force-reset-passwords` command now runs synchronously by default; use `--queue` to push to the queue instead
-- Password expiry query now filters at the database level instead of hydrating all users into memory
+- Password expiry query now filters at the database level instead of hydrating all users into memory, significantly improving performance on large user bases
 - Replaced `switch` with `match` expression in `PasswordResetHelper`
 - Applied coding conventions: section headers, `@author` on methods, `@throws` annotations, underscore-prefixed private members
 
