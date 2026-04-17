@@ -7,6 +7,7 @@
  * @link      https://craftpulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  */
+
 namespace craftpulse\passwordpolicy\services;
 
 use Craft;
@@ -14,7 +15,7 @@ use craft\base\Component;
 use yii\base\Exception;
 
 /**
- * Class RetentionService
+ * Class SecurityService
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -22,12 +23,25 @@ use yii\base\Exception;
  */
 class SecurityService extends Component
 {
-    /** @var string|null the nonce */
-    private ?string $_nonce = null;
+    // Private Properties
+    // =========================================================================
 
     /**
-     * Generate and return the CSP nonce for this request
+     * @var string|null the nonce
+     */
+    private ?string $_nonce = null;
+
+    // Public Methods
+    // =========================================================================
+
+    /**
+     * Generates and returns the CSP nonce for this request.
+     *
+     * @return string
+     *
      * @throws Exception
+     *
+     * @author CraftPulse
      */
     public function getNonce(): string
     {
@@ -39,8 +53,13 @@ class SecurityService extends Component
     }
 
     /**
-     * Apply Content Security Policy with nonce for indicator script
+     * Applies a Content Security Policy header with nonce for the indicator script.
+     *
+     * @return void
+     *
      * @throws Exception
+     *
+     * @author CraftPulse
      */
     public function applyCsp(): void
     {

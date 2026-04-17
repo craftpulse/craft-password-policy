@@ -11,6 +11,7 @@
 namespace craftpulse\passwordpolicy\batchers;
 
 use craft\base\Batchable;
+use craft\elements\User;
 
 /**
  * Class PasswordResetBatcher
@@ -21,6 +22,16 @@ use craft\base\Batchable;
  */
 readonly class PasswordResetBatcher implements Batchable
 {
+    // Public Methods
+    // =========================================================================
+
+    /**
+     * Constructor.
+     *
+     * @param User[] $users
+     *
+     * @author CraftPulse
+     */
     public function __construct(
         private array $users,
     ) {
@@ -28,6 +39,8 @@ readonly class PasswordResetBatcher implements Batchable
 
     /**
      * @inheritdoc
+     *
+     * @author CraftPulse
      */
     public function count(): int
     {
@@ -36,6 +49,8 @@ readonly class PasswordResetBatcher implements Batchable
 
     /**
      * @inheritdoc
+     *
+     * @author CraftPulse
      */
     public function getSlice(int $offset, int $limit): iterable
     {
