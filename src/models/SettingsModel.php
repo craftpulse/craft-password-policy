@@ -23,6 +23,9 @@ use craft\behaviors\EnvAttributeParserBehavior;
  */
 class SettingsModel extends Model
 {
+    // Public Properties
+    // =========================================================================
+
     /**
      * @var int the minimum length for the password, can't be lower than 6 (Craft Standard)
      */
@@ -79,10 +82,14 @@ class SettingsModel extends Model
      */
     public bool $cspNonce = false;
 
-    /**
-     * @return array[]
-     */
+    // Protected Methods
+    // =========================================================================
 
+    /**
+     * @inheritdoc
+     *
+     * @author CraftPulse
+     */
     protected function defineBehaviors(): array
     {
         return [
@@ -95,10 +102,12 @@ class SettingsModel extends Model
 
     /**
      * @inheritdoc
+     *
+     * @author CraftPulse
      */
     protected function defineRules(): array
     {
-        return [
+        return array_merge(parent::defineRules(), [
             [['minLength'], 'required'],
             [
                 ['minLength'],
@@ -128,12 +137,12 @@ class SettingsModel extends Model
                 },
             ],
             [
-                ['expiryPeriod'], // Replace with the name of your dropdown/select field
+                ['expiryPeriod'],
                 'in',
-                'range' => ['day', 'week', 'month', 'year'], // Define acceptable values
+                'range' => ['day', 'week', 'month', 'year'],
                 'message' => Craft::t('password-policy', 'The selected expiry period is invalid.'),
             ],
             [['cases', 'cspNonce', 'numbers', 'symbols', 'retentionUtilities'], 'boolean'],
-        ];
+        ]);
     }
 }

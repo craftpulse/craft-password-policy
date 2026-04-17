@@ -12,7 +12,6 @@ namespace craftpulse\passwordpolicy\utilities;
 
 use Craft;
 use craft\base\Utility;
-use craftpulse\passwordpolicy\PasswordPolicy;
 
 /**
  * Class RetentionUtility
@@ -23,8 +22,13 @@ use craftpulse\passwordpolicy\PasswordPolicy;
  */
 class RetentionUtility extends Utility
 {
+    // Public Methods
+    // =========================================================================
+
     /**
      * @inheritdoc
+     *
+     * @author CraftPulse
      */
     public static function displayName(): string
     {
@@ -33,6 +37,8 @@ class RetentionUtility extends Utility
 
     /**
      * @inheritdoc
+     *
+     * @author CraftPulse
      */
     public static function id(): string
     {
@@ -41,6 +47,8 @@ class RetentionUtility extends Utility
 
     /**
      * @inheritdoc
+     *
+     * @author CraftPulse
      */
     public static function icon(): ?string
     {
@@ -49,18 +57,27 @@ class RetentionUtility extends Utility
 
     /**
      * @inheritdoc
+     *
+     * @author CraftPulse
      */
     public static function contentHtml(): string
     {
         return Craft::$app->getView()->renderTemplate('password-policy/_utilities/retention', [
-            'actions' => self::getActions(),
+            'actions' => self::_getActions(),
         ]);
     }
 
+    // Private Methods
+    // =========================================================================
+
     /**
+     * Returns the available retention actions.
+     *
      * @return array
+     *
+     * @author CraftPulse
      */
-    public static function getActions(): array
+    private static function _getActions(): array
     {
         $actions = [];
 

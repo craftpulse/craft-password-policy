@@ -17,6 +17,7 @@ use craft\helpers\Queue;
 
 use craftpulse\passwordpolicy\jobs\PasswordResetJob;
 use craftpulse\passwordpolicy\PasswordPolicy;
+use Throwable;
 
 /**
  * Class RetentionService
@@ -27,13 +28,23 @@ use craftpulse\passwordpolicy\PasswordPolicy;
  */
 class RetentionService extends Component
 {
+    // Public Properties
+    // =========================================================================
+
     /**
      * @var int
      */
     public int $resets = 0;
 
+    // Public Methods
+    // =========================================================================
+
     /**
-     * @inheritdoc
+     * Pushes a password reset job to the queue.
+     *
+     * @return void
+     *
+     * @author CraftPulse
      */
     public function resetPasswords(): void
     {
@@ -49,10 +60,20 @@ class RetentionService extends Component
         );
     }
 
+    /**
+     * Flags a user as requiring a password reset.
+     *
+     * @param UserElement $user
+     * @return void
+     *
+     * @throws Throwable
+     *
+     * @author CraftPulse
+     */
     public function requirePasswordReset(UserElement $user): void
     {
-        // In the free version we will never force the reset of our main admin account!
-        if ($user->id !== 1) {
+        // In the free version we will never force the reset of our admin accounts
+        if (!$user->admin) {
             $user->passwordResetRequired = true;
             Craft::$app->getElements()->saveElement($user);
             $this->resets++;
