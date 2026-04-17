@@ -98,11 +98,32 @@ class RetentionController extends Controller
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
+        $this->_forceResetPasswords();
+
+        return ExitCode::OK;
+    }
+
+    // Private Methods
+    // =========================================================================
+
+    /**
+     * Handles the password reset logic.
+     *
+     * When `--queue` is set, jobs are pushed to the queue. Otherwise, resets run synchronously.
+     *
+     * @return void
+     *
+     * @throws Throwable
+     *
+     * @author CraftPulse
+     */
+    private function _forceResetPasswords(): void
+    {
         if ($this->queue) {
             PasswordPolicy::$plugin->retention->resetPasswords();
             $this->_output('Users queued for password resets.');
 
-            return ExitCode::OK;
+            return;
         }
 
         $this->stdout(Craft::t('password-policy', 'Resetting passwords...') . PHP_EOL, BaseConsole::FG_GREEN);
@@ -112,7 +133,7 @@ class RetentionController extends Controller
         if (empty($users)) {
             $this->_output('No users require a password reset.');
 
-            return ExitCode::OK;
+            return;
         }
 
         foreach ($users as $user) {
@@ -125,12 +146,7 @@ class RetentionController extends Controller
 
         $count = count($users);
         $this->_output("Password resets complete. {$count} user(s) flagged.");
-
-        return ExitCode::OK;
     }
-
-    // Private Methods
-    // =========================================================================
 
     /**
      * Outputs a translated success message.

@@ -43,7 +43,11 @@ class UserRules
                 ['password', 'newPassword'],
                 'string',
                 'min' => $settings->minLength,
-                'tooShort' => Craft::t('password-policy', 'Password must contain at least {min} characters.', ['min' => $settings->minLength]),
+                'tooShort' => Craft::t(
+                    'password-policy',
+                    'Password must contain at least {min} characters.',
+                    ['min' => $settings->minLength]
+                ),
                 'skipOnError' => false,
             ];
         $rules[] =
@@ -64,7 +68,11 @@ class UserRules
                     ['password', 'newPassword'],
                     'string',
                     'max' => $settings->maxLength,
-                    'tooLong' => Craft::t('password-policy', 'Password can maximum contain {max} characters.', ['max' => $settings->maxLength]),
+                    'tooLong' => Craft::t(
+                        'password-policy',
+                        'Password can maximum contain {max} characters.',
+                        ['max' => $settings->maxLength]
+                    ),
                     'skipOnError' => false,
                 ];
         }
