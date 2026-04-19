@@ -13,10 +13,13 @@ namespace craftpulse\passwordpolicy;
 use Craft;
 use craft\base\Model;
 use craft\base\Plugin;
+use craft\elements\conditions\users\UserCondition;
 use craft\elements\User;
 use craft\events\DefineRulesEvent;
 use craft\events\ModelEvent;
 use craft\events\RegisterComponentTypesEvent;
+use craft\events\RegisterConditionRulesEvent;
+use craft\events\RegisterElementActionsEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
 use craft\events\TemplateEvent;
@@ -32,6 +35,10 @@ use craft\web\twig\variables\CraftVariable;
 use craft\web\UrlManager;
 use craft\web\View;
 use craftpulse\passwordpolicy\assetbundles\passwordpolicy\PasswordPolicyAsset;
+use craftpulse\passwordpolicy\elements\actions\ForcePasswordReset;
+use craftpulse\passwordpolicy\elements\conditions\PasswordExpiredConditionRule;
+use craftpulse\passwordpolicy\elements\conditions\PasswordNeverChangedConditionRule;
+use craftpulse\passwordpolicy\elements\conditions\PasswordResetRequiredConditionRule;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
 use craftpulse\passwordpolicy\services\ServicesTrait;
@@ -401,6 +408,7 @@ class PasswordPolicy extends Plugin
 
         $this->_registerUserPermissions();
         $this->_registerUtilities();
+        $this->_registerUserIndexIntegration();
     }
 
     /**
@@ -670,6 +678,42 @@ class PasswordPolicy extends Plugin
             Application::EVENT_AFTER_REQUEST,
             function() {
                 $this->getPasswordHistory()->clearAllCache();
+            }
+        );
+    }
+
+    /**
+     * Registers User index integration: condition rules and bulk action.
+     *
+     * Condition rules allow filtering users by password status in
+     * the Users index. Bulk action enables force-reset on selected users.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerUserIndexIntegration(): void
+    {
+        // Condition rules for user filtering
+        Event::on(
+            UserCondition::class,
+            UserCondition::EVENT_REGISTER_CONDITION_RULES,
+            function(RegisterConditionRulesEvent $event) {
+                $event->conditionRules[] = PasswordExpiredConditionRule::class;
+                $event->conditionRules[] = PasswordResetRequiredConditionRule::class;
+                $event->conditionRules[] = PasswordNeverChangedConditionRule::class;
+            }
+        );
+
+        // Bulk action for force password reset
+        Event::on(
+            User::class,
+            User::EVENT_REGISTER_ACTIONS,
+            function(RegisterElementActionsEvent $event) {
+                if ($this->getIsPro()) {
+                    $event->actions[] = ForcePasswordReset::class;
+                }
             }
         );
     }
