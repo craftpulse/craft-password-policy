@@ -23,6 +23,7 @@ use yii\base\InvalidConfigException;
  * @property BlocklistService $blocklist
  * @property PasswordHistoryService $passwordHistory
  * @property PasswordService $passwords
+ * @property PolicyResolverService $policyResolver
  * @property RetentionService $retention
  * @property SecurityService $security
  * @property VitePluginService $vite
@@ -47,6 +48,7 @@ trait ServicesTrait
                 'blocklist' => BlocklistService::class,
                 'passwordHistory' => PasswordHistoryService::class,
                 'passwords' => PasswordService::class,
+                'policyResolver' => PolicyResolverService::class,
                 'retention' => RetentionService::class,
                 'security' => SecurityService::class,
                 // Register the vite service
@@ -125,6 +127,21 @@ trait ServicesTrait
     public function getPasswords(): PasswordService
     {
         return $this->get('passwords');
+    }
+
+    /**
+     * Returns the policy resolver service.
+     *
+     * @return PolicyResolverService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getPolicyResolver(): PolicyResolverService
+    {
+        return $this->get('policyResolver');
     }
 
     /**
