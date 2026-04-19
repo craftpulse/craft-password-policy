@@ -39,6 +39,7 @@ use craftpulse\passwordpolicy\elements\actions\ForcePasswordReset;
 use craftpulse\passwordpolicy\elements\conditions\PasswordExpiredConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\PasswordNeverChangedConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\PasswordResetRequiredConditionRule;
+use craftpulse\passwordpolicy\events\PasswordChangedEvent;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
 use craftpulse\passwordpolicy\services\ServicesTrait;
@@ -86,6 +87,16 @@ class PasswordPolicy extends Plugin
      * @var string
      */
     public const EDITION_ENTERPRISE = 'enterprise';
+
+    /**
+     * Fired after a password has been changed and stored in history.
+     * The plaintext is already gone by this point.
+     *
+     * @event PasswordChangedEvent
+     *
+     * @since 5.2.0
+     */
+    public const EVENT_PASSWORD_CHANGED = 'passwordChanged';
 
     /**
      * Sensitive keys that must never appear in log output.
@@ -584,13 +595,21 @@ class PasswordPolicy extends Plugin
                     }
                 }
 
-                // Audit log: password changed (Enterprise)
+                // Audit log + developer event: password changed
                 if ($plaintext !== null) {
                     $this->getAuditLog()->logEvent(
                         userId: $user->id,
                         event: 'password_changed',
                         outcome: 'success',
                     );
+
+                    // Fire developer event (Lite — free for ecosystem)
+                    if ($this->hasEventHandlers(self::EVENT_PASSWORD_CHANGED)) {
+                        $this->trigger(self::EVENT_PASSWORD_CHANGED, new PasswordChangedEvent([
+                            'user' => $user,
+                            'isNew' => $event->isNew,
+                        ]));
+                    }
                 }
 
                 // Force change on first login for new users
