@@ -77,7 +77,7 @@ class PasswordResetJob extends BaseBatchedJob implements RetryableJobInterface
      *
      * @author CraftPulse
      */
-    public function setProgressHandler(int $count, int $total, string $label = null): void
+    public function setProgressHandler(int $count, int $total, ?string $label = null): void
     {
         $progress = $total > 0 ? ($count / $total) : 0;
         $this->setProgress($this->queue, $progress, $label);

@@ -58,6 +58,37 @@ class PasswordPolicy extends Plugin
 
     use ServicesTrait;
 
+    // Const Properties
+    // =========================================================================
+
+    /**
+     * @var string
+     */
+    public const EDITION_LITE = 'lite';
+
+    /**
+     * @var string
+     */
+    public const EDITION_PRO = 'pro';
+
+    /**
+     * @var string
+     */
+    public const EDITION_ENTERPRISE = 'enterprise';
+
+    /**
+     * Sensitive keys that must never appear in log output.
+     *
+     * @var string[]
+     */
+    private const SENSITIVE_LOG_KEYS = [
+        'password',
+        'newPassword',
+        'plaintext',
+        'hash',
+        'passwordHash',
+    ];
+
     // Static Properties
     // =========================================================================
 
@@ -66,13 +97,33 @@ class PasswordPolicy extends Plugin
      */
     public static ?PasswordPolicy $plugin = null;
 
+    // Static Methods
+    // =========================================================================
+
+    /**
+     * Returns the available editions for this plugin.
+     *
+     * @return string[]
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public static function editions(): array
+    {
+        return [
+            self::EDITION_LITE,
+            self::EDITION_PRO,
+            self::EDITION_ENTERPRISE,
+        ];
+    }
+
     // Public Properties
     // =========================================================================
 
     /**
      * @var string
      */
-    public string $schemaVersion = '1.0.0';
+    public string $schemaVersion = '2.0.0';
 
     /**
      * @var bool
@@ -145,6 +196,9 @@ class PasswordPolicy extends Plugin
      */
     public function log(string $message, array $params = [], int $type = Logger::LEVEL_INFO): void
     {
+        // Strip sensitive keys before any logging occurs
+        $params = array_diff_key($params, array_flip(self::SENSITIVE_LOG_KEYS));
+
         /** @var User|null $user */
         $user = Craft::$app->getUser()->getIdentity();
 
@@ -157,6 +211,45 @@ class PasswordPolicy extends Plugin
         $message = Craft::t('password-policy', $message . ' ' . $encoded_params, $params);
 
         Craft::getLogger()->log($message, $type, 'password-policy');
+    }
+
+    /**
+     * Returns whether the plugin is running the Lite edition.
+     *
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getIsLite(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Returns whether the plugin is running the Pro edition or higher.
+     *
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getIsPro(): bool
+    {
+        return $this->is(self::EDITION_PRO, '>=');
+    }
+
+    /**
+     * Returns whether the plugin is running the Enterprise edition.
+     *
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getIsEnterprise(): bool
+    {
+        return $this->is(self::EDITION_ENTERPRISE);
     }
 
     /**
