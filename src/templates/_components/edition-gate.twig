@@ -1,0 +1,11 @@
+{# Edition gate — shows upgrade prompt for locked features #}
+{# @var edition string The required edition name (Pro, Enterprise) #}
+
+<div class="readable">
+    <blockquote class="note tip">
+        <p>
+            <strong>{{ edition }}</strong> {{ "edition required."|t('password-policy') }}
+            {{ "Upgrade to unlock this feature."|t('password-policy') }}
+        </p>
+    </blockquote>
+</div>
