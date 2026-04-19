@@ -126,6 +126,45 @@ class SettingsController extends Controller
             throw new NotFoundHttpException('Plugin not found');
         }
 
+        // Strip edition-gated settings on lower editions
+        /** @var PasswordPolicy $plugin */
+        if (!$plugin->getIsPro()) {
+            unset(
+                $settings['passwordHistoryCount'],
+                $settings['passwordHistoryExpiryDays'],
+                $settings['checkSequentialChars'],
+                $settings['checkRepeatedChars'],
+                $settings['checkContextual'],
+                $settings['checkCommonPasswords'],
+                $settings['complexityMode'],
+                $settings['minimumCharacterTypes'],
+                $settings['enablePerGroupPolicies'],
+                $settings['groupPolicies'],
+                $settings['expiryReminderDays'],
+            );
+        }
+        if (!$plugin->getIsEnterprise()) {
+            unset(
+                $settings['enableAuditLog'],
+                $settings['auditLogRetentionDays'],
+                $settings['enableNewDeviceAlerts'],
+                $settings['deviceRetentionDays'],
+                $settings['adminAlertEmail'],
+                $settings['adminAlertEvents'],
+                $settings['siemEnabled'],
+                $settings['siemDestinationType'],
+                $settings['siemEndpointUrl'],
+                $settings['siemAuthType'],
+                $settings['siemAuthToken'],
+                $settings['siemCustomHeaders'],
+                $settings['siemIpHandling'],
+                $settings['siemDeviceHandling'],
+                $settings['webhooksEnabled'],
+                $settings['webhooks'],
+                $settings['apiEnabled'],
+            );
+        }
+
         if (!Craft::$app->getPlugins()->savePluginSettings($plugin, $settings)) {
             Craft::$app->getSession()->setError(Craft::t('app', "Couldn't save plugin settings."));
 

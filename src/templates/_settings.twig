@@ -3,10 +3,18 @@
 {% extends "password-policy/_layouts/password-policy-cp.twig" %}
 {% import '_includes/forms.twig' as forms %}
 
+{% set plugin = craft.app.plugins.getPlugin('password-policy') %}
+{% set isPro = plugin.getIsPro() %}
+{% set isEnterprise = plugin.getIsEnterprise() %}
+
 {% set tabs = {
     features: { label: 'Configuration'|t('password-policy'), url: '#features' },
     rules: { label: 'Password Rules'|t('password-policy'), url: '#rules' },
-    retention: { label: 'Password Retention Features'|t('password-policy'), url: '#retention' },
+    retention: { label: 'Password Retention'|t('password-policy'), url: '#retention' },
+    history: { label: 'Password History'|t('password-policy'), url: '#history' },
+    validators: { label: 'Advanced Validators'|t('password-policy'), url: '#validators' },
+    groups: { label: 'Group Policies'|t('password-policy'), url: '#groups' },
+    audit: { label: 'Audit Logging'|t('password-policy'), url: '#audit' },
 } %}
 
 {% block actionButton %}
@@ -17,13 +25,28 @@
     <input type="hidden" name="action" value="password-policy/settings/save">
     <input type="hidden" name="pluginHandle" value="password-policy">
 
+    {# ==================== Configuration ==================== #}
     <div id="features" class="flex-fields">
         <div class="field">
             {{ forms.lightswitchField({
-                label: 'Enable "have i been pwned".'|t('password-policy'),
-                instructions: "Do passwords need to be checked against the 'have i been pwned' database?"|t('password-policy'),
+                label: 'Enable "Have I Been Pwned"'|t('password-policy'),
+                instructions: "Check passwords against the HIBP breach database using k-Anonymity (only a 5-character hash prefix is sent, never the password)."|t('password-policy'),
                 name: 'settings[pwned]',
                 on: settings.pwned,
+            }) }}
+        </div>
+
+        <div class="field">
+            {{ forms.selectField({
+                label: 'HIBP Failure Mode'|t('password-policy'),
+                instructions: "What happens when the HIBP API is unreachable. **Fail-open** accepts the password. **Fail-closed** rejects it — this blocks ALL password changes during API outages."|t('password-policy'),
+                name: 'settings[pwnedFailMode]',
+                options: [
+                    { label: 'Fail-open (accept password)'|t('password-policy'), value: 'open' },
+                    { label: 'Fail-closed (reject password)'|t('password-policy'), value: 'closed' },
+                ],
+                value: settings.pwnedFailMode,
+                warning: settings.pwnedFailMode == 'closed' ? 'Fail-closed will block ALL password changes when the HIBP API is unreachable.'|t('password-policy') : null,
             }) }}
         </div>
 
@@ -31,8 +54,8 @@
 
         <div class="field">
             {{ forms.lightswitchField({
-                label: 'Show password strength indicator.'|t('password-policy'),
-                instructions: "A password strength indicator helps giving users feedback about the safety of their chosen password.?"|t('password-policy'),
+                label: 'Show password strength indicator'|t('password-policy'),
+                instructions: "A password strength indicator helps give users feedback about the safety of their chosen password."|t('password-policy'),
                 name: 'settings[showStrengthIndicator]',
                 on: settings.showStrengthIndicator,
             }) }}
@@ -42,20 +65,32 @@
 
         <div class="field">
             {{ forms.lightswitchField({
+                label: 'Force change on first login'|t('password-policy'),
+                instructions: "Require new users to change their password on first login."|t('password-policy'),
+                name: 'settings[forceChangeOnFirstLogin]',
+                on: settings.forceChangeOnFirstLogin,
+            }) }}
+        </div>
+
+        <hr>
+
+        <div class="field">
+            {{ forms.lightswitchField({
                 label: 'Enable CSP Nonce'|t('password-policy'),
-                instructions: 'Generates a Content Security Policy nonce for the password indicator script. Useful for strict CSP policies that don\'t use `script-src \'self\'` and instead require nonces for all scripts, even external ones.'|t('password-policy'),
+                instructions: 'Generates a Content Security Policy nonce for the password indicator script.'|t('password-policy'),
                 name: 'settings[cspNonce]',
                 on: settings.cspNonce,
-                tip: 'Most users don\'t need this. Only enable if you have a strict CSP policy that requires nonces for external scripts instead of allowing `\'self\'`.'|t('password-policy'),
+                tip: 'Only enable if you have a strict CSP policy requiring nonces for external scripts.'|t('password-policy'),
             }) }}
         </div>
     </div>
 
+    {# ==================== Password Rules ==================== #}
     <div id="rules" class="hidden flex-fields">
         <div class="field">
             {{ forms.autosuggestField({
-                label: 'The minimum password length.'|t('password-policy'),
-                instructions: "The minimum length a password should be, less than 6 is not allowed."|t('password-policy'),
+                label: 'Minimum password length'|t('password-policy'),
+                instructions: "The minimum number of characters a password must have. Cannot be less than 6."|t('password-policy'),
                 name: 'settings[minLength]',
                 suggestEnvVars: true,
                 value: settings.minLength,
@@ -65,8 +100,8 @@
 
         <div class="field">
             {{ forms.autosuggestField({
-                label: 'The maximum password length.'|t('password-policy'),
-                instructions: "The maximum length a password should be."|t('password-policy'),
+                label: 'Maximum password length'|t('password-policy'),
+                instructions: "The maximum number of characters allowed. Set to 0 for no limit."|t('password-policy'),
                 name: 'settings[maxLength]',
                 suggestEnvVars: true,
                 value: settings.maxLength,
@@ -74,45 +109,86 @@
             }) }}
         </div>
 
-        <div class="field">
-            {{ forms.lightswitchField({
-                label: 'Enforce numbers.'|t('password-policy'),
-                instructions: "If numbers should be enforced on a chosen password."|t('password-policy'),
-                name: 'settings[numbers]',
-                on: settings.numbers,
-            }) }}
+        <hr>
+
+        {% if isPro %}
+            <div class="field">
+                {{ forms.selectField({
+                    label: 'Complexity mode'|t('password-policy'),
+                    instructions: "**Individual** requires specific character types. **Minimum** requires X of 4 types (uppercase, lowercase, number, symbol)."|t('password-policy'),
+                    name: 'settings[complexityMode]',
+                    options: [
+                        { label: 'Individual toggles'|t('password-policy'), value: 'individual' },
+                        { label: 'Minimum character types'|t('password-policy'), value: 'minimum' },
+                    ],
+                    value: settings.complexityMode,
+                    toggle: true,
+                    targetPrefix: 'complexity-',
+                }) }}
+            </div>
+        {% endif %}
+
+        <div id="complexity-individual" {% if isPro and settings.complexityMode == 'minimum' %}class="hidden"{% endif %}>
+            <div class="field">
+                {{ forms.lightswitchField({
+                    label: 'Require numbers'|t('password-policy'),
+                    instructions: "Password must contain at least one number."|t('password-policy'),
+                    name: 'settings[numbers]',
+                    on: settings.numbers,
+                }) }}
+            </div>
+
+            <div class="field">
+                {{ forms.lightswitchField({
+                    label: 'Require mixed case'|t('password-policy'),
+                    instructions: "Password must contain both uppercase and lowercase letters."|t('password-policy'),
+                    name: 'settings[cases]',
+                    on: settings.cases,
+                }) }}
+            </div>
+
+            <div class="field">
+                {{ forms.lightswitchField({
+                    label: 'Require symbols'|t('password-policy'),
+                    instructions: "Password must contain at least one special character."|t('password-policy'),
+                    name: 'settings[symbols]',
+                    on: settings.symbols,
+                }) }}
+            </div>
         </div>
 
-        <div class="field">
-            {{ forms.lightswitchField({
-                label: 'Enforce cases.'|t('password-policy'),
-                instructions: "If both uppercase and lowercase characters should be enforced on a chosen password."|t('password-policy'),
-                name: 'settings[cases]',
-                on: settings.cases,
-            }) }}
-        </div>
-
-        <div class="field">
-            {{ forms.lightswitchField({
-                label: 'Enforce symbols.'|t('password-policy'),
-                instructions: "If symbols should be enforced on a chosen password."|t('password-policy'),
-                name: 'settings[symbols]',
-                on: settings.symbols,
-            }) }}
-        </div>
+        {% if isPro %}
+            <div id="complexity-minimum" {% if settings.complexityMode != 'minimum' %}class="hidden"{% endif %}>
+                <div class="field">
+                    {{ forms.selectField({
+                        label: 'Minimum character types required'|t('password-policy'),
+                        instructions: "The password must contain at least this many of the 4 character types."|t('password-policy'),
+                        name: 'settings[minimumCharacterTypes]',
+                        options: [
+                            { label: '1 of 4', value: 1 },
+                            { label: '2 of 4', value: 2 },
+                            { label: '3 of 4', value: 3 },
+                            { label: '4 of 4', value: 4 },
+                        ],
+                        value: settings.minimumCharacterTypes,
+                    }) }}
+                </div>
+            </div>
+        {% endif %}
     </div>
 
+    {# ==================== Password Retention ==================== #}
     <div id="retention" class="hidden flex-fields">
         <div class="field">
             {{ forms.lightswitchField({
-                label: 'Enable retention utilities.'|t('password-policy'),
-                instructions: "If you want to allow password retention utilities."|t('password-policy'),
+                label: 'Enable retention utilities'|t('password-policy'),
+                instructions: "Show the password retention utility in the CP for force-resetting expired passwords."|t('password-policy'),
                 name: 'settings[retentionUtilities]',
                 on: settings.retentionUtilities,
             }) }}
         </div>
 
-        <hr />
+        <hr>
 
         {%- set expiryInput %}
             <div class="flex">
@@ -122,7 +198,6 @@
                         class: 'ltr',
                         name: 'settings[expiryAmount]',
                         size: 2,
-                        suggestEnvVars: true,
                         value: settings.expiryAmount,
                     }) }}
                 </div>
@@ -137,16 +212,171 @@
                             { label: 'Year(s)'|t('password-policy'), value: 'year' },
                         ],
                         value: settings.expiryPeriod,
-                        toggle: true,
                     }) }}
                 </div>
             </div>
         {%- endset -%}
 
         {{ forms.field({
-            label: "The expiry period."|t('password-policy'),
-            instructions: "Add a period in which passwords should be resetted, users will get a notification when their password is expired.",
+            label: "Expiry period"|t('password-policy'),
+            instructions: "How long until passwords expire. Users will be flagged for reset after this period. Leave empty to disable expiration."|t('password-policy'),
             id: 'expiryInput',
         }, expiryInput) }}
+
+        {% if isPro %}
+            <hr>
+
+            <div class="field">
+                {{ forms.textField({
+                    label: 'Expiry reminder days'|t('password-policy'),
+                    instructions: "How many days before expiry to send a reminder email."|t('password-policy'),
+                    name: 'settings[expiryReminderDays]',
+                    value: settings.expiryReminderDays,
+                    size: 4,
+                    type: 'number',
+                }) }}
+            </div>
+        {% endif %}
+    </div>
+
+    {# ==================== Password History (Pro) ==================== #}
+    <div id="history" class="hidden flex-fields">
+        {% if not isPro %}
+            {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
+        {% else %}
+            <div class="field">
+                {{ forms.selectField({
+                    label: 'Password history count'|t('password-policy'),
+                    instructions: "How many previous passwords to check against. Set to 0 to disable."|t('password-policy'),
+                    name: 'settings[passwordHistoryCount]',
+                    options: [
+                        { label: 'Disabled', value: 0 },
+                        { label: '3 passwords', value: 3 },
+                        { label: '5 passwords', value: 5 },
+                        { label: '10 passwords', value: 10 },
+                        { label: '12 passwords', value: 12 },
+                        { label: '24 passwords', value: 24 },
+                    ],
+                    value: settings.passwordHistoryCount,
+                }) }}
+            </div>
+
+            <div class="field">
+                {{ forms.textField({
+                    label: 'History retention (days)'|t('password-policy'),
+                    instructions: "How long to keep password history entries before automatic cleanup."|t('password-policy'),
+                    name: 'settings[passwordHistoryExpiryDays]',
+                    value: settings.passwordHistoryExpiryDays,
+                    size: 5,
+                    type: 'number',
+                }) }}
+            </div>
+        {% endif %}
+    </div>
+
+    {# ==================== Advanced Validators (Pro) ==================== #}
+    <div id="validators" class="hidden flex-fields">
+        {% if not isPro %}
+            {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
+        {% else %}
+            <div class="field">
+                {{ forms.lightswitchField({
+                    label: 'Block sequential characters'|t('password-policy'),
+                    instructions: "Reject passwords with 3+ sequential characters like abc, 123, or qwerty."|t('password-policy'),
+                    name: 'settings[checkSequentialChars]',
+                    on: settings.checkSequentialChars,
+                }) }}
+            </div>
+
+            <div class="field">
+                {{ forms.lightswitchField({
+                    label: 'Block repeated characters'|t('password-policy'),
+                    instructions: "Reject passwords with 3+ repeated characters like aaa or 111."|t('password-policy'),
+                    name: 'settings[checkRepeatedChars]',
+                    on: settings.checkRepeatedChars,
+                }) }}
+            </div>
+
+            <div class="field">
+                {{ forms.lightswitchField({
+                    label: 'Block contextual passwords'|t('password-policy'),
+                    instructions: "Reject passwords containing the username, email, name, or site name."|t('password-policy'),
+                    name: 'settings[checkContextual]',
+                    on: settings.checkContextual,
+                }) }}
+            </div>
+
+            <div class="field">
+                {{ forms.lightswitchField({
+                    label: 'Block common passwords'|t('password-policy'),
+                    instructions: "Reject passwords found in the common password blocklist (10,000+ words)."|t('password-policy'),
+                    name: 'settings[checkCommonPasswords]',
+                    on: settings.checkCommonPasswords,
+                }) }}
+            </div>
+        {% endif %}
+    </div>
+
+    {# ==================== Group Policies (Pro) ==================== #}
+    <div id="groups" class="hidden flex-fields">
+        {% if not isPro %}
+            {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
+        {% else %}
+            <div class="field">
+                {{ forms.lightswitchField({
+                    label: 'Enable per-group policies'|t('password-policy'),
+                    instructions: "Override password policy settings per user group. When a user belongs to multiple groups, the most restrictive value for each setting is applied."|t('password-policy'),
+                    name: 'settings[enablePerGroupPolicies]',
+                    on: settings.enablePerGroupPolicies,
+                }) }}
+            </div>
+
+            {% if settings.enablePerGroupPolicies %}
+                <div class="readable">
+                    <blockquote class="note tip">
+                        <p>{{ "Per-group policy configuration UI coming soon. For now, configure group policies via config/password-policy.php or the project config."|t('password-policy') }}</p>
+                    </blockquote>
+                </div>
+            {% endif %}
+        {% endif %}
+    </div>
+
+    {# ==================== Audit Logging (Enterprise) ==================== #}
+    <div id="audit" class="hidden flex-fields">
+        {% if not isEnterprise %}
+            {% include "password-policy/_components/edition-gate" with { edition: 'Enterprise' } %}
+        {% else %}
+            <div class="field">
+                {{ forms.lightswitchField({
+                    label: 'Enable audit logging'|t('password-policy'),
+                    instructions: "Record all password-related security events. Required for SOC 2 and ISO 27001 compliance."|t('password-policy'),
+                    name: 'settings[enableAuditLog]',
+                    on: settings.enableAuditLog,
+                }) }}
+            </div>
+
+            <div class="field">
+                {{ forms.textField({
+                    label: 'Audit log retention (days)'|t('password-policy'),
+                    instructions: "How long to keep audit log entries before automatic cleanup via Craft's garbage collection."|t('password-policy'),
+                    name: 'settings[auditLogRetentionDays]',
+                    value: settings.auditLogRetentionDays,
+                    size: 5,
+                    type: 'number',
+                }) }}
+            </div>
+
+            <hr>
+
+            <div class="field">
+                {{ forms.autosuggestField({
+                    label: 'Admin alert email'|t('password-policy'),
+                    instructions: "Email address for security alerts (lockouts, breach detections). Supports environment variables."|t('password-policy'),
+                    name: 'settings[adminAlertEmail]',
+                    suggestEnvVars: true,
+                    value: settings.adminAlertEmail,
+                }) }}
+            </div>
+        {% endif %}
     </div>
 {% endblock %}
