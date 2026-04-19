@@ -109,6 +109,7 @@ class PasswordService extends Component
 
         try {
             $client = Craft::createGuzzleClient([
+                'verify' => true,
                 'headers' => [
                     'Add-Padding' => 'true',
                 ],
