@@ -22,6 +22,7 @@ use yii\base\InvalidConfigException;
  * @property AuditLogService $auditLog
  * @property BlocklistService $blocklist
  * @property PasswordHistoryService $passwordHistory
+ * @property NotificationService $notification
  * @property PasswordService $passwords
  * @property PolicyResolverService $policyResolver
  * @property RetentionService $retention
@@ -47,6 +48,7 @@ trait ServicesTrait
                 'auditLog' => AuditLogService::class,
                 'blocklist' => BlocklistService::class,
                 'passwordHistory' => PasswordHistoryService::class,
+                'notification' => NotificationService::class,
                 'passwords' => PasswordService::class,
                 'policyResolver' => PolicyResolverService::class,
                 'retention' => RetentionService::class,
@@ -113,6 +115,21 @@ trait ServicesTrait
     public function getPasswordHistory(): PasswordHistoryService
     {
         return $this->get('passwordHistory');
+    }
+
+    /**
+     * Returns the notification service.
+     *
+     * @return NotificationService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getNotification(): NotificationService
+    {
+        return $this->get('notification');
     }
 
     /**

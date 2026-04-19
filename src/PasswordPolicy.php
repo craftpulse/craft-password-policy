@@ -27,6 +27,7 @@ use craft\helpers\ArrayHelper;
 use craft\helpers\ElementHelper;
 use craft\helpers\Json;
 use craft\log\MonologTarget;
+use craft\services\Gc;
 use craft\services\UserPermissions;
 use craft\services\Users;
 use craft\services\Utilities;
@@ -420,6 +421,7 @@ class PasswordPolicy extends Plugin
         $this->_registerUserPermissions();
         $this->_registerUtilities();
         $this->_registerUserIndexIntegration();
+        $this->_registerGarbageCollection();
     }
 
     /**
@@ -467,6 +469,7 @@ class PasswordPolicy extends Plugin
                         'password-policy' => 'password-policy/settings/edit',
                         'password-policy/settings' => 'password-policy/settings/edit',
                         'password-policy/plugins/password-policy' => 'password-policy/settings/edit',
+                        'password-policy/validate' => 'password-policy/validation/validate',
                     ],
                     $event->rules
                 );
@@ -697,6 +700,55 @@ class PasswordPolicy extends Plugin
             Application::EVENT_AFTER_REQUEST,
             function() {
                 $this->getPasswordHistory()->clearAllCache();
+            }
+        );
+    }
+
+    /**
+     * Registers Craft GC hook to purge old data from all plugin tables.
+     *
+     * Ensures GDPR-compliant automatic data minimization without
+     * requiring manual cron setup.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerGarbageCollection(): void
+    {
+        Event::on(
+            Gc::class,
+            Gc::EVENT_RUN,
+            function() {
+                $settings = $this->getSettings();
+
+                // Notification log (Pro+)
+                if ($this->getIsPro()) {
+                    $this->getNotification()->pruneOldEntries(
+                        $settings->notificationLogRetentionDays,
+                    );
+                }
+
+                // Password history TTL (Pro)
+                if ($this->getIsPro() && $settings->passwordHistoryCount > 0) {
+                    $threshold = (new \DateTime())
+                        ->modify("-{$settings->passwordHistoryExpiryDays} days")
+                        ->format('Y-m-d H:i:s');
+
+                    \Craft::$app->getDb()->createCommand()
+                        ->delete('{{%passwordpolicy_password_history}}', [
+                            '<', 'dateCreated', $threshold,
+                        ])
+                        ->execute();
+                }
+
+                // Audit log (Enterprise)
+                if ($this->getIsEnterprise() && $settings->enableAuditLog) {
+                    $this->getAuditLog()->purgeOldEntries(
+                        $settings->auditLogRetentionDays,
+                    );
+                }
             }
         );
     }
