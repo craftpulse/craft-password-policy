@@ -12,12 +12,13 @@ namespace craftpulse\passwordpolicy\services;
 
 use Craft;
 use craft\base\Component;
+use craft\db\Table;
 use craft\elements\User as UserElement;
 use craft\helpers\Queue;
-
 use craftpulse\passwordpolicy\jobs\PasswordResetJob;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use Throwable;
+use yii\db\Exception;
 
 /**
  * Class RetentionService
@@ -77,6 +78,74 @@ class RetentionService extends Component
             $user->passwordResetRequired = true;
             Craft::$app->getElements()->saveElement($user);
             $this->resets++;
+
+            // Audit log: force reset
+            PasswordPolicy::$plugin->getAuditLog()->logEvent(
+                userId: $user->id,
+                event: 'password_reset_forced',
+                outcome: 'success',
+                source: null,
+            );
         }
+    }
+
+    /**
+     * Resets passwords for all users in a specific group.
+     *
+     * @param int $groupId
+     * @return int The number of users reset
+     *
+     * @throws Throwable
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function resetPasswordsByGroup(int $groupId): int
+    {
+        $users = UserElement::find()
+            ->groupId($groupId)
+            ->status(null)
+            ->all();
+
+        $count = 0;
+
+        foreach ($users as $user) {
+            if (!$user->admin && !$user->passwordResetRequired) {
+                $this->requirePasswordReset($user);
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * Invalidates all sessions for a user by deleting their session tokens.
+     *
+     * Craft stores auth tokens in the DB (Table::SESSIONS) regardless of
+     * PHP session backend (Redis, files, etc.). Deleting rows forces
+     * re-authentication on next request.
+     *
+     * @param int $userId
+     * @param string|null $excludeToken Current session token to preserve (for admin context)
+     * @return int The number of sessions invalidated
+     *
+     * @throws Exception
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function invalidateUserSessions(int $userId, ?string $excludeToken = null): int
+    {
+        $condition = ['userId' => $userId];
+
+        // In web context, preserve the current admin's session
+        if ($excludeToken !== null) {
+            $condition = ['and', $condition, ['not', ['token' => $excludeToken]]];
+        }
+
+        return Craft::$app->getDb()->createCommand()
+            ->delete(Table::SESSIONS, $condition)
+            ->execute();
     }
 }
