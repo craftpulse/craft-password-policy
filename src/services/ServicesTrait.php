@@ -19,6 +19,7 @@ use yii\base\InvalidConfigException;
  * @package   Password Policy
  * @since     5.0.3
  *
+ * @property BlocklistService $blocklist
  * @property PasswordHistoryService $passwordHistory
  * @property PasswordService $passwords
  * @property RetentionService $retention
@@ -41,6 +42,7 @@ trait ServicesTrait
     {
         return [
             'components' => [
+                'blocklist' => BlocklistService::class,
                 'passwordHistory' => PasswordHistoryService::class,
                 'passwords' => PasswordService::class,
                 'retention' => RetentionService::class,
@@ -63,6 +65,21 @@ trait ServicesTrait
 
     // Public Methods
     // =========================================================================
+
+    /**
+     * Returns the blocklist service.
+     *
+     * @return BlocklistService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getBlocklist(): BlocklistService
+    {
+        return $this->get('blocklist');
+    }
 
     /**
      * Returns the password history service.
