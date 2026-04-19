@@ -94,12 +94,16 @@ class PasswordService extends Component
     /**
      * Validates a password against the "Have I Been Pwned" database.
      *
+     * Returns true if breached, false if clean, null on API failure.
+     * The null return allows callers to distinguish "not breached" from
+     * "unable to check" for fail-open/fail-closed handling.
+     *
      * @param string $password
-     * @return bool|null
+     * @return bool|null true = breached, false = clean, null = API failure
      *
      * @author CraftPulse
      */
-    public function pwned(string $password): ?bool
+    public function pwned(#[\SensitiveParameter] string $password): ?bool
     {
         $hash = strtoupper(sha1($password));
         $prefix = substr($hash, 0, 5);
@@ -127,7 +131,7 @@ class PasswordService extends Component
             return $passwords->isNotEmpty();
         } catch (GuzzleException $exception) {
             PasswordPolicy::$plugin->log($exception->getMessage(), [], Logger::LEVEL_ERROR);
-            return false;
+            return null;
         }
     }
 

@@ -19,6 +19,7 @@ use yii\base\InvalidConfigException;
  * @package   Password Policy
  * @since     5.0.3
  *
+ * @property AuditLogService $auditLog
  * @property BlocklistService $blocklist
  * @property PasswordHistoryService $passwordHistory
  * @property PasswordService $passwords
@@ -42,6 +43,7 @@ trait ServicesTrait
     {
         return [
             'components' => [
+                'auditLog' => AuditLogService::class,
                 'blocklist' => BlocklistService::class,
                 'passwordHistory' => PasswordHistoryService::class,
                 'passwords' => PasswordService::class,
@@ -65,6 +67,21 @@ trait ServicesTrait
 
     // Public Methods
     // =========================================================================
+
+    /**
+     * Returns the audit log service.
+     *
+     * @return AuditLogService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getAuditLog(): AuditLogService
+    {
+        return $this->get('auditLog');
+    }
 
     /**
      * Returns the blocklist service.

@@ -25,6 +25,7 @@ use craft\helpers\ElementHelper;
 use craft\helpers\Json;
 use craft\log\MonologTarget;
 use craft\services\UserPermissions;
+use craft\services\Users;
 use craft\services\Utilities;
 use craft\web\Application;
 use craft\web\twig\variables\CraftVariable;
@@ -392,6 +393,9 @@ class PasswordPolicy extends Plugin
         // Password history: cache plaintext before save
         $this->_registerPasswordHistoryListeners();
 
+        // Craft security event listeners (Enterprise audit logging)
+        $this->_registerCraftSecurityListeners();
+
         // Safety net: clear any remaining cached passwords at end of request
         $this->_registerRequestCleanup();
 
@@ -572,6 +576,15 @@ class PasswordPolicy extends Plugin
                     }
                 }
 
+                // Audit log: password changed (Enterprise)
+                if ($plaintext !== null) {
+                    $this->getAuditLog()->logEvent(
+                        userId: $user->id,
+                        event: 'password_changed',
+                        outcome: 'success',
+                    );
+                }
+
                 // Force change on first login for new users
                 if (
                     $event->isNew &&
@@ -591,6 +604,50 @@ class PasswordPolicy extends Plugin
                         unset(self::$_processing[$user->id]);
                     }
                 }
+            }
+        );
+    }
+
+    /**
+     * Registers listeners for Craft security events (Enterprise audit logging).
+     *
+     * Listens to lockout, unlock, and login failure events to record them
+     * in the audit log. Gating happens inside AuditLogService::logEvent().
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerCraftSecurityListeners(): void
+    {
+        // Account locked
+        Event::on(
+            Users::class,
+            Users::EVENT_AFTER_LOCK_USER,
+            function(Event $event) {
+                /** @var User $user */
+                $user = $event->sender;
+                $this->getAuditLog()->logEvent(
+                    userId: $user->id,
+                    event: 'account_locked',
+                    outcome: 'warning',
+                );
+            }
+        );
+
+        // Account unlocked
+        Event::on(
+            Users::class,
+            Users::EVENT_AFTER_UNLOCK_USER,
+            function(Event $event) {
+                /** @var User $user */
+                $user = $event->sender;
+                $this->getAuditLog()->logEvent(
+                    userId: $user->id,
+                    event: 'account_unlocked',
+                    outcome: 'success',
+                );
             }
         );
     }
