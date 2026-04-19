@@ -1,0 +1,42 @@
+<?php
+/**
+ * Password policy plugin for Craft CMS
+ *
+ * Enforce a password policy on your users. This plugin is aimed to make sure users use a password that is secure.
+ *
+ * @link      https://craftpulse.com
+ * @copyright Copyright (c) 2024 CraftPulse
+ */
+
+namespace craftpulse\passwordpolicy\records;
+
+use craft\db\ActiveRecord;
+
+/**
+ * Class NotificationLogRecord
+ *
+ * @property int $id
+ * @property int $userId
+ * @property string $notificationType
+ * @property \DateTime $sentAt
+ *
+ * @author      CraftPulse
+ * @package     PasswordPolicy
+ * @since       5.2.0
+ */
+class NotificationLogRecord extends ActiveRecord
+{
+    // Public Methods
+    // =========================================================================
+
+    /**
+     * @inheritdoc
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public static function tableName(): string
+    {
+        return '{{%passwordpolicy_notification_log}}';
+    }
+}

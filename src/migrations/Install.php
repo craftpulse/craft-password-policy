@@ -35,6 +35,7 @@ class Install extends Migration
         $this->_createPasswordHistoryTable();
         $this->_createAuditLogTable();
         $this->_createBlocklistTable();
+        $this->_createNotificationLogTable();
 
         return true;
     }
@@ -46,6 +47,7 @@ class Install extends Migration
      */
     public function safeDown(): bool
     {
+        $this->dropTableIfExists('{{%passwordpolicy_notification_log}}');
         $this->dropTableIfExists('{{%passwordpolicy_blocklist}}');
         $this->dropTableIfExists('{{%passwordpolicy_audit_log}}');
         $this->dropTableIfExists('{{%passwordpolicy_password_history}}');
@@ -138,5 +140,30 @@ class Install extends Migration
         ]);
 
         $this->createIndex(null, '{{%passwordpolicy_blocklist}}', ['word'], true);
+    }
+
+    /**
+     * Creates the notification log table for dedup tracking.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _createNotificationLogTable(): void
+    {
+        if ($this->db->tableExists('{{%passwordpolicy_notification_log}}')) {
+            return;
+        }
+
+        $this->createTable('{{%passwordpolicy_notification_log}}', [
+            'id' => $this->primaryKey(),
+            'userId' => $this->integer()->notNull(),
+            'notificationType' => $this->string()->notNull(),
+            'sentAt' => $this->dateTime()->notNull(),
+        ]);
+
+        $this->createIndex(null, '{{%passwordpolicy_notification_log}}', ['userId', 'notificationType', 'sentAt'], false);
+        $this->addForeignKey(null, '{{%passwordpolicy_notification_log}}', ['userId'], Table::USERS, ['id'], 'CASCADE', null);
     }
 }
