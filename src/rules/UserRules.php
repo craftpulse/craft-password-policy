@@ -13,6 +13,7 @@ namespace craftpulse\passwordpolicy\rules;
 use Craft;
 
 use craftpulse\passwordpolicy\PasswordPolicy;
+use craftpulse\passwordpolicy\validators\PasswordHistoryValidator;
 use craftpulse\passwordpolicy\validators\PwnedValidator;
 
 /**
@@ -81,6 +82,15 @@ class UserRules
             $rules[] = [
                 ['password', 'newPassword'],
                 PwnedValidator::class,
+                'skipOnError' => false,
+            ];
+        }
+
+        // Password history check (Pro+, gating handled inside validator)
+        if ($settings->passwordHistoryCount > 0) {
+            $rules[] = [
+                ['password', 'newPassword'],
+                PasswordHistoryValidator::class,
                 'skipOnError' => false,
             ];
         }

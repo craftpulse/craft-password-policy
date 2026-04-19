@@ -15,15 +15,18 @@ use craft\base\Model;
 use craft\base\Plugin;
 use craft\elements\User;
 use craft\events\DefineRulesEvent;
+use craft\events\ModelEvent;
 use craft\events\RegisterComponentTypesEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
 use craft\events\TemplateEvent;
 use craft\helpers\ArrayHelper;
+use craft\helpers\ElementHelper;
 use craft\helpers\Json;
 use craft\log\MonologTarget;
 use craft\services\UserPermissions;
 use craft\services\Utilities;
+use craft\web\Application;
 use craft\web\twig\variables\CraftVariable;
 use craft\web\UrlManager;
 use craft\web\View;
@@ -96,6 +99,17 @@ class PasswordPolicy extends Plugin
      * @var ?PasswordPolicy
      */
     public static ?PasswordPolicy $plugin = null;
+
+    // Private Properties
+    // =========================================================================
+
+    /**
+     * Guard to prevent infinite recursion when setting passwordResetRequired
+     * inside EVENT_AFTER_SAVE triggers another save cycle.
+     *
+     * @var array<int, bool>
+     */
+    private static array $_processing = [];
 
     // Static Methods
     // =========================================================================
@@ -375,6 +389,12 @@ class PasswordPolicy extends Plugin
             }
         );
 
+        // Password history: cache plaintext before save
+        $this->_registerPasswordHistoryListeners();
+
+        // Safety net: clear any remaining cached passwords at end of request
+        $this->_registerRequestCleanup();
+
         $this->_registerUserPermissions();
         $this->_registerUtilities();
     }
@@ -473,6 +493,128 @@ class PasswordPolicy extends Plugin
                 }
             );
         }
+    }
+
+    /**
+     * Registers event listeners for password history caching and storage.
+     *
+     * Three-layer lifecycle:
+     * 1. EVENT_BEFORE_SAVE — cache plaintext from newPassword
+     * 2. EVENT_AFTER_SAVE — extract-and-clear cache, hash, store in history
+     * 3. APPLICATION::EVENT_AFTER_REQUEST — safety net: clear all
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerPasswordHistoryListeners(): void
+    {
+        $settings = $this->getSettings();
+
+        // Layer 1: Cache plaintext in EVENT_BEFORE_SAVE
+        Event::on(
+            User::class,
+            User::EVENT_BEFORE_SAVE,
+            function(ModelEvent $event) {
+                /** @var User $user */
+                $user = $event->sender;
+
+                if (empty($user->newPassword)) {
+                    return;
+                }
+
+                // Skip draft/revision elements
+                if (ElementHelper::isDraftOrRevision($user)) {
+                    return;
+                }
+
+                $cacheKey = ($user->id ?? 0) . ':' . spl_object_id($user);
+                $this->getPasswordHistory()->cachePassword(
+                    $user->id ?? 0,
+                    $cacheKey,
+                    $user->newPassword,
+                );
+            }
+        );
+
+        // Layer 2: Store hash in EVENT_AFTER_SAVE
+        Event::on(
+            User::class,
+            User::EVENT_AFTER_SAVE,
+            function(ModelEvent $event) use ($settings) {
+                /** @var User $user */
+                $user = $event->sender;
+
+                // Skip draft/revision elements
+                if (ElementHelper::isDraftOrRevision($user)) {
+                    return;
+                }
+
+                // Recursion guard for forceChangeOnFirstLogin
+                if (isset(self::$_processing[$user->id])) {
+                    return;
+                }
+
+                $cacheKey = ($user->id) . ':' . spl_object_id($user);
+                $plaintext = $this->getPasswordHistory()->getAndClearCache($cacheKey);
+
+                // Store password hash in history if Pro and history enabled
+                if ($plaintext !== null && $this->getIsPro() && $settings->passwordHistoryCount > 0) {
+                    try {
+                        $hash = Craft::$app->getSecurity()->hashPassword($plaintext);
+                        $this->getPasswordHistory()->savePasswordHash($user->id, $hash);
+                    } catch (Throwable $e) {
+                        Craft::error(
+                            'Failed to save password history: ' . $e->getMessage(),
+                            'password-policy',
+                        );
+                    }
+                }
+
+                // Force change on first login for new users
+                if (
+                    $event->isNew &&
+                    $settings->forceChangeOnFirstLogin &&
+                    !$user->passwordResetRequired
+                ) {
+                    self::$_processing[$user->id] = true;
+                    try {
+                        $user->passwordResetRequired = true;
+                        Craft::$app->getElements()->saveElement($user, false);
+                    } catch (Throwable $e) {
+                        Craft::error(
+                            'Failed to set passwordResetRequired: ' . $e->getMessage(),
+                            'password-policy',
+                        );
+                    } finally {
+                        unset(self::$_processing[$user->id]);
+                    }
+                }
+            }
+        );
+    }
+
+    /**
+     * Registers the request-end cleanup for plaintext password cache.
+     *
+     * This is the safety net: even if all other cleanup fails, no plaintext
+     * survives past the end of the HTTP request or queue job.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerRequestCleanup(): void
+    {
+        Event::on(
+            Application::class,
+            Application::EVENT_AFTER_REQUEST,
+            function() {
+                $this->getPasswordHistory()->clearAllCache();
+            }
+        );
     }
 
     /**
