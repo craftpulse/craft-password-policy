@@ -7,11 +7,11 @@
 {% set title = 'Password History'|t('password-policy') %}
 {% set editionLocked = not isPro %}
 
-{% if not readOnly and not editionLocked %}
-    {% block actionButton %}
+{% block actionButton %}
+    {% if not readOnly and not editionLocked %}
         <input type="submit" class="btn submit" value="{{ 'Save'|t('app') }}">
-    {% endblock %}
-{% endif %}
+    {% endif %}
+{% endblock %}
 
 {% block content %}
     <input type="hidden" name="action" value="password-policy/settings/save">
