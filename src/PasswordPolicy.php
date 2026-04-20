@@ -700,10 +700,11 @@ class PasswordPolicy extends Plugin
     }
 
     /**
-     * Registers Craft GC hook to purge old data from all plugin tables.
+     * Registers Craft GC hook as a best-effort fallback for data retention.
      *
-     * Ensures GDPR-compliant automatic data minimization without
-     * requiring manual cron setup.
+     * Craft's GC runs probabilistically (1 in 100,000 requests by default).
+     * On low-traffic sites this may fire infrequently. For guaranteed retention
+     * compliance, schedule `password-policy/gc/run` via cron.
      *
      * @return void
      *
