@@ -131,12 +131,8 @@ class PasswordHistoryService extends Component
         $record->uid = StringHelper::UUID();
         $record->save(false);
 
-        // Prune history within the same operation
-        $this->pruneHistory(
-            $userId,
-            $settings->passwordHistoryCount,
-            $settings->passwordHistoryExpiryDays,
-        );
+        // Prune entries beyond the count limit
+        $this->pruneHistory($userId, $settings->passwordHistoryCount);
     }
 
     /**
@@ -207,11 +203,18 @@ class PasswordHistoryService extends Component
     }
 
     /**
-     * Prunes password history entries beyond the configured limits.
+     * Prunes password history entries beyond the configured count.
+     *
+     * The count is the floor — the latest N entries are always kept,
+     * regardless of age. Anything beyond N is deleted. This prevents
+     * the edge case where TTL wipes a user's only history entry
+     * (allowing immediate reuse) when they rarely change passwords.
+     *
+     * Age-based cleanup (GDPR data minimization) is handled separately
+     * by the GC hook, which respects the count floor across all users.
      *
      * @param int $userId
      * @param int $keepCount
-     * @param int $expiryDays
      * @return void
      *
      * @throws Exception
@@ -219,41 +222,90 @@ class PasswordHistoryService extends Component
      * @author CraftPulse
      * @since 5.2.0
      */
-    public function pruneHistory(int $userId, int $keepCount, int $expiryDays): void
+    public function pruneHistory(int $userId, int $keepCount): void
     {
-        // Prune by count: keep only the most recent N entries
-        if ($keepCount > 0) {
-            $keepIds = (new Query())
+        if ($keepCount <= 0) {
+            return;
+        }
+
+        // The latest N entries are always protected
+        $protectedIds = (new Query())
+            ->select(['id'])
+            ->from('{{%passwordpolicy_password_history}}')
+            ->where(['userId' => $userId])
+            ->orderBy(['dateCreated' => SORT_DESC])
+            ->limit($keepCount)
+            ->column();
+
+        if (empty($protectedIds)) {
+            return;
+        }
+
+        // Delete everything beyond the count
+        Craft::$app->getDb()->createCommand()
+            ->delete('{{%passwordpolicy_password_history}}', [
+                'and',
+                ['userId' => $userId],
+                ['not in', 'id', $protectedIds],
+            ])
+            ->execute();
+    }
+
+    /**
+     * Purges old password history entries across all users for GDPR
+     * data minimization. Respects the history count floor — never
+     * deletes entries that are within a user's configured count.
+     *
+     * Called from the GC hook, not from per-save pruning.
+     *
+     * @param int $expiryDays
+     * @param int $keepCount
+     * @return int The number of entries purged
+     *
+     * @throws Exception
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function purgeExpiredHistory(int $expiryDays, int $keepCount): int
+    {
+        if ($expiryDays <= 0) {
+            return 0;
+        }
+
+        $threshold = (new \DateTime())->modify("-{$expiryDays} days")->format('Y-m-d H:i:s');
+
+        // Get all users with history entries
+        $userIds = (new Query())
+            ->select(['userId'])
+            ->distinct()
+            ->from('{{%passwordpolicy_password_history}}')
+            ->column();
+
+        $totalPurged = 0;
+
+        foreach ($userIds as $userId) {
+            // Protect the latest N entries per user
+            $protectedIds = (new Query())
                 ->select(['id'])
                 ->from('{{%passwordpolicy_password_history}}')
                 ->where(['userId' => $userId])
                 ->orderBy(['dateCreated' => SORT_DESC])
-                ->limit($keepCount)
+                ->limit(max($keepCount, 1))
                 ->column();
 
-            if (!empty($keepIds)) {
-                Craft::$app->getDb()->createCommand()
-                    ->delete('{{%passwordpolicy_password_history}}', [
-                        'and',
-                        ['userId' => $userId],
-                        ['not in', 'id', $keepIds],
-                    ])
-                    ->execute();
-            }
-        }
-
-        // Prune by age
-        if ($expiryDays > 0) {
-            $threshold = (new \DateTime())->modify("-{$expiryDays} days")->format('Y-m-d H:i:s');
-
-            Craft::$app->getDb()->createCommand()
+            // Delete entries older than TTL that are NOT in the protected set
+            $totalPurged += Craft::$app->getDb()->createCommand()
                 ->delete('{{%passwordpolicy_password_history}}', [
                     'and',
                     ['userId' => $userId],
+                    ['not in', 'id', $protectedIds],
                     ['<', 'dateCreated', $threshold],
                 ])
                 ->execute();
         }
+
+        return $totalPurged;
     }
 
     /**

@@ -25,7 +25,7 @@
     <div class="flex-fields">
         {{ forms.textField({
             label: 'Password history count'|t('password-policy'),
-            instructions: "How many previous passwords to remember and check against when a user changes their password. Set to 0 to disable history checking. Maximum 24 — most compliance frameworks (NIST, OWASP) recommend between 5 and 12."|t('password-policy'),
+            instructions: "How many previous passwords to remember. Users cannot reuse any of their last N passwords. Set to 0 to disable. PCI-DSS requires at least 4, most organizations use 5–12."|t('password-policy'),
             name: 'settings[passwordHistoryCount]',
             value: settings.passwordHistoryCount,
             size: 3,
@@ -37,7 +37,7 @@
 
         {{ forms.textField({
             label: 'History retention (days)'|t('password-policy'),
-            instructions: "Old password hashes are automatically deleted after this many days, even if the history count hasn't been reached. This ensures GDPR-compliant data minimization — password data isn't kept longer than necessary. Does not affect the history count; both limits apply independently."|t('password-policy'),
+            instructions: "Maximum age for stored password hashes. The history count is always respected — old entries are only deleted if the user has enough newer entries to maintain the count. This setting handles GDPR data minimization for overflow entries, not active reuse prevention."|t('password-policy'),
             name: 'settings[passwordHistoryExpiryDays]',
             value: settings.passwordHistoryExpiryDays,
             size: 5,

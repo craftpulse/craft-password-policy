@@ -725,17 +725,12 @@ class PasswordPolicy extends Plugin
                     );
                 }
 
-                // Password history TTL (Pro)
+                // Password history TTL (Pro) — respects count floor per user
                 if ($this->getIsPro() && $settings->passwordHistoryCount > 0) {
-                    $threshold = (new \DateTime())
-                        ->modify("-{$settings->passwordHistoryExpiryDays} days")
-                        ->format('Y-m-d H:i:s');
-
-                    \Craft::$app->getDb()->createCommand()
-                        ->delete('{{%passwordpolicy_password_history}}', [
-                            '<', 'dateCreated', $threshold,
-                        ])
-                        ->execute();
+                    $this->getPasswordHistory()->purgeExpiredHistory(
+                        $settings->passwordHistoryExpiryDays,
+                        $settings->passwordHistoryCount,
+                    );
                 }
 
                 // Audit log (Enterprise)
