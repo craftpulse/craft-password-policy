@@ -143,11 +143,17 @@ class SettingsController extends Controller
 
         $pluginHandle = Craft::$app->getRequest()->getRequiredBodyParam('pluginHandle');
         $plugin = Craft::$app->getPlugins()->getPlugin($pluginHandle);
-        $settings = Craft::$app->getRequest()->getBodyParam('settings', []);
+        $submittedSettings = Craft::$app->getRequest()->getBodyParam('settings', []);
 
         if ($plugin === null) {
             throw new NotFoundHttpException('Plugin not found');
         }
+
+        // Merge with existing settings — each section only submits its own fields,
+        // Craft's savePluginSettings() only persists submitted keys to project config
+        /** @var PasswordPolicy $plugin */
+        $existingSettings = $plugin->getSettings()->getAttributes();
+        $settings = array_merge($existingSettings, $submittedSettings);
 
         // Strip edition-gated settings on lower editions
         /** @var PasswordPolicy $plugin */
