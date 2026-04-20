@@ -136,7 +136,6 @@ return [
     'hunter1',
     'michael1',
     'jordan23',
-    'trustno1',
     'love',
     'peace',
     'alpha',
