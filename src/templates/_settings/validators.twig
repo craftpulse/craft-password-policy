@@ -1,0 +1,58 @@
+{% requirePermission "pp:settings" %}
+
+{% extends "password-policy/_layouts/password-policy-cp-settings.twig" %}
+{% import '_includes/forms.twig' as forms %}
+
+{% set selectedItem = 'validators' %}
+{% set title = 'Advanced Validators'|t('password-policy') %}
+{% set editionLocked = not isPro %}
+
+{% if not readOnly and not editionLocked %}
+    {% block actionButton %}
+        <input type="submit" class="btn submit" value="{{ 'Save'|t('app') }}">
+    {% endblock %}
+{% endif %}
+
+{% block content %}
+    <input type="hidden" name="action" value="password-policy/settings/save">
+    <input type="hidden" name="pluginHandle" value="password-policy">
+    {{ redirectInput('password-policy/settings/validators') }}
+
+    {% if editionLocked %}
+        {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
+    {% endif %}
+
+    <div class="flex-fields">
+        {{ forms.lightswitchField({
+            label: 'Block sequential characters'|t('password-policy'),
+            instructions: "Reject passwords with 3+ sequential characters like abc, 123, or qwerty."|t('password-policy'),
+            name: 'settings[checkSequentialChars]',
+            on: settings.checkSequentialChars,
+            disabled: readOnly or editionLocked,
+        }) }}
+
+        {{ forms.lightswitchField({
+            label: 'Block repeated characters'|t('password-policy'),
+            instructions: "Reject passwords with 3+ repeated characters like aaa or 111."|t('password-policy'),
+            name: 'settings[checkRepeatedChars]',
+            on: settings.checkRepeatedChars,
+            disabled: readOnly or editionLocked,
+        }) }}
+
+        {{ forms.lightswitchField({
+            label: 'Block contextual passwords'|t('password-policy'),
+            instructions: "Reject passwords containing the username, email, name, or site name."|t('password-policy'),
+            name: 'settings[checkContextual]',
+            on: settings.checkContextual,
+            disabled: readOnly or editionLocked,
+        }) }}
+
+        {{ forms.lightswitchField({
+            label: 'Block common passwords'|t('password-policy'),
+            instructions: "Reject passwords found in the common password blocklist."|t('password-policy'),
+            name: 'settings[checkCommonPasswords]',
+            on: settings.checkCommonPasswords,
+            disabled: readOnly or editionLocked,
+        }) }}
+    </div>
+{% endblock %}

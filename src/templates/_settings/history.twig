@@ -1,0 +1,52 @@
+{% requirePermission "pp:settings" %}
+
+{% extends "password-policy/_layouts/password-policy-cp-settings.twig" %}
+{% import '_includes/forms.twig' as forms %}
+
+{% set selectedItem = 'history' %}
+{% set title = 'Password History'|t('password-policy') %}
+{% set editionLocked = not isPro %}
+
+{% if not readOnly and not editionLocked %}
+    {% block actionButton %}
+        <input type="submit" class="btn submit" value="{{ 'Save'|t('app') }}">
+    {% endblock %}
+{% endif %}
+
+{% block content %}
+    <input type="hidden" name="action" value="password-policy/settings/save">
+    <input type="hidden" name="pluginHandle" value="password-policy">
+    {{ redirectInput('password-policy/settings/history') }}
+
+    {% if editionLocked %}
+        {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
+    {% endif %}
+
+    <div class="flex-fields">
+        {{ forms.selectField({
+            label: 'Password history count'|t('password-policy'),
+            instructions: "How many previous passwords to check against. Set to 0 to disable."|t('password-policy'),
+            name: 'settings[passwordHistoryCount]',
+            options: [
+                { label: 'Disabled', value: 0 },
+                { label: '3 passwords', value: 3 },
+                { label: '5 passwords', value: 5 },
+                { label: '10 passwords', value: 10 },
+                { label: '12 passwords', value: 12 },
+                { label: '24 passwords', value: 24 },
+            ],
+            value: settings.passwordHistoryCount,
+            disabled: readOnly or editionLocked,
+        }) }}
+
+        {{ forms.textField({
+            label: 'History retention (days)'|t('password-policy'),
+            instructions: "How long to keep password history entries before automatic cleanup."|t('password-policy'),
+            name: 'settings[passwordHistoryExpiryDays]',
+            value: settings.passwordHistoryExpiryDays,
+            size: 5,
+            type: 'number',
+            disabled: readOnly or editionLocked,
+        }) }}
+    </div>
+{% endblock %}

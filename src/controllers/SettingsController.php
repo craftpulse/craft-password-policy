@@ -14,7 +14,6 @@ use Craft;
 use craft\helpers\UrlHelper;
 use craft\web\Controller;
 use craft\web\UrlManager;
-
 use craftpulse\passwordpolicy\PasswordPolicy;
 use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
@@ -30,6 +29,24 @@ use yii\web\Response;
  */
 class SettingsController extends Controller
 {
+    // Const Properties
+    // =========================================================================
+
+    /**
+     * Valid settings sections for routing.
+     *
+     * @var string[]
+     */
+    private const VALID_SECTIONS = [
+        'configuration',
+        'rules',
+        'retention',
+        'history',
+        'validators',
+        'groups',
+        'audit',
+    ];
+
     // Public Methods
     // =========================================================================
 
@@ -48,48 +65,56 @@ class SettingsController extends Controller
     }
 
     /**
-     * Renders the plugin settings form.
+     * Renders a settings section.
      *
-     * @return Response|null
+     * When allowAdminChanges is disabled, the page renders in read-only mode
+     * so admins can still view the active policy.
+     *
+     * @param string $section
+     * @return Response
      *
      * @throws ForbiddenHttpException
+     * @throws NotFoundHttpException
      *
      * @author CraftPulse
+     * @since 5.2.0
      */
-    public function actionEdit(): ?Response
+    public function actionEdit(string $section = 'configuration'): Response
     {
-        // Ensure they have permission to edit the plugin settings
         $currentUser = Craft::$app->getUser()->getIdentity();
         if (!$currentUser->can('pp:settings')) {
-            throw new ForbiddenHttpException('You do not have permission to edit the Password Policy settings.');
+            throw new ForbiddenHttpException('You do not have permission to view the Password Policy settings.');
         }
+
+        if (!in_array($section, self::VALID_SECTIONS, true)) {
+            throw new NotFoundHttpException('Invalid settings section.');
+        }
+
         $general = Craft::$app->getConfig()->getGeneral();
-        if (!$general->allowAdminChanges) {
-            throw new ForbiddenHttpException('Unable to edit Password Policy plugin settings because admin changes are disabled in this environment.');
-        }
+        $readOnly = !$general->allowAdminChanges;
 
-        // Edit the plugin settings
-        $variables = [];
+        $plugin = PasswordPolicy::$plugin;
         $pluginName = 'Password Policy';
-        $templateTitle = Craft::t('password-policy', 'Plugin settings');
+        $templateTitle = Craft::t('password-policy', 'Settings');
 
-        $variables['fullPageForm'] = true;
-        $variables['pluginName'] = $pluginName;
-        $variables['title'] = $templateTitle;
-        $variables['docTitle'] = "{$pluginName} - {$templateTitle}";
-        $variables['crumbs'] = [
-            [
-                'label' => $pluginName,
-                'url' => UrlHelper::cpUrl('password-policy'),
+        $variables = [
+            'fullPageForm' => !$readOnly,
+            'pluginName' => $pluginName,
+            'title' => $templateTitle,
+            'docTitle' => "{$pluginName} - {$templateTitle}",
+            'crumbs' => [
+                [
+                    'label' => $pluginName,
+                    'url' => UrlHelper::cpUrl('password-policy'),
+                ],
             ],
-            [
-                'label' => $templateTitle,
-                'url' => UrlHelper::cpUrl('password-policy/plugin'),
-            ],
+            'settings' => $plugin->getSettings(),
+            'readOnly' => $readOnly,
+            'isPro' => $plugin->getIsPro(),
+            'isEnterprise' => $plugin->getIsEnterprise(),
         ];
-        $variables['settings'] = PasswordPolicy::$plugin->getSettings();
 
-        return $this->renderTemplate('password-policy/_settings', $variables);
+        return $this->renderTemplate("password-policy/_settings/{$section}", $variables);
     }
 
     /**
@@ -107,7 +132,6 @@ class SettingsController extends Controller
     {
         $this->requirePostRequest();
 
-        // Ensure they have permission to edit the plugin settings
         $currentUser = Craft::$app->getUser()->getIdentity();
         if (!$currentUser->can('pp:settings')) {
             throw new ForbiddenHttpException('You do not have permission to edit the Password Policy settings.');
@@ -117,7 +141,6 @@ class SettingsController extends Controller
             throw new ForbiddenHttpException('Unable to edit Password Policy plugin settings because admin changes are disabled in this environment.');
         }
 
-        // Save the plugin settings
         $pluginHandle = Craft::$app->getRequest()->getRequiredBodyParam('pluginHandle');
         $plugin = Craft::$app->getPlugins()->getPlugin($pluginHandle);
         $settings = Craft::$app->getRequest()->getBodyParam('settings', []);
@@ -168,7 +191,6 @@ class SettingsController extends Controller
         if (!Craft::$app->getPlugins()->savePluginSettings($plugin, $settings)) {
             Craft::$app->getSession()->setError(Craft::t('app', "Couldn't save plugin settings."));
 
-            // Send the redirect back to the template
             /** @var UrlManager $urlManager */
             $urlManager = Craft::$app->getUrlManager();
             $urlManager->setRouteParams([

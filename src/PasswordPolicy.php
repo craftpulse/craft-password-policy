@@ -315,14 +315,8 @@ class PasswordPolicy extends Plugin
             return null;
         }
 
-        $editableSettings = true;
-        $general = Craft::$app->getConfig()->getGeneral();
-
-        if (!$general->allowAdminChanges) {
-            $editableSettings = false;
-        }
-
-        if ($currentUser->can('pp:settings') && $editableSettings) {
+        // Settings visible in read-only mode too (admins can view active policy)
+        if ($currentUser->can('pp:settings')) {
             $subNavs['settings'] = [
                 'label' => 'Settings',
                 'url' => 'password-policy/settings',
@@ -468,6 +462,7 @@ class PasswordPolicy extends Plugin
                     [
                         'password-policy' => 'password-policy/settings/edit',
                         'password-policy/settings' => 'password-policy/settings/edit',
+                        'password-policy/settings/<section:{slug}>' => 'password-policy/settings/edit',
                         'password-policy/plugins/password-policy' => 'password-policy/settings/edit',
                         'password-policy/validate' => 'password-policy/validation/validate',
                     ],
