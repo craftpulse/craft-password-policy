@@ -62,6 +62,14 @@
             id: 'expiryInput',
         }, expiryInput) }}
 
+        {% if settings.expiryAmount %}
+            <p class="notice has-icon">
+                <span class="icon" aria-hidden="true"></span>
+                <span class="visually-hidden">{{ "Notice:"|t('app') }} </span>
+                <span>{{ "NIST 800-63B and OWASP ASVS recommend against periodic password changes. PCI-DSS v4.0 requires 90-day rotation (Req 8.3.9). If your organization must comply with both, document the conflict in your security policy."|t('password-policy') }}</span>
+            </p>
+        {% endif %}
+
         {% if isPro %}
             <hr>
 

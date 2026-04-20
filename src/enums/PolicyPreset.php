@@ -41,6 +41,12 @@ enum PolicyPreset: string
     case STRICT_ENTERPRISE = 'strict_enterprise';
 
     /**
+     * PCI-DSS v4.0: Satisfies Req 8.3.5–8.3.9 including 90-day rotation.
+     * Note: 90-day rotation conflicts with NIST 800-63B SHOULD NOT guidance.
+     */
+    case PCI_DSS_V4 = 'pci_dss_v4';
+
+    /**
      * Returns a human-readable label for the preset.
      *
      * @return string
@@ -54,6 +60,7 @@ enum PolicyPreset: string
             self::NIST_800_63B => 'NIST 800-63B',
             self::OWASP_ASVS => 'OWASP ASVS L1',
             self::STRICT_ENTERPRISE => 'Strict Enterprise',
+            self::PCI_DSS_V4 => 'PCI-DSS v4.0',
         };
     }
 
@@ -74,6 +81,7 @@ enum PolicyPreset: string
             self::NIST_800_63B => $this->_applyNist($policy),
             self::OWASP_ASVS => $this->_applyOwasp($policy),
             self::STRICT_ENTERPRISE => $this->_applyStrictEnterprise($policy),
+            self::PCI_DSS_V4 => $this->_applyPciDss($policy),
         };
 
         return $policy;
@@ -138,6 +146,30 @@ enum PolicyPreset: string
         $policy->checkSequentialChars = true;
         $policy->checkRepeatedChars = true;
         $policy->checkContextual = true;
+        $policy->checkCommonPasswords = true;
+        $policy->expiryAmount = 90;
+        $policy->expiryPeriod = 'day';
+    }
+
+    /**
+     * PCI-DSS v4.0 preset: Req 8.3.5–8.3.9 compliance.
+     *
+     * Note: 90-day rotation (Req 8.3.9) conflicts with NIST 800-63B
+     * SHOULD NOT guidance on periodic password changes.
+     *
+     * @param GroupPolicyModel $policy
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _applyPciDss(GroupPolicyModel $policy): void
+    {
+        $policy->minLength = 12;
+        $policy->cases = true;
+        $policy->numbers = true;
+        $policy->pwned = true;
+        $policy->passwordHistoryCount = 4;
         $policy->checkCommonPasswords = true;
         $policy->expiryAmount = 90;
         $policy->expiryPeriod = 'day';
