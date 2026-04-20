@@ -1,0 +1,55 @@
+{% requirePermission "pp:settings" %}
+
+{% extends "password-policy/_layouts/password-policy-cp-settings.twig" %}
+{% import '_includes/forms.twig' as forms %}
+
+{% set selectedItem = 'audit' %}
+{% set title = 'Audit Logging'|t('password-policy') %}
+{% set editionLocked = not isEnterprise %}
+
+{% if not readOnly and not editionLocked %}
+    {% block actionButton %}
+        <input type="submit" class="btn submit" value="{{ 'Save'|t('app') }}">
+    {% endblock %}
+{% endif %}
+
+{% block content %}
+    <input type="hidden" name="action" value="password-policy/settings/save">
+    <input type="hidden" name="pluginHandle" value="password-policy">
+    {{ redirectInput('password-policy/settings/audit') }}
+
+    {% if editionLocked %}
+        {% include "password-policy/_components/edition-gate" with { edition: 'Enterprise' } %}
+    {% endif %}
+
+    <div class="flex-fields">
+        {{ forms.lightswitchField({
+            label: 'Enable audit logging'|t('password-policy'),
+            instructions: "Record all password-related security events. Required for SOC 2 and ISO 27001 compliance."|t('password-policy'),
+            name: 'settings[enableAuditLog]',
+            on: settings.enableAuditLog,
+            disabled: readOnly or editionLocked,
+        }) }}
+
+        {{ forms.textField({
+            label: 'Audit log retention (days)'|t('password-policy'),
+            instructions: "How long to keep audit log entries before automatic cleanup."|t('password-policy'),
+            name: 'settings[auditLogRetentionDays]',
+            value: settings.auditLogRetentionDays,
+            size: 5,
+            type: 'number',
+            disabled: readOnly or editionLocked,
+        }) }}
+
+        <hr>
+
+        {{ forms.autosuggestField({
+            label: 'Admin alert email'|t('password-policy'),
+            instructions: "Email address for security alerts (lockouts, breach detections). Supports environment variables."|t('password-policy'),
+            name: 'settings[adminAlertEmail]',
+            suggestEnvVars: true,
+            value: settings.adminAlertEmail,
+            disabled: readOnly or editionLocked,
+        }) }}
+    </div>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% requirePermission "pp:settings" %}
+
+{% extends "password-policy/_layouts/password-policy-cp-settings.twig" %}
+{% import '_includes/forms.twig' as forms %}
+
+{% set selectedItem = 'configuration' %}
+{% set title = 'Configuration'|t('password-policy') %}
+
+{% if not readOnly %}
+    {% block actionButton %}
+        <input type="submit" class="btn submit" value="{{ 'Save'|t('app') }}">
+    {% endblock %}
+{% endif %}
+
+{% block content %}
+    <input type="hidden" name="action" value="password-policy/settings/save">
+    <input type="hidden" name="pluginHandle" value="password-policy">
+    {{ redirectInput('password-policy/settings/configuration') }}
+
+    <div class="flex-fields">
+        {{ forms.lightswitchField({
+            label: 'Enable "Have I Been Pwned"'|t('password-policy'),
+            instructions: "Check passwords against the HIBP breach database using k-Anonymity (only a 5-character hash prefix is sent, never the password)."|t('password-policy'),
+            name: 'settings[pwned]',
+            on: settings.pwned,
+            disabled: readOnly,
+        }) }}
+
+        {{ forms.selectField({
+            label: 'HIBP Failure Mode'|t('password-policy'),
+            instructions: "What happens when the HIBP API is unreachable. **Fail-open** accepts the password. **Fail-closed** rejects it."|t('password-policy'),
+            name: 'settings[pwnedFailMode]',
+            options: [
+                { label: 'Fail-open (accept password)'|t('password-policy'), value: 'open' },
+                { label: 'Fail-closed (reject password)'|t('password-policy'), value: 'closed' },
+            ],
+            value: settings.pwnedFailMode,
+            warning: settings.pwnedFailMode == 'closed' ? 'Fail-closed will block ALL password changes when the HIBP API is unreachable.'|t('password-policy') : null,
+            disabled: readOnly,
+        }) }}
+
+        <hr>
+
+        {{ forms.lightswitchField({
+            label: 'Show password strength indicator'|t('password-policy'),
+            instructions: "Display a password strength meter powered by zxcvbn in the control panel."|t('password-policy'),
+            name: 'settings[showStrengthIndicator]',
+            on: settings.showStrengthIndicator,
+            disabled: readOnly,
+        }) }}
+
+        <hr>
+
+        {{ forms.lightswitchField({
+            label: 'Force change on first login'|t('password-policy'),
+            instructions: "Require new users to change their password on first login."|t('password-policy'),
+            name: 'settings[forceChangeOnFirstLogin]',
+            on: settings.forceChangeOnFirstLogin,
+            disabled: readOnly,
+        }) }}
+
+        <hr>
+
+        {{ forms.lightswitchField({
+            label: 'Enable CSP Nonce'|t('password-policy'),
+            instructions: 'Generates a Content Security Policy nonce for the password indicator script.'|t('password-policy'),
+            name: 'settings[cspNonce]',
+            on: settings.cspNonce,
+            tip: 'Only enable if you have a strict CSP policy requiring nonces for external scripts.'|t('password-policy'),
+            disabled: readOnly,
+        }) }}
+    </div>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% requirePermission "pp:settings" %}
+
+{% extends "password-policy/_layouts/password-policy-cp-settings.twig" %}
+{% import '_includes/forms.twig' as forms %}
+
+{% set selectedItem = 'retention' %}
+{% set title = 'Password Retention'|t('password-policy') %}
+
+{% if not readOnly %}
+    {% block actionButton %}
+        <input type="submit" class="btn submit" value="{{ 'Save'|t('app') }}">
+    {% endblock %}
+{% endif %}
+
+{% block content %}
+    <input type="hidden" name="action" value="password-policy/settings/save">
+    <input type="hidden" name="pluginHandle" value="password-policy">
+    {{ redirectInput('password-policy/settings/retention') }}
+
+    <div class="flex-fields">
+        {{ forms.lightswitchField({
+            label: 'Enable retention utilities'|t('password-policy'),
+            instructions: "Show the password retention utility in the CP for force-resetting expired passwords."|t('password-policy'),
+            name: 'settings[retentionUtilities]',
+            on: settings.retentionUtilities,
+            disabled: readOnly,
+        }) }}
+
+        <hr>
+
+        {%- set expiryInput %}
+            <div class="flex">
+                <div class="field">
+                    {{ forms.text({
+                        class: 'ltr',
+                        name: 'settings[expiryAmount]',
+                        size: 4,
+                        type: 'number',
+                        value: settings.expiryAmount,
+                        disabled: readOnly,
+                    }) }}
+                </div>
+                <div>
+                    {{ forms.select({
+                        name: 'settings[expiryPeriod]',
+                        options: [
+                            { label: 'Day(s)'|t('password-policy'), value: 'day' },
+                            { label: 'Week(s)'|t('password-policy'), value: 'week' },
+                            { label: 'Month(s)'|t('password-policy'), value: 'month' },
+                            { label: 'Year(s)'|t('password-policy'), value: 'year' },
+                        ],
+                        value: settings.expiryPeriod,
+                        disabled: readOnly,
+                    }) }}
+                </div>
+            </div>
+        {%- endset -%}
+
+        {{ forms.field({
+            label: "Expiry period"|t('password-policy'),
+            instructions: "How long until passwords expire. Leave empty to disable expiration."|t('password-policy'),
+            id: 'expiryInput',
+        }, expiryInput) }}
+
+        {% if isPro %}
+            <hr>
+
+            {{ forms.textField({
+                label: 'Expiry reminder days'|t('password-policy'),
+                instructions: "How many days before expiry to send a reminder email."|t('password-policy'),
+                name: 'settings[expiryReminderDays]',
+                value: settings.expiryReminderDays,
+                size: 4,
+                type: 'number',
+                disabled: readOnly,
+            }) }}
+        {% endif %}
+    </div>
+{% endblock %}

@@ -1,0 +1,102 @@
+{% requirePermission "pp:settings" %}
+
+{% extends "password-policy/_layouts/password-policy-cp-settings.twig" %}
+{% import '_includes/forms.twig' as forms %}
+
+{% set selectedItem = 'rules' %}
+{% set title = 'Password Rules'|t('password-policy') %}
+
+{% if not readOnly %}
+    {% block actionButton %}
+        <input type="submit" class="btn submit" value="{{ 'Save'|t('app') }}">
+    {% endblock %}
+{% endif %}
+
+{% block content %}
+    <input type="hidden" name="action" value="password-policy/settings/save">
+    <input type="hidden" name="pluginHandle" value="password-policy">
+    {{ redirectInput('password-policy/settings/rules') }}
+
+    <div class="flex-fields">
+        {{ forms.autosuggestField({
+            label: 'Minimum password length'|t('password-policy'),
+            instructions: "The minimum number of characters a password must have. Cannot be less than 6."|t('password-policy'),
+            name: 'settings[minLength]',
+            suggestEnvVars: true,
+            value: settings.minLength,
+            required: true,
+            disabled: readOnly,
+        }) }}
+
+        {{ forms.autosuggestField({
+            label: 'Maximum password length'|t('password-policy'),
+            instructions: "The maximum number of characters allowed. Set to 0 for no limit."|t('password-policy'),
+            name: 'settings[maxLength]',
+            suggestEnvVars: true,
+            value: settings.maxLength,
+            disabled: readOnly,
+        }) }}
+
+        <hr>
+
+        {% if isPro %}
+            {{ forms.selectField({
+                label: 'Complexity mode'|t('password-policy'),
+                instructions: "**Individual** requires specific character types. **Minimum** requires X of 4 types (uppercase, lowercase, number, symbol)."|t('password-policy'),
+                name: 'settings[complexityMode]',
+                options: [
+                    { label: 'Individual toggles'|t('password-policy'), value: 'individual' },
+                    { label: 'Minimum character types'|t('password-policy'), value: 'minimum' },
+                ],
+                value: settings.complexityMode,
+                toggle: true,
+                targetPrefix: 'complexity-',
+                disabled: readOnly,
+            }) }}
+        {% endif %}
+
+        <div id="complexity-individual" {% if isPro and settings.complexityMode == 'minimum' %}class="hidden"{% endif %}>
+            {{ forms.lightswitchField({
+                label: 'Require numbers'|t('password-policy'),
+                instructions: "Password must contain at least one number."|t('password-policy'),
+                name: 'settings[numbers]',
+                on: settings.numbers,
+                disabled: readOnly,
+            }) }}
+
+            {{ forms.lightswitchField({
+                label: 'Require mixed case'|t('password-policy'),
+                instructions: "Password must contain both uppercase and lowercase letters."|t('password-policy'),
+                name: 'settings[cases]',
+                on: settings.cases,
+                disabled: readOnly,
+            }) }}
+
+            {{ forms.lightswitchField({
+                label: 'Require symbols'|t('password-policy'),
+                instructions: "Password must contain at least one special character."|t('password-policy'),
+                name: 'settings[symbols]',
+                on: settings.symbols,
+                disabled: readOnly,
+            }) }}
+        </div>
+
+        {% if isPro %}
+            <div id="complexity-minimum" {% if settings.complexityMode != 'minimum' %}class="hidden"{% endif %}>
+                {{ forms.selectField({
+                    label: 'Minimum character types required'|t('password-policy'),
+                    instructions: "The password must contain at least this many of the 4 character types."|t('password-policy'),
+                    name: 'settings[minimumCharacterTypes]',
+                    options: [
+                        { label: '1 of 4', value: 1 },
+                        { label: '2 of 4', value: 2 },
+                        { label: '3 of 4', value: 3 },
+                        { label: '4 of 4', value: 4 },
+                    ],
+                    value: settings.minimumCharacterTypes,
+                    disabled: readOnly,
+                }) }}
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}
