@@ -36,11 +36,17 @@
         "craftcms/ecs": "dev-main",
         "craftcms/phpstan": "dev-main",
         "yiisoft/yii2-redis": "^2.0",
-        "vlucas/phpdotenv": "^5.4.0"
+        "vlucas/phpdotenv": "^5.4.0",
+        "pestphp/pest": "^4.6"
     },
     "autoload": {
         "psr-4": {
             "craftpulse\\passwordpolicy\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "craftpulse\\passwordpolicy\\tests\\": "tests/"
         }
     },
     "extra": {
@@ -55,12 +61,14 @@
     "scripts": {
         "phpstan": "phpstan --ansi --memory-limit=1G",
         "check-cs": "ecs check --ansi",
-        "fix-cs": "ecs check --fix --ansi"
+        "fix-cs": "ecs check --fix --ansi",
+        "test": "pest --colors=always"
     },
     "config": {
         "allow-plugins": {
             "yiisoft/yii2-composer": true,
-            "craftcms/plugin-installer": true
+            "craftcms/plugin-installer": true,
+            "pestphp/pest-plugin": true
         }
     }
 }
