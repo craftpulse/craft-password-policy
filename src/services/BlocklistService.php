@@ -72,15 +72,17 @@ class BlocklistService extends Component
             ->delete('{{%passwordpolicy_blocklist}}', ['source' => 'common'])
             ->execute();
 
-        // Batch insert new entries
+        // Batch insert new entries (deduplicated)
         $now = (new DateTime())->format('Y-m-d H:i:s');
         $rows = [];
+        $seen = [];
 
         foreach ($words as $word) {
             $word = strtolower(trim($word));
-            if (empty($word)) {
+            if (empty($word) || isset($seen[$word])) {
                 continue;
             }
+            $seen[$word] = true;
             $rows[] = [$word, 'common', $now];
         }
 
