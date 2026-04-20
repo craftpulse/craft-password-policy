@@ -1,11 +1,13 @@
 {# Edition gate — shows upgrade prompt for locked features #}
 {# @var edition string The required edition name (Pro, Enterprise) #}
 
-<div class="readable" style="margin-bottom: 24px;">
-    <blockquote class="note tip">
-        <p>
+<div class="field">
+    <p class="notice has-icon">
+        <span class="icon" aria-hidden="true"></span>
+        <span class="visually-hidden">{{ "Notice:"|t('app') }} </span>
+        <span>
             <strong>{{ edition }}</strong> {{ "edition required."|t('password-policy') }}
             {{ "Upgrade to unlock this feature."|t('password-policy') }}
-        </p>
-    </blockquote>
+        </span>
+    </p>
 </div>

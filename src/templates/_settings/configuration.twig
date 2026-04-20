@@ -30,14 +30,27 @@
             label: 'HIBP Failure Mode'|t('password-policy'),
             instructions: "What happens when the HIBP API is unreachable. **Fail-open** accepts the password. **Fail-closed** rejects it."|t('password-policy'),
             name: 'settings[pwnedFailMode]',
+            id: 'pwnedFailMode',
             options: [
                 { label: 'Fail-open (accept password)'|t('password-policy'), value: 'open' },
                 { label: 'Fail-closed (reject password)'|t('password-policy'), value: 'closed' },
             ],
             value: settings.pwnedFailMode,
-            warning: settings.pwnedFailMode == 'closed' ? 'Fail-closed will block ALL password changes when the HIBP API is unreachable.'|t('password-policy') : null,
             disabled: readOnly,
         }) }}
+
+        <p id="pwnedFailMode-warning" class="warning has-icon" {% if settings.pwnedFailMode != 'closed' %}style="display:none"{% endif %}>
+            <span class="icon" aria-hidden="true"></span>
+            <span class="visually-hidden">{{ "Warning:"|t('app') }} </span>
+            <span>{{ "Fail-closed will block ALL password changes when the HIBP API is unreachable."|t('password-policy') }}</span>
+        </p>
+
+        {% js %}
+            document.getElementById('pwnedFailMode').addEventListener('change', function() {
+                document.getElementById('pwnedFailMode-warning').style.display =
+                    this.value === 'closed' ? '' : 'none';
+            });
+        {% endjs %}
 
         <hr>
 
