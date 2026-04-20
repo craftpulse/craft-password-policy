@@ -23,29 +23,26 @@
     {% endif %}
 
     <div class="flex-fields">
-        {{ forms.selectField({
+        {{ forms.textField({
             label: 'Password history count'|t('password-policy'),
-            instructions: "How many previous passwords to check against. Set to 0 to disable."|t('password-policy'),
+            instructions: "How many previous passwords to remember and check against when a user changes their password. Set to 0 to disable history checking. Maximum 24 — most compliance frameworks (NIST, OWASP) recommend between 5 and 12."|t('password-policy'),
             name: 'settings[passwordHistoryCount]',
-            options: [
-                { label: 'Disabled', value: 0 },
-                { label: '3 passwords', value: 3 },
-                { label: '5 passwords', value: 5 },
-                { label: '10 passwords', value: 10 },
-                { label: '12 passwords', value: 12 },
-                { label: '24 passwords', value: 24 },
-            ],
             value: settings.passwordHistoryCount,
+            size: 3,
+            type: 'number',
+            min: 0,
+            max: 24,
             disabled: readOnly or editionLocked,
         }) }}
 
         {{ forms.textField({
             label: 'History retention (days)'|t('password-policy'),
-            instructions: "How long to keep password history entries before automatic cleanup."|t('password-policy'),
+            instructions: "Old password hashes are automatically deleted after this many days, even if the history count hasn't been reached. This ensures GDPR-compliant data minimization — password data isn't kept longer than necessary. Does not affect the history count; both limits apply independently."|t('password-policy'),
             name: 'settings[passwordHistoryExpiryDays]',
             value: settings.passwordHistoryExpiryDays,
             size: 5,
             type: 'number',
+            min: 1,
             disabled: readOnly or editionLocked,
         }) }}
     </div>
