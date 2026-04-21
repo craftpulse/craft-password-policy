@@ -117,10 +117,15 @@ class ContextualValidator extends Validator
             }
         }
 
-        // System name
+        // System name — split multi-word names into individual terms
         $systemName = Craft::$app->getSystemName();
         if (!empty($systemName)) {
             $terms[] = $systemName;
+            foreach (preg_split('/[\s\-_]+/', $systemName) as $word) {
+                if (strlen($word) >= self::MIN_CONTEXT_LENGTH) {
+                    $terms[] = $word;
+                }
+            }
         }
 
         // Primary site domain
