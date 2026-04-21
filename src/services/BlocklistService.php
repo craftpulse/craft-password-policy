@@ -10,6 +10,7 @@
 
 namespace craftpulse\passwordpolicy\services;
 
+use Carbon\Carbon;
 use Craft;
 use craft\db\Query;
 use DateTime;
@@ -73,7 +74,7 @@ class BlocklistService extends Component
             ->execute();
 
         // Batch insert new entries (deduplicated)
-        $now = (new DateTime())->format('Y-m-d H:i:s');
+        $now = Carbon::now('UTC')->format('Y-m-d H:i:s');
         $rows = [];
         $seen = [];
 
@@ -137,7 +138,7 @@ class BlocklistService extends Component
             ->insert('{{%passwordpolicy_blocklist}}', [
                 'word' => $word,
                 'source' => 'custom',
-                'dateCreated' => (new DateTime())->format('Y-m-d H:i:s'),
+                'dateCreated' => Carbon::now('UTC')->format('Y-m-d H:i:s'),
             ])
             ->execute();
 

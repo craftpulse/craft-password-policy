@@ -127,7 +127,7 @@ class PasswordHistoryService extends Component
         $record = new PasswordHistoryRecord();
         $record->userId = $userId;
         $record->passwordHash = $passwordHash;
-        $record->dateCreated = new \DateTime();
+        $record->dateCreated = \Carbon\Carbon::now('UTC');
         $record->uid = StringHelper::UUID();
         $record->save(false);
 
@@ -273,7 +273,7 @@ class PasswordHistoryService extends Component
             return 0;
         }
 
-        $threshold = (new \DateTime())->modify("-{$expiryDays} days")->format('Y-m-d H:i:s');
+        $threshold = \Carbon\Carbon::now('UTC')->subDays($expiryDays)->format('Y-m-d H:i:s');
 
         // Get all users with history entries
         $userIds = (new Query())

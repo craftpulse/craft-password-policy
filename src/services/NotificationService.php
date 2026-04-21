@@ -10,11 +10,11 @@
 
 namespace craftpulse\passwordpolicy\services;
 
+use Carbon\Carbon;
 use Craft;
 use craft\db\Query;
 use craft\elements\User;
 use craftpulse\passwordpolicy\PasswordPolicy;
-use DateTime;
 use yii\base\Component;
 use yii\db\Exception;
 
@@ -138,7 +138,7 @@ class NotificationService extends Component
             ->where([
                 'notificationType' => 'admin_alert_' . $event,
             ])
-            ->andWhere(['>=', 'sentAt', (new DateTime())->modify('-5 minutes')->format('Y-m-d H:i:s')])
+            ->andWhere(['>=', 'sentAt', Carbon::now('UTC')->subMinutes(5)->format('Y-m-d H:i:s')])
             ->count();
 
         if ((int)$recentCount > 0) {
@@ -177,7 +177,7 @@ class NotificationService extends Component
      */
     public function pruneOldEntries(int $daysToKeep = 30): int
     {
-        $threshold = (new DateTime())->modify("-{$daysToKeep} days")->format('Y-m-d H:i:s');
+        $threshold = Carbon::now('UTC')->subDays($daysToKeep)->format('Y-m-d H:i:s');
 
         return Craft::$app->getDb()->createCommand()
             ->delete('{{%passwordpolicy_notification_log}}', ['<', 'sentAt', $threshold])
@@ -203,7 +203,7 @@ class NotificationService extends Component
 
         // For expiry reminders, check within the reminder window
         $window = $settings->expiryReminderDays;
-        $threshold = (new DateTime())->modify("-{$window} days")->format('Y-m-d H:i:s');
+        $threshold = Carbon::now('UTC')->subDays($window)->format('Y-m-d H:i:s');
 
         return (new Query())
             ->from('{{%passwordpolicy_notification_log}}')
@@ -232,7 +232,7 @@ class NotificationService extends Component
                 ->insert('{{%passwordpolicy_notification_log}}', [
                     'userId' => $userId,
                     'notificationType' => $type,
-                    'sentAt' => (new DateTime())->format('Y-m-d H:i:s'),
+                    'sentAt' => Carbon::now('UTC')->format('Y-m-d H:i:s'),
                 ])
                 ->execute();
         } catch (\Throwable $e) {

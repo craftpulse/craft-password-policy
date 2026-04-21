@@ -103,7 +103,7 @@ class AuditController extends Controller
      */
     public function actionExport(): int
     {
-        $threshold = (new \DateTime())->modify("-{$this->days} days")->format('Y-m-d H:i:s');
+        $threshold = \Carbon\Carbon::now('UTC')->subDays($this->days)->format('Y-m-d H:i:s');
 
         $query = (new Query())
             ->from('{{%passwordpolicy_audit_log}}')
