@@ -10,12 +10,12 @@
 
 namespace craftpulse\passwordpolicy\services;
 
+use Carbon\Carbon;
 use Craft;
 use craft\db\Query;
 use craft\helpers\StringHelper;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\records\AuditLogRecord;
-use DateTime;
 use yii\base\Component;
 
 /**
@@ -134,7 +134,7 @@ class AuditLogService extends Component
             $record->details = $filteredDetails;
             $record->ipHash = $ipHash;
             $record->userIdentifier = $userIdentifier;
-            $record->dateCreated = new DateTime();
+            $record->dateCreated = Carbon::now('UTC');
             $record->uid = StringHelper::UUID();
             $record->save(false);
         } catch (\Throwable $e) {
@@ -201,7 +201,7 @@ class AuditLogService extends Component
      */
     public function purgeOldEntries(int $daysToKeep = 365): int
     {
-        $threshold = (new DateTime())->modify("-{$daysToKeep} days")->format('Y-m-d H:i:s');
+        $threshold = Carbon::now('UTC')->subDays($daysToKeep)->format('Y-m-d H:i:s');
 
         return Craft::$app->getDb()->createCommand()
             ->delete('{{%passwordpolicy_audit_log}}', ['<', 'dateCreated', $threshold])
