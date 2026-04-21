@@ -1,13 +1,14 @@
 {# Edition gate — shows upgrade prompt for locked features #}
 {# @var edition string The required edition name (Pro, Enterprise) #}
 
+{% set pluginHandle = 'password-policy' %}
+{% set upgradeUrl = cpUrl('plugin-store/' ~ pluginHandle) %}
+
 <div class="field">
-    <p class="notice has-icon">
-        <span class="icon" aria-hidden="true"></span>
-        <span class="visually-hidden">{{ "Notice:"|t('app') }} </span>
-        <span>
-            <strong>{{ edition }}</strong> {{ "edition required."|t('password-policy') }}
-            {{ "Upgrade to unlock this feature."|t('password-policy') }}
-        </span>
-    </p>
+    <blockquote class="note tip">
+        <p>
+            {{ "This feature requires the {edition} edition."|t('password-policy', { edition: '<strong>' ~ edition ~ '</strong>' }) }}
+            <a href="{{ upgradeUrl }}">{{ "Upgrade now"|t('password-policy') }} &rarr;</a>
+        </p>
+    </blockquote>
 </div>
