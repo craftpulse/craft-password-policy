@@ -4,10 +4,12 @@
 {% set pluginHandle = 'password-policy' %}
 {% set upgradeUrl = cpUrl('plugin-store/' ~ pluginHandle) %}
 
-<div class="field">
+<div class="readable">
     <blockquote class="note tip">
         <p>
-            {{ "This feature requires the {edition} edition."|t('password-policy', { edition: '<strong>' ~ edition ~ '</strong>' }) }}
+            {{ "This feature requires the {edition} edition."|t('password-policy', {
+                edition: tag('strong', { text: edition })
+            }) }}
             <a href="{{ upgradeUrl }}">{{ "Upgrade now"|t('password-policy') }} &rarr;</a>
         </p>
     </blockquote>
