@@ -580,6 +580,13 @@ class PasswordPolicy extends Plugin
                 $cacheKey = ($user->id) . ':' . spl_object_id($user);
                 $plaintext = $this->getPasswordHistory()->getAndClearCache($cacheKey);
 
+                // For new users, the BEFORE_SAVE cache key used "0:" since
+                // the user had no ID yet. Try the fallback key.
+                if ($plaintext === null && $event->isNew) {
+                    $fallbackKey = '0:' . spl_object_id($user);
+                    $plaintext = $this->getPasswordHistory()->getAndClearCache($fallbackKey);
+                }
+
                 // Store password hash in history if Pro and history enabled
                 if ($plaintext !== null && $this->getIsPro() && $settings->passwordHistoryCount > 0) {
                     try {
