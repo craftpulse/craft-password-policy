@@ -11,9 +11,11 @@
 namespace craftpulse\passwordpolicy\controllers;
 
 use Craft;
+use craft\helpers\Queue;
 use craft\helpers\UrlHelper;
 use craft\web\Controller;
 use craft\web\UrlManager;
+use craftpulse\passwordpolicy\jobs\SeedBlocklist;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
@@ -153,6 +155,7 @@ class SettingsController extends Controller
         // Craft's savePluginSettings() only persists submitted keys to project config
         /** @var PasswordPolicy $plugin */
         $existingSettings = $plugin->getSettings()->getAttributes();
+        $oldCheckCommonPasswords = $existingSettings['checkCommonPasswords'] ?? false;
         $settings = array_merge($existingSettings, $submittedSettings);
 
         // Strip edition-gated settings on lower editions
@@ -206,8 +209,44 @@ class SettingsController extends Controller
             return null;
         }
 
+        // Auto-seed blocklist when "Block common passwords" is toggled on with an empty blocklist
+        $this->_maybeSeedBlocklist($oldCheckCommonPasswords, $settings);
+
         Craft::$app->getSession()->setNotice(Craft::t('app', 'Plugin settings saved.'));
 
         return $this->redirectToPostedUrl();
+    }
+
+    // Private Methods
+    // =========================================================================
+
+    /**
+     * Pushes a blocklist seed job when the common passwords toggle is enabled
+     * and the blocklist is empty.
+     *
+     * @param mixed $oldValue The previous checkCommonPasswords value
+     * @param array $newSettings The merged settings after save
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _maybeSeedBlocklist(mixed $oldValue, array $newSettings): void
+    {
+        $newValue = $newSettings['checkCommonPasswords'] ?? false;
+
+        if (!$newValue || $oldValue) {
+            return;
+        }
+
+        if (PasswordPolicy::$plugin->getBlocklist()->getCommonCount() > 0) {
+            return;
+        }
+
+        Queue::push(new SeedBlocklist());
+
+        Craft::$app->getSession()->setNotice(
+            Craft::t('password-policy', 'Common password blocklist will be seeded in the background.'),
+        );
     }
 }
