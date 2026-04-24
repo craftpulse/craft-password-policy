@@ -14,6 +14,7 @@ use Craft;
 use craft\db\Query;
 use craft\db\Table;
 use craft\elements\User;
+use craft\helpers\DateTimeHelper;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use DateTime;
 use nystudio107\pluginvite\variables\ViteVariableInterface;
@@ -116,7 +117,7 @@ class PasswordPolicyVariable implements ViteVariableInterface
             return 'reset_required';
         }
 
-        if ($user->lastPasswordChangeDate === null) {
+        if ($this->_getLastPasswordChangeDate($user) === null) {
             return 'never_changed';
         }
 
@@ -143,7 +144,11 @@ class PasswordPolicyVariable implements ViteVariableInterface
     {
         $user = $this->_getCurrentUser();
 
-        return $user?->lastPasswordChangeDate;
+        if ($user === null) {
+            return null;
+        }
+
+        return $this->_getLastPasswordChangeDate($user);
     }
 
     /**
@@ -186,6 +191,36 @@ class PasswordPolicyVariable implements ViteVariableInterface
     }
 
     /**
+     * Returns the last password change date for a user, fetched directly
+     * from the users table.
+     *
+     * Craft's UserQuery::beforePrepare() does not include lastPasswordChangeDate
+     * in its default column selection, so User elements loaded via getIdentity()
+     * always have this property as null. This method queries the column directly
+     * to get the actual value.
+     *
+     * @param User $user
+     * @return DateTime|null
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _getLastPasswordChangeDate(User $user): ?DateTime
+    {
+        $date = (new Query())
+            ->select(['lastPasswordChangeDate'])
+            ->from(Table::USERS)
+            ->where(['id' => $user->id])
+            ->scalar();
+
+        if ($date === false || $date === null) {
+            return null;
+        }
+
+        return DateTimeHelper::toDateTime($date) ?: null;
+    }
+
+    /**
      * Calculates the password expiry date for a user based on settings.
      *
      * @param User $user
@@ -202,7 +237,7 @@ class PasswordPolicyVariable implements ViteVariableInterface
             return null;
         }
 
-        $lastChange = $user->lastPasswordChangeDate;
+        $lastChange = $this->_getLastPasswordChangeDate($user);
 
         if ($lastChange === null) {
             return null;
