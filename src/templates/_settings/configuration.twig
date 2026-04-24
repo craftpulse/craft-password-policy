@@ -18,17 +18,23 @@
     {{ redirectInput('password-policy/settings/configuration') }}
 
     <div class="flex-fields">
+        {% set hibpInfo %}
+            <span class="info">{{ "Uses the k-Anonymity model: only the first 5 characters of the SHA-1 hash are sent to the HIBP API. The full password never leaves your server. Checks against over 800 million compromised passwords from known data breaches."|t('password-policy') }}</span>
+        {% endset %}
         {{ forms.lightswitchField({
             label: 'Enable "Have I Been Pwned"'|t('password-policy'),
-            instructions: "Check passwords against the HIBP breach database using k-Anonymity (only a 5-character hash prefix is sent, never the password)."|t('password-policy'),
+            instructions: "Check passwords against the HIBP breach database."|t('password-policy') ~ hibpInfo,
             name: 'settings[pwned]',
             on: settings.pwned,
             disabled: readOnly,
         }) }}
 
+        {% set failModeInfo %}
+            <span class="info">{{ "Fail-open accepts the password when the API is unreachable — prioritizes availability. Fail-closed rejects it — prioritizes security but may block all password changes during an outage. Most organizations should use fail-open unless compliance requires otherwise."|t('password-policy') }}</span>
+        {% endset %}
         {{ forms.selectField({
             label: 'HIBP Failure Mode'|t('password-policy'),
-            instructions: "What happens when the HIBP API is unreachable. **Fail-open** accepts the password. **Fail-closed** rejects it."|t('password-policy'),
+            instructions: "What happens when the HIBP API is unreachable."|t('password-policy') ~ failModeInfo,
             name: 'settings[pwnedFailMode]',
             id: 'pwnedFailMode',
             options: [
@@ -64,9 +70,12 @@
 
         <hr>
 
+        {% set forceChangeInfo %}
+            <span class="info">{{ "Newly created users will have passwordResetRequired set automatically. They will be prompted to change their password immediately after first login, ensuring admin-assigned initial passwords are replaced."|t('password-policy') }}</span>
+        {% endset %}
         {{ forms.lightswitchField({
             label: 'Force change on first login'|t('password-policy'),
-            instructions: "Require new users to change their password on first login."|t('password-policy'),
+            instructions: "Require new users to change their password on first login."|t('password-policy') ~ forceChangeInfo,
             name: 'settings[forceChangeOnFirstLogin]',
             on: settings.forceChangeOnFirstLogin,
             disabled: readOnly,
