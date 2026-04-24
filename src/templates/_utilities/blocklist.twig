@@ -1,0 +1,54 @@
+{% import "_includes/forms" as forms %}
+
+<h1>{{ 'Password Blocklist'|t('password-policy') }}</h1>
+
+<div class="readable">
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th>{{ 'Source'|t('password-policy') }}</th>
+                <th>{{ 'Count'|t('password-policy') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{ 'Common passwords (bundled)'|t('password-policy') }}</td>
+                <td>{{ commonCount }}</td>
+            </tr>
+            <tr>
+                <td>{{ 'Custom words'|t('password-policy') }}</td>
+                <td>{{ customCount }}</td>
+            </tr>
+            <tr>
+                <th>{{ 'Total'|t('password-policy') }}</th>
+                <th>{{ commonCount + customCount }}</th>
+            </tr>
+        </tbody>
+    </table>
+
+    {% if lastUpdated %}
+        <p class="light">
+            {{ 'Common passwords last seeded {date}'|t('password-policy', {
+                date: lastUpdated|date('M j, Y \\a\\t g:ia'),
+            }) }}
+        </p>
+    {% endif %}
+</div>
+
+<hr>
+
+{% if currentUser.can('pp:blocklist-manage') %}
+    <form class="utility" method="post" accept-charset="UTF-8">
+        <input type="hidden" name="action" value="password-policy/blocklist/update-common">
+        <input type="hidden" name="utility" value="1">
+
+        {{ redirectInput('utilities/password-blocklist') }}
+        {{ csrfInput() }}
+
+        <p class="light">
+            {{ "Seeds or refreshes the common password blocklist from the bundled data file. This runs as a background job."|t('password-policy') }}
+        </p>
+
+        <input type="submit" class="btn submit" value="{{ 'Update Common Passwords'|t('password-policy') }}">
+    </form>
+{% endif %}
