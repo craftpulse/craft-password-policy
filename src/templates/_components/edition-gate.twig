@@ -9,7 +9,7 @@
         <p>
             {{ "This feature requires the {edition} edition. {link}"|t('password-policy', {
                 edition: tag('strong', { text: edition }),
-                link: tag('a', { href: upgradeUrl, text: 'Upgrade now'|t('password-policy') ~ ' →' }),
+                link: tag('a', { class: 'go', href: upgradeUrl, text: 'Upgrade now'|t('password-policy') }),
             })|raw }}
         </p>
     </blockquote>

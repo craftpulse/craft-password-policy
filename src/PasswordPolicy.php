@@ -44,6 +44,7 @@ use craftpulse\passwordpolicy\events\PasswordChangedEvent;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
 use craftpulse\passwordpolicy\services\ServicesTrait;
+use craftpulse\passwordpolicy\utilities\BlocklistUtility;
 use craftpulse\passwordpolicy\utilities\RetentionUtility;
 use craftpulse\passwordpolicy\variables\PasswordPolicyVariable;
 use Monolog\Formatter\LineFormatter;
@@ -257,7 +258,7 @@ class PasswordPolicy extends Plugin
      */
     public function getIsLite(): bool
     {
-        return true;
+        return $this->is(self::EDITION_LITE);
     }
 
     /**
@@ -492,6 +493,9 @@ class PasswordPolicy extends Plugin
                         'pp:force-reset-passwords' => [
                             'label' => Craft::t('password-policy', 'Force reset passwords retention access.'),
                         ],
+                        'pp:blocklist-manage' => [
+                            'label' => Craft::t('password-policy', 'Manage password blocklist.'),
+                        ],
                     ],
                 ];
             }
@@ -511,6 +515,14 @@ class PasswordPolicy extends Plugin
             Event::on(Utilities::class, Utilities::EVENT_REGISTER_UTILITIES,
                 function(RegisterComponentTypesEvent $event) {
                     $event->types[] = RetentionUtility::class;
+                }
+            );
+        }
+
+        if ($this->getIsPro()) {
+            Event::on(Utilities::class, Utilities::EVENT_REGISTER_UTILITIES,
+                function(RegisterComponentTypesEvent $event) {
+                    $event->types[] = BlocklistUtility::class;
                 }
             );
         }

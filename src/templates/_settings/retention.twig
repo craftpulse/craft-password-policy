@@ -18,9 +18,12 @@
     {{ redirectInput('password-policy/settings/retention') }}
 
     <div class="flex-fields">
+        {% set retentionInfo %}
+            <span class="info">{{ "Adds a utility under Utilities in the CP that lets admins force-reset passwords for users whose passwords have expired. Useful for compliance audits and periodic security reviews."|t('password-policy') }}</span>
+        {% endset %}
         {{ forms.lightswitchField({
             label: 'Enable retention utilities'|t('password-policy'),
-            instructions: "Show the password retention utility in the CP for force-resetting expired passwords."|t('password-policy'),
+            instructions: "Show the password retention utility in the CP for force-resetting expired passwords."|t('password-policy') ~ retentionInfo,
             name: 'settings[retentionUtilities]',
             on: settings.retentionUtilities,
             disabled: readOnly,
@@ -28,16 +31,19 @@
 
         <hr>
 
+        {% set expiryInfo %}
+            <span class="info">{{ "NIST 800-63B and OWASP ASVS recommend against periodic rotation. PCI-DSS v4.0 still requires 90-day rotation. If your organization must comply with conflicting frameworks, document the trade-off in your security policy."|t('password-policy') }}</span>
+        {% endset %}
         {%- set expiryInput %}
             <div class="flex">
-                <div class="field">
+                <div>
                     {{ forms.text({
                         class: 'ltr',
                         name: 'settings[expiryAmount]',
-                        size: 2,
                         type: 'number',
                         value: settings.expiryAmount,
                         disabled: readOnly,
+                        inputAttributes: { style: 'width: 5rem' },
                     }) }}
                 </div>
                 <div>
@@ -58,7 +64,7 @@
 
         {{ forms.field({
             label: "Expiry period"|t('password-policy'),
-            instructions: "How long until passwords expire. Leave empty to disable expiration."|t('password-policy'),
+            instructions: "How long until passwords expire. Leave empty to disable expiration."|t('password-policy') ~ expiryInfo,
             id: 'expiryInput',
         }, expiryInput) }}
 
@@ -66,7 +72,9 @@
             <p class="notice has-icon">
                 <span class="icon" aria-hidden="true"></span>
                 <span class="visually-hidden">{{ "Notice:"|t('app') }} </span>
-                <span>{{ "NIST 800-63B and OWASP ASVS recommend against periodic password changes. PCI-DSS v4.0 requires 90-day rotation (Req 8.3.9). If your organization must comply with both, document the conflict in your security policy."|t('password-policy') }}</span>
+                <span>{{ "NIST 800-63B and OWASP ASVS recommend against periodic password changes. PCI-DSS v4.0 requires 90-day rotation ({link}). If your organization must comply with both, document the conflict in your security policy."|t('password-policy', {
+                    link: tag('a', { class: 'go', href: 'https://docs.pcisecuritystandards.org/PCI%20DSS/Standard/PCI-DSS-v4_0_1.pdf', target: '_blank', text: 'Req 8.3.9'|t('password-policy') }),
+                })|raw }}</span>
             </p>
         {% endif %}
 
