@@ -23,9 +23,12 @@
     {% endif %}
 
     <div class="flex-fields">
+        {% set historyCountInfo %}
+            <span class="info">{{ "Stores bcrypt hashes of previous passwords. When a user changes their password, it is checked against the last N hashes. PCI-DSS v4.0 (Req 8.3.7) requires at least 4. Enterprise security teams typically use 5–12."|t('password-policy') }}</span>
+        {% endset %}
         {{ forms.textField({
             label: 'Password history count'|t('password-policy'),
-            instructions: "How many previous passwords to remember. Users cannot reuse any of their last N passwords. Set to 0 to disable. PCI-DSS requires at least 4, most organizations use 5–12."|t('password-policy'),
+            instructions: "How many previous passwords to remember. Set to 0 to disable."|t('password-policy') ~ historyCountInfo,
             name: 'settings[passwordHistoryCount]',
             value: settings.passwordHistoryCount,
             size: 3,
@@ -35,9 +38,12 @@
             disabled: readOnly or editionLocked,
         }) }}
 
+        {% set retentionDaysInfo %}
+            <span class="info">{{ "Controls how long password hashes are kept for GDPR data minimization. The history count always takes priority — old entries are only purged if the user already has enough newer entries to maintain the count. This prevents TTL-based deletion from undermining the reuse check."|t('password-policy') }}</span>
+        {% endset %}
         {{ forms.textField({
             label: 'History retention (days)'|t('password-policy'),
-            instructions: "Maximum age for stored password hashes. The history count is always respected — old entries are only deleted if the user has enough newer entries to maintain the count. This setting handles GDPR data minimization for overflow entries, not active reuse prevention."|t('password-policy'),
+            instructions: "Maximum age for stored password hashes."|t('password-policy') ~ retentionDaysInfo,
             name: 'settings[passwordHistoryExpiryDays]',
             value: settings.passwordHistoryExpiryDays,
             size: 5,

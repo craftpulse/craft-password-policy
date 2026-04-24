@@ -94,24 +94,6 @@ class UserRules
             ];
         }
 
-        // HIBP check
-        if ($settings->pwned) {
-            $rules[] = [
-                ['password', 'newPassword'],
-                PwnedValidator::class,
-                'skipOnError' => false,
-            ];
-        }
-
-        // Password history check (Pro+, gating handled inside validator)
-        if ($settings->passwordHistoryCount > 0) {
-            $rules[] = [
-                ['password', 'newPassword'],
-                PasswordHistoryValidator::class,
-                'skipOnError' => false,
-            ];
-        }
-
         // Sequential characters (Pro+)
         if ($isPro && $settings->checkSequentialChars) {
             $rules[] = [
@@ -144,6 +126,24 @@ class UserRules
             $rules[] = [
                 ['password', 'newPassword'],
                 CommonPasswordValidator::class,
+                'skipOnError' => false,
+            ];
+        }
+
+        // HIBP check (after content rules — external API call, slower)
+        if ($settings->pwned) {
+            $rules[] = [
+                ['password', 'newPassword'],
+                PwnedValidator::class,
+                'skipOnError' => false,
+            ];
+        }
+
+        // Password history check last (Pro+, gating handled inside validator)
+        if ($settings->passwordHistoryCount > 0) {
+            $rules[] = [
+                ['password', 'newPassword'],
+                PasswordHistoryValidator::class,
                 'skipOnError' => false,
             ];
         }

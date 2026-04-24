@@ -18,9 +18,12 @@
     {{ redirectInput('password-policy/settings/rules') }}
 
     <div class="flex-fields">
+        {% set minLengthInfo %}
+            <span class="info">{{ "NIST SP 800-63B recommends a minimum of 8 characters. Longer minimums (12–15) significantly improve resistance to brute-force attacks."|t('password-policy') }}</span>
+        {% endset %}
         {{ forms.autosuggestField({
             label: 'Minimum password length'|t('password-policy'),
-            instructions: "The minimum number of characters a password must have. Cannot be less than 6."|t('password-policy'),
+            instructions: "The minimum number of characters a password must have. Cannot be less than 6."|t('password-policy') ~ minLengthInfo,
             name: 'settings[minLength]',
             suggestEnvVars: true,
             value: settings.minLength,
@@ -28,9 +31,12 @@
             disabled: readOnly,
         }) }}
 
+        {% set maxLengthInfo %}
+            <span class="info">{{ "NIST recommends supporting at least 64 characters. Setting a maximum is generally discouraged unless required for compatibility. A value of 0 means no maximum."|t('password-policy') }}</span>
+        {% endset %}
         {{ forms.autosuggestField({
             label: 'Maximum password length'|t('password-policy'),
-            instructions: "The maximum number of characters allowed. Set to 0 for no limit."|t('password-policy'),
+            instructions: "The maximum number of characters allowed. Set to 0 for no limit."|t('password-policy') ~ maxLengthInfo,
             name: 'settings[maxLength]',
             suggestEnvVars: true,
             value: settings.maxLength,
@@ -40,9 +46,12 @@
         <hr>
 
         {% if isPro %}
+            {% set complexityInfo %}
+                <span class="info">{{ "Individual toggles lets you require specific character types independently — best when your policy mandates exact requirements. Minimum character types requires at least X of 4 types, giving users flexibility. This is the NIST-recommended approach as it encourages diversity without overly prescriptive rules."|t('password-policy') }}</span>
+            {% endset %}
             {{ forms.selectField({
                 label: 'Complexity mode'|t('password-policy'),
-                instructions: "**Individual** requires specific character types. **Minimum** requires X of 4 types (uppercase, lowercase, number, symbol)."|t('password-policy'),
+                instructions: "How password complexity is enforced."|t('password-policy') ~ complexityInfo,
                 name: 'settings[complexityMode]',
                 options: [
                     { label: 'Individual toggles'|t('password-policy'), value: 'individual' },
@@ -83,12 +92,14 @@
 
         {% if isPro %}
             <div id="complexity-minimum" {% if settings.complexityMode != 'minimum' %}class="hidden"{% endif %}>
+                {% set charTypesInfo %}
+                    <span class="info">{{ "The 4 character types are: uppercase letters (A–Z), lowercase letters (a–z), numbers (0–9), and symbols (!@#$%^&* etc.). Requiring 3 of 4 is a strong baseline that balances security with usability."|t('password-policy') }}</span>
+                {% endset %}
                 {{ forms.selectField({
                     label: 'Minimum character types required'|t('password-policy'),
-                    instructions: "The password must contain at least this many of the 4 character types."|t('password-policy'),
+                    instructions: "The password must contain at least this many of the 4 character types."|t('password-policy') ~ charTypesInfo,
                     name: 'settings[minimumCharacterTypes]',
                     options: [
-                        { label: '1 of 4', value: 1 },
                         { label: '2 of 4', value: 2 },
                         { label: '3 of 4', value: 3 },
                         { label: '4 of 4', value: 4 },
