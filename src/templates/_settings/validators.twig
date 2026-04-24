@@ -23,33 +23,45 @@
     {% endif %}
 
     <div class="flex-fields">
+        {% set sequentialInfo %}
+            <span class="info">{{ "Detects alphabetical sequences (abc, xyz), numeric sequences (123, 987), and keyboard row sequences (qwerty, asdf). Also catches less obvious ASCII sequences like pqr or stu. Both ascending and descending sequences of 3+ characters are blocked."|t('password-policy') }}</span>
+        {% endset %}
         {{ forms.lightswitchField({
             label: 'Block sequential characters'|t('password-policy'),
-            instructions: "Reject passwords with 3+ sequential characters like abc, 123, or qwerty."|t('password-policy'),
+            instructions: "Reject passwords with 3+ sequential characters."|t('password-policy') ~ sequentialInfo,
             name: 'settings[checkSequentialChars]',
             on: settings.checkSequentialChars,
             disabled: readOnly or editionLocked,
         }) }}
 
+        {% set repeatedInfo %}
+            <span class="info">{{ "Rejects passwords containing the same character 3 or more times in a row (aaa, 111, !!!). Repeated characters dramatically reduce the effective entropy of a password."|t('password-policy') }}</span>
+        {% endset %}
         {{ forms.lightswitchField({
             label: 'Block repeated characters'|t('password-policy'),
-            instructions: "Reject passwords with 3+ repeated characters like aaa or 111."|t('password-policy'),
+            instructions: "Reject passwords with 3+ repeated characters in a row."|t('password-policy') ~ repeatedInfo,
             name: 'settings[checkRepeatedChars]',
             on: settings.checkRepeatedChars,
             disabled: readOnly or editionLocked,
         }) }}
 
+        {% set contextualInfo %}
+            <span class="info">{{ "Compares the password against the user's username, email address, first name, last name, and the site name. Matching is case-insensitive. Prevents the most common form of weak passwords in organizational contexts."|t('password-policy') }}</span>
+        {% endset %}
         {{ forms.lightswitchField({
             label: 'Block contextual passwords'|t('password-policy'),
-            instructions: "Reject passwords containing the username, email, name, or site name."|t('password-policy'),
+            instructions: "Reject passwords containing personal or site-related information."|t('password-policy') ~ contextualInfo,
             name: 'settings[checkContextual]',
             on: settings.checkContextual,
             disabled: readOnly or editionLocked,
         }) }}
 
+        {% set commonInfo %}
+            <span class="info">{{ "Checks against a curated blocklist stored locally in your database — no external API calls. If the blocklist is empty when enabled, it will be automatically seeded from the bundled data file via a background job. Manage the blocklist from the Utilities section."|t('password-policy') }}</span>
+        {% endset %}
         {{ forms.lightswitchField({
             label: 'Block common passwords'|t('password-policy'),
-            instructions: "Reject passwords found in the common password blocklist."|t('password-policy'),
+            instructions: "Reject passwords found in the common password blocklist."|t('password-policy') ~ commonInfo,
             name: 'settings[checkCommonPasswords]',
             on: settings.checkCommonPasswords,
             disabled: readOnly or editionLocked,
