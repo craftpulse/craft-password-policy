@@ -23,11 +23,13 @@ use craft\events\RegisterElementActionsEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
 use craft\events\TemplateEvent;
+use craft\events\UserGroupEvent;
 use craft\helpers\ArrayHelper;
 use craft\helpers\ElementHelper;
 use craft\helpers\Json;
 use craft\log\MonologTarget;
 use craft\services\Gc;
+use craft\services\UserGroups;
 use craft\services\UserPermissions;
 use craft\services\Users;
 use craft\services\Utilities;
@@ -424,6 +426,9 @@ class PasswordPolicy extends Plugin
         // Craft security event listeners (Enterprise audit logging)
         $this->_registerCraftSecurityListeners();
 
+        // Observability seam for policy assignments dropped via group deletion
+        $this->_registerUserGroupListeners();
+
         // Safety net: clear any remaining cached passwords at end of request
         $this->_registerRequestCleanup();
 
@@ -710,6 +715,52 @@ class PasswordPolicy extends Plugin
                     outcome: 'success',
                 );
             }
+        );
+    }
+
+    /**
+     * Registers a listener that observes user-group deletions and logs the
+     * named policies whose junction rows are about to be dropped via FK
+     * cascade. Hooks `EVENT_BEFORE_APPLY_GROUP_DELETE` so the junction rows
+     * still exist when we query — `EVENT_AFTER_DELETE_USER_GROUP` would
+     * fire after cascade and leave nothing to enumerate.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerUserGroupListeners(): void
+    {
+        Event::on(
+            UserGroups::class,
+            UserGroups::EVENT_BEFORE_APPLY_GROUP_DELETE,
+            function(UserGroupEvent $event): void {
+                try {
+                    $group = $event->userGroup;
+                    $policies = $this->getPolicies()->getPoliciesForGroupIds([$group->id]);
+
+                    if (empty($policies)) {
+                        return;
+                    }
+
+                    $names = implode(', ', array_map(fn($p) => $p->name, $policies));
+
+                    $this->log(
+                        'User group "{groupName}" (id: {groupId}) deleted; dropping policy assignments: {policies}',
+                        [
+                            'groupName' => $group->name,
+                            'groupId' => $group->id,
+                            'policies' => $names,
+                        ],
+                    );
+                } catch (Throwable $e) {
+                    Craft::warning(
+                        'Failed to log policy assignments for deleted group: ' . $e->getMessage(),
+                        'password-policy',
+                    );
+                }
+            },
         );
     }
 

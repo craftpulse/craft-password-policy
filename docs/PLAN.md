@@ -39,7 +39,7 @@ State legend: `active` = read now, `pending` = scheduled, `done` = built, `block
 
 - 10 alpha/beta branches merged into `5.x`. Pro UI feature-complete (CRUD, presets, tri-state, env-var inputs, conflict UX).
 - Manual tests: 49/50 PASS (T7.3 + T1.3 + T1.4 + TX.3 verified 2026-04-30; T1.2 + TX.2 deferred to P2.5 Pest fixtures).
-- P1 backlog: 6 items remaining (P1.2 / P1.6 / P1.9 / P1.10 built, P1.1 moved to TESTING.md, P1.11 added — see below).
+- P1 backlog: 5 items remaining (P1.2 / P1.5 / P1.6 / P1.9 / P1.10 built, P1.1 moved to TESTING.md, P1.11 added — see below).
 - P2/P3/P4: not started.
 - **Release strategy:** 5.2.0 ships as a single release covering Lite + Pro + Enterprise. Nothing tags / publishes until Enterprise (Phase 10–12) is complete and tested.
 - Hard gate: all Pro manual tests + all P1 items + Enterprise build (G) must pass before release prep (F).
@@ -80,7 +80,7 @@ T4.1–T4.6 (audit logging) gated on Phase 10–12.
 | ~~P1.2~~ | ~~Common passwords expansion~~ — done 2026-04-30 | `src/data/common-passwords.php` now ships 10,000 entries from SecLists `Passwords/Common-Credentials/10k-most-common.txt`, lowercased + deduped. CLI seed verified: 10000 rows in `passwordpolicy_blocklist` with `source='common'`. |
 | P1.3 | Email templates | 3 files: `expiry-reminder.twig`, `new-device-alert.twig` (Enterprise), `admin-security-alert.twig` (Enterprise). Register via `EVENT_REGISTER_SYSTEM_MESSAGES`. |
 | P1.4 | NotificationController console command | `password-policy/notification/send-expiry-reminders` and `.../prune` for cron. |
-| P1.5 | Group deletion cleanup listener | `UserGroups::EVENT_AFTER_DELETE_USER_GROUP` — remove orphaned `passwordpolicy_policy_groups` rows. |
+| ~~P1.5~~ | ~~Group deletion cleanup listener~~ — done 2026-04-30 | `UserGroups::EVENT_BEFORE_APPLY_GROUP_DELETE` (not `AFTER` — fires after FK cascade so junction rows would be gone). Listener queries affected policies before cascade and logs them via `$plugin->log()`. Defensive try/catch — never blocks group deletion. Observability seam for future Enterprise audit logging. |
 | P1.7 | `notificationLogRetentionDays` UI field | Setting exists in model with validation, no UI yet. Add to retention page. |
 | P1.8 | Deployment documentation | Migration guide 5.1.1 → 5.2.0, GC cron setup, blocklist deployment notes, edition comparison table. CHANGELOG already drafted. |
 | P1.11 | Custom dictionary EditableTable UI (Pro) | Expand `BlocklistUtility` (or a dedicated screen) with an EditableTable for admin-managed blocked words. Persist with `source = 'custom'`. Schema column already exists from earlier infrastructure work. **Pro core feature** — must not ship without this. (Was P2.3.) |
@@ -126,7 +126,7 @@ T4.1–T4.6 (audit logging) gated on Phase 10–12.
 |---|---|---|
 | A | Audit fix-ups — A1 force-reset action added, A2 muteEvents applied, A3 was a non-issue, A4 UID validation added | done 2026-04-29 |
 | B | Pre-release security tests — T7.3 PASS, T1.3 PASS, T1.4 PASS, TX.3 PASS, T1.2 + TX.2 deferred to P2.5 | done 2026-04-30 |
-| C | P1 backlog — P1.2 done 2026-04-30 (10k common passwords). Remaining: P1.3 email templates, P1.4 notification CLI, P1.5 group-deletion listener, P1.7 retention setting UI, P1.8 deployment docs, P1.11 custom dictionary EditableTable | in progress |
+| C | P1 backlog — P1.2 done 2026-04-30 (10k common passwords), P1.5 done 2026-04-30 (group-deletion listener). Remaining: P1.3 email templates, P1.4 notification CLI, P1.7 retention setting UI, P1.8 deployment docs, P1.11 custom dictionary EditableTable | in progress |
 | D | User index integration (P2.1, P2.2) | pending |
 | E | Testing infrastructure (P2.5) | pending |
 | F | Polish (P2.4, P2.6) | pending |

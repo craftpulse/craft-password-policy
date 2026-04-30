@@ -210,12 +210,29 @@ Policy edit form now mirrors the global Settings page for `minLength` / `maxLeng
 
 ---
 
+## Session: 2026-04-30 (continued — P1.5)
+
+### P1.5 — Group deletion cleanup listener
+
+Registered an observability listener on `craft\services\UserGroups::EVENT_BEFORE_APPLY_GROUP_DELETE` (not `AFTER` as the original spec called for — see below). Hooked via new private method `PasswordPolicy::_registerUserGroupListeners()`, called from `init()` next to `_registerCraftSecurityListeners()`.
+
+**Hook choice rationale.** The handover doc said use `EVENT_AFTER_DELETE_USER_GROUP`, but that event fires *after* `Db::delete(Table::USERGROUPS, ...)` runs — and the FK `ON DELETE CASCADE` on `passwordpolicy_policy_groups.groupId` triggers during that delete. So by the time `AFTER` fires, the junction rows are already gone — nothing to enumerate, no useful log payload. Switched to `BEFORE_APPLY_GROUP_DELETE` (fires immediately before the cascade runs, after project config has resolved). Junction rows still exist, so we can query affected policies and log meaningful info: *"User group 'Editors' (id: 3) deleted; dropping policy assignments: Editor Policy, Strict Policy"*.
+
+**Defensive shape.** The closure body is wrapped in `try/catch (Throwable)` — if anything throws (DB unavailable, model hydration fails) the listener logs a warning and swallows the error. Never blocks the group deletion itself; the listener is observability-only, the FK cascade owns data integrity.
+
+**No explicit `DELETE`.** Could have run a redundant `DELETE FROM passwordpolicy_policy_groups WHERE groupId = ?` for defense-in-depth, but kept it observation-only — clearer single responsibility, and the FK cascade is the canonical guarantee.
+
+**Future audit-log seam.** When Phase 10–12 (Enterprise) lands, this listener gets the audit-log entry written here — `$plugin->getAuditLog()->logEvent(...)` slots in alongside the existing `$plugin->log()` call. The data needed (group id/name + affected policy ids/names) is already in scope.
+
+**Verification.** `php -l` clean. Plugin loads without fatal error (`ddev craft` lists all plugin commands). PHPStan + ECS still blocked by host PHP 8.4 vs DDEV 8.3 vendor mismatch (unchanged from prior session). Manual CP test path documented in TESTING.md as T5.17.
+
+---
+
 ## Next Session
 
-Phase A (audit fix-ups) and Phase B (pre-release security tests) closed. Phase C (P1 backlog) underway — P1.2 done, **6 items remain**:
+Phase A (audit fix-ups) and Phase B (pre-release security tests) closed. Phase C (P1 backlog) underway — P1.2 + P1.5 done, **5 items remain**:
 
-**Priority 1 (small, fast wins):**
-- P1.5 — group deletion listener (`UserGroups::EVENT_AFTER_DELETE_USER_GROUP` → cascade clean orphan junction rows). Single event handler.
+**Priority 1 (small, fast win):**
 - P1.7 — `notificationLogRetentionDays` UI field. Setting already in model + validation; add input on retention page.
 
 **Priority 2 (paired feature):**

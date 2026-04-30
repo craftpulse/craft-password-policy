@@ -323,6 +323,17 @@ Test each scenario after installing the plugin on a fresh Craft CMS 5 site. Star
 6. Reload Editors Policy edit screen → banner is gone.
 7. Restore Editors Policy `minLength` to whatever value the rest of the suite expects (the post-reset baseline, see T5.4 reset notes).
 
+### T5.17 — Group deletion observability listener (P1.5) — PENDING
+> Listener registered on `UserGroups::EVENT_BEFORE_APPLY_GROUP_DELETE` in `PasswordPolicy::_registerUserGroupListeners()`. Logs the named policies whose junction rows are about to be cascade-dropped. Defensive `try/catch` — never blocks group deletion. Observability-only seam for future Enterprise audit logging.
+1. Settings → Users → User Groups: create a new group "P1.5 Test".
+2. Edit any existing policy (e.g. Editors Policy), assign "P1.5 Test" alongside its existing groups, save.
+3. Confirm the junction row exists: `ddev craft db/query "SELECT * FROM passwordpolicy_policy_groups WHERE groupId = (SELECT id FROM usergroups WHERE handle = 'p15Test')"` → 1 row.
+4. Settings → Users → User Groups: delete "P1.5 Test".
+5. Tail `storage/logs/password-policy-*.log` → expect line: *"User group "P1.5 Test" (id: N) deleted; dropping policy assignments: Editors Policy"*.
+6. Re-run the SQL from step 3 → 0 rows (FK cascade did its work).
+7. Reload the original policy edit screen → "P1.5 Test" no longer appears in the assigned-groups list; other group assignments preserved.
+8. Edge case: create another temp group with no policy assignments, delete it. Log should be silent (listener returns early when `getPoliciesForGroupIds` returns `[]`).
+
 ---
 
 ## Phase 6 — User Index Integration (beta.2)

@@ -30,6 +30,7 @@
 - Audit log table and `AuditLogService` (Enterprise — view/export gated to Enterprise)
 - Info icon tooltips on all settings pages with NIST/PCI-DSS/GDPR references
 - Garbage collection hook (`gc/run`) for retention/expiry housekeeping
+- Group-deletion observability listener — logs which named policies lose an assignment when a Craft user group is deleted (seam for future Enterprise audit logging)
 
 ### Changed
 
