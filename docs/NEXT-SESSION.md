@@ -1,125 +1,123 @@
-# Next Session — Action List
+# Next Session — Handover (2026-04-30)
 
-## Context
+Building **v5.2.0** of `craft-password-policy`. Single release covers Lite + Pro + Enterprise. Nothing tags until Enterprise (Phase G) is built and tested.
 
-10 branches built (`5.2.0-alpha.1` through `5.2.0-beta.5`), covering Phases 0-9 (Phase 7 built last). All passing ECS, PHPStan, and unit tests. Plugin installs and runs on `plugin-playground.ddev.site`.
+---
 
-Current branch: `5.2.0-beta.5`
+## Read in this order, no skipping
 
-## Priority 1 — Manual Testing (barely started)
+1. `docs/PLAN.md` — master plan; sections 1 (status), 3 (backlog), 4 (build order)
+2. `docs/PROGRESS.md` — full session history; tail has the current "Next Session" priorities
+3. `docs/TESTING.md` — per-test status (49/50 PASS, 2 deferred)
+4. This file (NEXT-SESSION.md) — playground state + commands
 
-We only completed T0.2 (settings UI renders) and T7.1 (sidebar subnav). That single test surfaced 6 bugs — all fixed, but nothing else has been tested live. The full test matrix in `docs/TESTING.md` is untouched:
+Memory store: `~/.claude/projects/-Users-michtio-dev-craft-plugins-v5-craft-password-policy/memory/MEMORY.md` — durable rules across sessions.
 
-**Not yet tested — work through these in order:**
-- [ ] T0.1 — Edition helpers return correct values
-- [ ] T0.3 — HIBP breach detection rejects known-breached passwords
-- [ ] T0.4 — Sensitive keys never appear in logs
-- [ ] T1.1 — Fresh install creates all 4 tables (done during initial install)
-- [ ] T1.2 — Upgrade migration seeds password history
-- [ ] T2.1 — Password change stores history (needs Pro edition)
-- [ ] T2.2 — Password reuse rejected (needs Pro)
-- [ ] T2.3 — History check disabled on Lite
-- [ ] T2.4 — Force change on first login
-- [ ] T2.5 — Recursion guard
-- [ ] T3.1–T3.6 — All advanced validators (needs Pro)
-- [ ] T4.1–T4.6 — Audit logging (needs Enterprise)
-- [ ] T5.1–T5.5 — Per-group policy resolution (needs Pro + multiple groups)
-- [ ] T6.1–T6.2 — User index condition rules + bulk action
-- [ ] T8.1–T8.3 — Developer events, session invalidation, group force reset
-- [ ] T9.1–T9.4 — Twig variables, AJAX validation, GC, notification dedup
-- [ ] T7.x — Remaining settings UI checks (sidebar badges, edition gating visual, fail-closed JS warning, settings persistence across sections)
+---
 
-**Settings UI fixes that need visual verification:**
-- [ ] Sidebar badges ("Pro" / "Enterprise") render with Craft's `badge` class
-- [ ] Edition-gated sections show `p.notice.has-icon` banner with proper spacing
-- [ ] Fail-closed warning appears/disappears on dropdown change (JS-driven)
-- [ ] Compliance notice shows on retention page when expiry is set
-- [ ] Settings persist across sections (the merge fix)
+## State at handover
 
-Most tests beyond T0.x/T1.x require Pro or Enterprise edition to be active. Testing strategy: either temporarily set edition in code, or use Craft's `plugin-editions` config.
+**Branch:** `5.x`
+**Last commit on `5.x`:** `bc6196d fix(variables): fetch lastPasswordChangeDate directly from users table` (2026-04-21 era — most of the recent work is uncommitted in working tree).
 
-## Priority 2 — Continue Manual Testing
+**Working tree:** large amount of uncommitted work. Git status will show `M` on most src/ + docs/ files plus untracked `src/controllers/PolicyController.php`, `src/services/PolicyService.php`, `src/models/PolicyModel.php`, the `_policies/` template tree, the migration `m260429_224908_UpgradeTo520Schema.php`, and the new docs (`PLAN.md`, `PROGRESS.md`, `TESTING.md`, `IDEAS.md`, `plans/`). Nothing committed since the user has been iterating; commit when work crosses a logical boundary.
 
-Work through `docs/TESTING.md` systematically. Each test that fails gets fixed immediately on `5.2.0-beta.5` before moving to the next. The first test (T0.2) found 6 bugs — expect more.
+**Manual tests:** 49/50 PASS. T1.2 + TX.2 explicitly deferred to P2.5 (Pest fixtures, not manual). Everything else PASS — see TESTING.md for one-line per-test verification notes.
 
-To test Pro/Enterprise features, add to `cms/config/app.php` in the playground:
-```php
-return [
-    'modules' => [],
-    'bootstrap' => [],
-    'components' => [
-        'plugins' => [
-            'pluginConfigs' => [
-                'password-policy' => ['edition' => 'pro'], // or 'enterprise'
-            ],
-        ],
-    ],
-];
-```
+**Phase status (PLAN.md §4):**
+- A — audit fix-ups: **done 2026-04-29**
+- B — pre-release security tests: **done 2026-04-30**
+- C — P1 backlog: **in progress**, P1.2 complete (10k common passwords). 6 items remaining.
+- D, E, F, G, H — pending.
 
-## Priority 3 — Integration Tests (need Craft bootstrap)
+---
 
-12 integration tests written but need Craft's test framework to run:
-- `tests/integration/validators/SequentialCharsValidatorTest.php` (10 tests)
-- `tests/integration/validators/RepeatedCharsValidatorTest.php` (7 tests)
-- `tests/integration/models/GroupPolicyModelTest.php` (12 tests)
+## Playground
 
-Set up Craft's Pest integration: `craft\test\TestCase` base, bootstrap file, DB fixtures.
+- URL: `https://plugin-playground-v5.ddev.site/admin`
+- Path: `/Users/michtio/dev/craft-plugin-playground/cms_v5`
+- Login: `development@craftpulse.com` / `Letmein-Craftpulse1!`
+- Plugin edition: **Pro** (project.yaml). Craft license: Pro.
 
-## Priority 4 — Remaining Backend Phases
+**Plugin DB state (post-T1.4 uninstall + reinstall + P1.2 seed):**
+- All 6 tables exist, fresh schema.
+- `passwordpolicy_blocklist`: 10000 common-source rows (from today's P1.2 seed).
+- All other plugin tables empty (no policies, no history, no audit log, no notification log).
+- Project config: defaults — `minLength=6`, `maxLength=0`, no Pro features explicitly enabled in settings.
+- `enablePerGroupPolicies` is at default (off) — toggle it on under **Settings → Group Policies** before working with named policies again.
 
-Three phases remain, all Enterprise-tier:
+**Test users (Craft, persist across plugin uninstall):**
+- `editor` / `editor@playground.dev` / `Hx9$mK2pq8R` / Editors only
+- `newuser` / `newuser@playground.dev` / (last-saved value — may need reset) / Team + Editors
+- `multigroup` / `multigroup@playground.dev` / (last-saved value — may need reset) / Editors + Managers
 
-### Phase 10 — Device Tracking + Login Anomaly Detection
-- `DeviceTrackingService`, `KnownDeviceRecord`, `known_devices` migration
-- ua-parser/uap-php integration (add to composer.json)
-- Login event listener: `yii\web\User::EVENT_AFTER_LOGIN`
-- `NotificationService::sendNewDeviceAlert()` integration
-- `DeviceController` CLI for pruning
+---
 
-### Phase 12 — SIEM Forwarding + Webhooks + API Tokens
-- `SiemService`, `WebhookService`, `ApiTokenService`
-- `ApiController` (token-authenticated, CSRF-exempt)
-- `SiemForwardJob` queue job (stores entry ID only, fetches at execution)
-- `ApiTokenRecord`, `api_tokens` migration
-- Circuit breaker for SIEM failure loops
-- HMAC-SHA256 webhook signatures
+## What to build first
 
-### Phase 11 — Compliance Dashboard
-- `ComplianceDashboardUtility` with aggregated metrics
-- `ReportController` for per-user audit trail export (HTML/PDF/CSV)
-- Compliance mapping template (framework → green/amber/red)
-- PCI-DSS tension surfacing
+In strict order. P1.5 + P1.7 are the smallest wins; do those first to unlock momentum.
 
-## Priority 5 — Open Items from Review
+### 1. P1.5 — group deletion cleanup listener (~30 min)
 
-- [ ] Common passwords data file: expand from 195 to 10,000 entries before stable
-- [ ] `passwordField()` Twig render function (Phase 9 plan — not yet built)
-- [ ] CP password field show/hide toggle via JS injection (Phase 9 plan — not yet built)
-- [ ] Email templates: `_emails/expiry-reminder.twig`, `new-device-alert.twig`, `admin-security-alert.twig`
-- [ ] `NotificationController` CLI: `send-expiry-reminders`, `prune`
-- [ ] Group deletion cleanup listener (remove orphaned groupPolicies)
-- [ ] `allowAdminChanges` read-only mode: verify `readOnlyNotice()` banner renders
+Register a handler on `craft\services\UserGroups::EVENT_AFTER_DELETE_USER_GROUP`. When a user group is deleted in Craft, remove any orphaned rows from `passwordpolicy_policy_groups` where `groupId` matched the deleted group. The FK already has `ON DELETE CASCADE`, so the DB layer handles the actual delete — but Craft's project config layer doesn't know about it. The listener exists for any future audit-log entry / event firing we want when a policy assignment is implicitly dropped.
 
-## Prompt for New Session
+Test: in CP, create a new group "Temp", assign it to a policy, delete the group. Verify the junction row is gone and the policy edit screen no longer shows the deleted group.
 
-```
-Read docs/NEXT-SESSION.md and docs/TESTING.md in the plugin directory,
-then read the plan files at ~/dev/plans/password-policy-pro-plan.md and
-~/dev/plans/password-policy-security-architecture.md.
+### 2. P1.7 — `notificationLogRetentionDays` UI field (~20 min)
 
-We're building the v5.2.0 Pro/Enterprise expansion for the password
-policy plugin. 10 branches are built (alpha.1 through beta.5), all
-passing ECS/PHPStan/unit tests. The plugin is installed and running
-on plugin-playground.
+Setting `notificationLogRetentionDays` exists on `SettingsModel` with validation (default 30, min 1). No input renders for it. Add a `forms.textField` to `src/templates/_settings/retention.twig` next to the existing retention controls. Pro-gated.
 
-We barely started manual testing — only T0.2 and T7.1 are done. That
-single test found 6 bugs. The entire test matrix in TESTING.md is
-untouched. Manual testing IS the priority. Work through TESTING.md
-systematically, fix bugs as they surface. Do not build new features
-until the existing build is tested.
+Test: open Settings → Retention on Pro, change the value to 60, save, reload — verify it persists.
 
-Branch: 5.2.0-beta.5
-Playground: https://plugin-playground.ddev.site/cp
-Login: development@craftpulse.com / letmein-craftpulse
-```
+### 3. P1.4 + P1.3 — Notification CLI + email templates (paired, ~2 hours)
+
+`NotificationService` already has `sendExpiryReminder()` etc. methods. What's missing:
+- `src/console/controllers/NotificationController.php` with `actionSendExpiryReminders()` and `actionPrune()` (cron-driven).
+- 3 email templates: `templates/emails/expiry-reminder.twig`, `new-device-alert.twig` (Enterprise-flagged), `admin-security-alert.twig` (Enterprise-flagged).
+- Register the templates as system messages via `Event::on(SystemMessages::class, SystemMessages::EVENT_REGISTER_MESSAGES, ...)` in `PasswordPolicy::init()`.
+
+Test: `ddev craft password-policy/notification/send-expiry-reminders --user=<id>` to trigger one. Inspect Mailpit at `https://plugin-playground-v5.ddev.site:8025` (per `ddev describe`) to see the rendered email.
+
+### 4. P1.11 — Custom dictionary EditableTable (Pro core, ~3 hours)
+
+The schema is ready: `passwordpolicy_blocklist.source` distinguishes `'common'` (seeded) vs `'custom'` (admin-managed). Permission `pp:blocklist-manage` exists. `BlocklistUtility` exists.
+
+Build the EditableTable UI inside `BlocklistUtility` (or as a sibling tab). Each row: word + delete button. New entries persist with `source='custom'`. The seed-CLI flow only touches `source='common'` so admin entries survive re-seeding. Memory: this is **P1, not P2** — must not ship without it (see memory note `project_custom_dictionary_pro.md`).
+
+### 5. P1.8 — Deployment documentation (~1.5 hours)
+
+Migration guide (5.1.1 → 5.2.0), cron setup for GC + notification CLI, blocklist deployment notes, edition comparison table. CHANGELOG already drafted in 5.2.0 "Unreleased" — just need user-facing migration prose. Belongs in README + a dedicated `docs/MIGRATION-5.2.0.md`.
+
+---
+
+## Hard guards (still active)
+
+- **No Pro behaviour changes / no architecture refactors without explicit sign-off.** The named-policies system shipped clean today — keep it that way.
+- **Don't tag 5.2.0 until Enterprise (Phase G) is built and tested.** Single coordinated release.
+- **Custom dictionary is P1.11, not P2.3 polish.** It's a Pro core feature.
+- **Always generate migrations via `ddev craft migrate/create <Name> --plugin=password-policy`.** Never hand-pick filenames or timestamps.
+- **Use `ddev` shorthand commands.** Never `php`, `composer`, or `npm` on the host.
+- **Don't introduce `@deprecated` markers on code added in the same unreleased version.** That's a contradiction — delete the dead code instead.
+- **Don't blindly trust audit subagent reports.** Today's review had 2 of 4 findings wrong-as-stated. Verify before applying.
+
+---
+
+## Known follow-ups (deferred, not blocking)
+
+- **Phase 6 user-edit tab is half-built.** `_users/password-security.twig` exists with a working POST target (`actionForceReset` was added during Track A), but no event handler registers the template as a CP user-edit tab. Belongs in P2.1/P2.2 user index work.
+- **Stale tracking rows in playground `migrations` table** for the 4 deleted/replaced migration filenames. Cosmetic, Craft ignores them. Optional scrub.
+- **Adversarial Test Suite** — logged in `docs/IDEAS.md`. Future P3+ work after P2.5 lands. The security plugin should test its own boundaries (edition smuggling, CSRF stripping, permission smuggling, etc.). Marketing-grade angle: "we red-team ourselves."
+
+---
+
+## Don't bother re-doing
+
+These were tested or analyzed today and are clean — don't waste a session re-verifying:
+
+- T1.4 uninstall/reinstall (PASS empirically)
+- T7.3 edition stripping (PASS via code review)
+- T1.3 query log suppression during seed (PASS via code review)
+- TX.3 sensitive data grep (PASS via analysis)
+- P1.2 common-passwords expansion (10000 rows verified end-to-end via CLI)
+- Migration consolidation (single `m260429_224908_UpgradeTo520Schema.php` is canonical)
+- Dead `groupPolicies` code path is fully excised — don't restore it
