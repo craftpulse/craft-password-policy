@@ -384,6 +384,14 @@ class PasswordPolicy extends Plugin
             ];
         }
 
+        // Notifications subnav (Pro) — sits between Blocklist and Settings.
+        if ($this->getIsPro() && $currentUser->can('pp:notification-templates-manage')) {
+            $subNavs['notifications'] = [
+                'label' => Craft::t('password-policy', 'Notifications'),
+                'url' => 'password-policy/notifications',
+            ];
+        }
+
         // Settings visible in read-only mode too (admins can view active policy)
         if ($currentUser->can('pp:settings')) {
             $subNavs['settings'] = [
@@ -546,6 +554,10 @@ class PasswordPolicy extends Plugin
                         'password-policy/policies/new' => 'password-policy/policy/edit',
                         'password-policy/policies/<policyId:\d+>' => 'password-policy/policy/edit',
                         'password-policy/blocklist' => 'password-policy/blocklist/index',
+                        'password-policy/notifications' => 'password-policy/notification-template/index',
+                        'password-policy/notifications/<key:[\w\-]+>' => 'password-policy/notification-template/edit',
+                        'password-policy/notifications/<key:[\w\-]+>/save' => 'password-policy/notification-template/save',
+                        'password-policy/notifications/<key:[\w\-]+>/test-send' => 'password-policy/notification-template/test-send',
                         'password-policy/validate' => 'password-policy/validation/validate',
                     ],
                     $event->rules
@@ -581,6 +593,9 @@ class PasswordPolicy extends Plugin
                                     'label' => Craft::t('password-policy', 'Manage password blocklist.'),
                                 ],
                             ],
+                        ],
+                        'pp:notification-templates-manage' => [
+                            'label' => Craft::t('password-policy', 'Manage email notification templates.'),
                         ],
                     ],
                 ];
