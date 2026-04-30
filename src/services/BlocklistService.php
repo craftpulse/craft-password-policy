@@ -36,7 +36,7 @@ class BlocklistService extends Component
     /**
      * @var string
      */
-    private const CACHE_KEY = 'passwordpolicy_blocklist_words';
+    private const CACHE_KEY = 'passwordpolicy_blocklist_word_sources';
 
     // Public Methods
     // =========================================================================
@@ -198,6 +198,57 @@ class BlocklistService extends Component
             'words' => $words,
             'total' => (int)$total,
         ];
+    }
+
+    /**
+     * Returns every custom blocklist row (no pagination), ordered by word ASC.
+     * Used by the EditableTable editor which renders the full set on one
+     * screen for in-place editing.
+     *
+     * @return array<int, array<string, mixed>>
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getAllCustomWords(): array
+    {
+        return (new Query())
+            ->from('{{%passwordpolicy_blocklist}}')
+            ->where(['source' => 'custom'])
+            ->orderBy(['word' => SORT_ASC])
+            ->all();
+    }
+
+    /**
+     * Looks up a single word against the blocklist (case-insensitive).
+     * Used by the in-CP "check a word" tool so admins / auditors can
+     * verify lineage without dumping the whole list.
+     *
+     * @param string $word
+     * @return array{blocked: bool, source: string|null}
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function isBlocked(#[\SensitiveParameter] string $word): array
+    {
+        $word = strtolower(trim($word));
+
+        if ($word === '') {
+            return ['blocked' => false, 'source' => null];
+        }
+
+        $row = (new Query())
+            ->select(['source'])
+            ->from('{{%passwordpolicy_blocklist}}')
+            ->where(['word' => $word])
+            ->one();
+
+        if (!$row) {
+            return ['blocked' => false, 'source' => null];
+        }
+
+        return ['blocked' => true, 'source' => (string)$row['source']];
     }
 
     /**

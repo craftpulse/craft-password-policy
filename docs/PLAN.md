@@ -39,7 +39,7 @@ State legend: `active` = read now, `pending` = scheduled, `done` = built, `block
 
 - 10 alpha/beta branches merged into `5.x`. Pro UI feature-complete (CRUD, presets, tri-state, env-var inputs, conflict UX).
 - Manual tests: 49/50 PASS (T7.3 + T1.3 + T1.4 + TX.3 verified 2026-04-30; T1.2 + TX.2 deferred to P2.5 Pest fixtures).
-- P1 backlog: 5 items remaining (P1.2 / P1.5 / P1.6 / P1.9 / P1.10 built, P1.1 moved to TESTING.md, P1.11 added — see below).
+- P1 backlog: 4 items remaining (P1.2 / P1.5 / P1.6 / P1.7 / P1.9 / P1.10 / P1.11 built, P1.1 moved to TESTING.md).
 - P2/P3/P4: not started.
 - **Release strategy:** 5.2.0 ships as a single release covering Lite + Pro + Enterprise. Nothing tags / publishes until Enterprise (Phase 10–12) is complete and tested.
 - Hard gate: all Pro manual tests + all P1 items + Enterprise build (G) must pass before release prep (F).
@@ -83,7 +83,7 @@ T4.1–T4.6 (audit logging) gated on Phase 10–12.
 | ~~P1.5~~ | ~~Group deletion cleanup listener~~ — done 2026-04-30 | `UserGroups::EVENT_BEFORE_APPLY_GROUP_DELETE` (not `AFTER` — fires after FK cascade so junction rows would be gone). Listener queries affected policies before cascade and logs them via `$plugin->log()`. Defensive try/catch — never blocks group deletion. Observability seam for future Enterprise audit logging. |
 | P1.7 | `notificationLogRetentionDays` UI field | Setting exists in model with validation, no UI yet. Add to retention page. |
 | P1.8 | Deployment documentation | Migration guide 5.1.1 → 5.2.0, GC cron setup, blocklist deployment notes, edition comparison table. CHANGELOG already drafted. **GC cron section** — frame the `password-policy/gc/run` cron as the **recommended production setup** for retention-managed tables (`notification_log`, `audit_log`, `password_history`). Don't tell admins "pruning is automatic, the cron is optional" — pruning is a deliberate operational concern that admins should configure. README needs a "Production setup" section with the cron one-liner. Internal coverage exists in `docs/09-notifications-gc-validation.md:24-50` — port to user-facing docs. **After docs land, append `(see documentation)` parenthetical to the `notificationLogRetentionDays` field's `instructions` in `src/templates/_settings/retention.twig`** linking to the GC cron section. Goes in instructions, not the info bubble (the info bubble is reserved for what-the-data-means context). Same treatment likely applies to `auditLogRetentionDays` once the Enterprise audit settings page lands. The field's info bubble currently says only what the data is and why retention matters (dedup window) — keep it that way; the operational pointer belongs in instructions. |
-| P1.11 | Custom dictionary EditableTable UI (Pro) | Expand `BlocklistUtility` (or a dedicated screen) with an EditableTable for admin-managed blocked words. Persist with `source = 'custom'`. Schema column already exists from earlier infrastructure work. **Pro core feature** — must not ship without this. (Was P2.3.) |
+| ~~P1.11~~ | ~~Custom dictionary editor (Pro)~~ — done 2026-04-30 | New top-level **Blocklist** subnav (between Policies and Settings), Pro-gated. Page consolidates: stats prose with SecLists 10k source citation, Last Seeded callout (`<blockquote class="note tip">`, never-seeded variant escalates to `note warning`), "Update Common Passwords" cron-driven seed button, "Check a word" tool (AJAX, results render in `<blockquote class="note tip|warning">` matching), and `forms.editableTableField` for custom words with diff-on-save (numeric rowId = keep, non-numeric = insert, missing existing IDs = delete). Permission split: `pp:blocklist-view` gates page access, `pp:blocklist-manage` (nested) gates writes. Schema includes nullable `policyId` column from day one (Phase G uses it for per-policy custom dictionaries — Enterprise tier). Validator emits source-aware messages: bundled common → "too common, choose a more unique password"; custom → "blocked, choose a different one". Old `BlocklistUtility` deleted. |
 
 ### P1: shipped (this session)
 
@@ -109,6 +109,7 @@ T4.1–T4.6 (audit logging) gated on Phase 10–12.
 | Phase 10 | Device tracking + login anomaly | DeviceTrackingService, KnownDeviceRecord, ua-parser/uap-php dependency (needs approval), login event listener, alerts, DeviceController CLI. |
 | Phase 11 | Compliance dashboard | ComplianceDashboardUtility (aggregates), ReportController (HTML/PDF/CSV export), compliance mapping, PCI-DSS tension. **Includes:** CP-wide policy conflict alert via `Cp::EVENT_REGISTER_ALERTS` — surfaces conflicts on every CP page (Pro/Lite get P1.9 + P1.10 only, Enterprise adds this). |
 | Phase 12 | SIEM + webhooks + API tokens | SiemService, WebhookService, ApiTokenService, ApiController, SiemForwardJob, circuit breaker, HMAC-SHA256 webhook signatures. |
+| (Phase G addition) | Per-policy custom blocklist | Enterprise-tier extension of P1.11. Schema: nullable `policyId` column already added in 5.2.0 install migration. Adds: per-policy editor tab on the policy edit screen (admins scope custom words to specific named policies — block customer names for sales reps, project codenames for engineering, etc.). `BlocklistService::addCustomWord()` extends to `addCustomWord(string, ?int $policyId = null)`. `CommonPasswordValidator` merges global (`policyId IS NULL`) + applicable per-policy entries based on the user's resolved policy set. Edition strip on save prevents Pro from accidentally writing per-policy entries. Cache key includes policyId set. Specops-style differentiator. |
 
 ### P4: future
 
@@ -126,12 +127,12 @@ T4.1–T4.6 (audit logging) gated on Phase 10–12.
 |---|---|---|
 | A | Audit fix-ups — A1 force-reset action added, A2 muteEvents applied, A3 was a non-issue, A4 UID validation added | done 2026-04-29 |
 | B | Pre-release security tests — T7.3 PASS, T1.3 PASS, T1.4 PASS, TX.3 PASS, T1.2 + TX.2 deferred to P2.5 | done 2026-04-30 |
-| C | P1 backlog — P1.2 done 2026-04-30 (10k common passwords), P1.5 done 2026-04-30 (group-deletion listener). Remaining: P1.3 email templates, P1.4 notification CLI, P1.7 retention setting UI, P1.8 deployment docs, P1.11 custom dictionary EditableTable | in progress |
+| C | P1 backlog — P1.2 / P1.5 / P1.7 / P1.11 done 2026-04-30. Remaining: P1.3 email templates (Path B — plugin-managed editor + queue), P1.4 notification CLI. P1.8 (deployment docs) deferred to Phase H since Enterprise must exist first. | in progress |
 | D | User index integration (P2.1, P2.2) | pending |
 | E | Testing infrastructure (P2.5) | pending |
 | F | Polish (P2.4, P2.6) | pending |
 | G | Enterprise (Phase 10, 11, 12) | blocked on A+B+C |
-| H | Release prep — tag 5.2.0, Plugin Store listing, marketing copy, migration guide review | blocked on A–G |
+| H | Release prep + deployment docs (P1.8) — tag 5.2.0, Plugin Store listing, marketing copy, migration guide review, deployment/cron docs (Enterprise required to write authoritative docs) | blocked on A–G |
 
 Gates:
 - B cannot start until A is complete (don't run security tests against known-broken code).

@@ -23,9 +23,10 @@
 - Element condition rules: Password Expired, Password Reset Required, Password Never Changed
 - Twig variables — `craft.passwordpolicy.passwordStatus()`, `daysUntilExpiry()`, `isExpiring(N)`, `activeSessionCount()`
 - AJAX validation endpoint at `password-policy/validate` for live password strength feedback
-- `BlocklistUtility` (Pro) — CP utility to view blocklist stats and trigger common-password seeding via queue
+- New top-level **Blocklist** subnav (Pro) — single page housing the bundled-list stats with SecLists source citation, the "Update Common Passwords" cron-driven seed action, an admin-managed editable table for custom blocked words (diff-on-save via `forms.editableTableField`), and a "Check a word" tool that AJAX-queries whether any value is currently blocked (case-insensitive, common or custom)
 - `SeedBlocklist` queue job — seeds the common-password blocklist in the background
-- `pp:blocklist-manage` permission for blocklist administration
+- `pp:blocklist-view` permission — gates Blocklist page access (read-only is sufficient)
+- `pp:blocklist-manage` permission — nested under `pp:blocklist-view`, gates edits to custom words and the "Update Common Passwords" seed action
 - Custom CP icons for the password policy nav section
 - Audit log table and `AuditLogService` (Enterprise — view/export gated to Enterprise)
 - Info icon tooltips on all settings pages with NIST/PCI-DSS/GDPR references
@@ -41,6 +42,8 @@
 - `lastPasswordChangeDate` queried directly to bypass `UserQuery::beforePrepare()` not selecting it
 - Sensitive keys (`password`, `newPassword`, `plaintext`, `hash`, `passwordHash`) automatically stripped from plugin log entries
 - Common password blocklist stored separately from custom dictionary (`source = 'common'` vs `'custom'`) — prevents flooding the admin UI
+- Common-password validator emits source-aware error messages — bundled common entries return "too common, choose a more unique password"; custom-blocklist entries return "blocked, choose a different one"
+- Removed the `BlocklistUtility` (was at Utilities → Password Blocklist) — its stats and "Update Common" affordances are absorbed into the new Blocklist subnav page, and the editable custom-word editor lives there too. Single mental model instead of split surfaces.
 
 ### Fixed
 

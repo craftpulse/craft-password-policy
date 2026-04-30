@@ -34,10 +34,10 @@ class Install extends Migration
     {
         $this->_createPasswordHistoryTable();
         $this->_createAuditLogTable();
-        $this->_createBlocklistTable();
         $this->_createNotificationLogTable();
         $this->_createPoliciesTable();
         $this->_createPolicyGroupsTable();
+        $this->_createBlocklistTable();
 
         return true;
     }
@@ -49,10 +49,10 @@ class Install extends Migration
      */
     public function safeDown(): bool
     {
+        $this->dropTableIfExists('{{%passwordpolicy_blocklist}}');
         $this->dropTableIfExists('{{%passwordpolicy_policy_groups}}');
         $this->dropTableIfExists('{{%passwordpolicy_policies}}');
         $this->dropTableIfExists('{{%passwordpolicy_notification_log}}');
-        $this->dropTableIfExists('{{%passwordpolicy_blocklist}}');
         $this->dropTableIfExists('{{%passwordpolicy_audit_log}}');
         $this->dropTableIfExists('{{%passwordpolicy_password_history}}');
 
@@ -140,10 +140,21 @@ class Install extends Migration
             'id' => $this->primaryKey(),
             'word' => $this->string()->notNull(),
             'source' => $this->string()->notNull()->defaultValue('common'),
+            'policyId' => $this->integer()->null(),
             'dateCreated' => $this->dateTime()->notNull(),
         ]);
 
         $this->createIndex(null, '{{%passwordpolicy_blocklist}}', ['word'], true);
+        $this->createIndex(null, '{{%passwordpolicy_blocklist}}', ['policyId'], false);
+        $this->addForeignKey(
+            null,
+            '{{%passwordpolicy_blocklist}}',
+            ['policyId'],
+            '{{%passwordpolicy_policies}}',
+            ['id'],
+            'CASCADE',
+            null,
+        );
     }
 
     /**
