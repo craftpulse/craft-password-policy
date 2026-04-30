@@ -14,7 +14,11 @@ use Carbon\Carbon;
 use Craft;
 use craft\db\Query;
 use craft\elements\User;
+use craft\helpers\App;
+use craftpulse\passwordpolicy\models\NotificationTemplateModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
+use RuntimeException;
+use Throwable;
 use yii\base\Component;
 use yii\db\Exception;
 
@@ -36,15 +40,26 @@ class NotificationService extends Component
     /**
      * Sends a password expiry reminder to a user.
      *
+     * Pro-only — Lite throws because the editable templates surface (which
+     * this method drives) is gated to Pro and there's no fallback shape on
+     * Lite. Callers (queue job, console command, web controller) all guard
+     * on Pro before reaching here.
+     *
      * @param User $user
      * @param int $daysRemaining
      * @return void
+     *
+     * @throws RuntimeException when the plugin is running the Lite edition
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function sendPasswordExpiryReminder(User $user, int $daysRemaining): void
     {
+        if (!PasswordPolicy::$plugin->getIsPro()) {
+            throw new RuntimeException('Password expiry reminders require the Pro edition.');
+        }
+
         if ($user->email === null) {
             return;
         }
@@ -54,17 +69,30 @@ class NotificationService extends Component
             return;
         }
 
+        $siteId = $this->_resolveSiteIdForUser($user);
+        $template = PasswordPolicy::$plugin->getNotificationTemplates()
+            ->getTemplate('expiry-reminder', $siteId);
+
+        if ($template === null) {
+            Craft::warning(
+                "No expiry-reminder template found for user {$user->id} (siteId {$siteId})",
+                'password-policy',
+            );
+            return;
+        }
+
         try {
-            Craft::$app->getMailer()
-                ->composeFromKey('password-policy:expiry-reminder', [
-                    'user' => $user,
-                    'daysRemaining' => $daysRemaining,
-                ])
-                ->setTo($user->email)
-                ->send();
+            $message = $this->composeFromTemplate($template, $user, [
+                'user' => $user,
+                'daysUntilExpiry' => $daysRemaining,
+                'siteName' => Craft::$app->getSites()->getSiteById($siteId)?->getName()
+                    ?? Craft::$app->getSystemName(),
+            ]);
+
+            $message->setTo($user->email)->send();
 
             $this->_logNotification($user->id, 'expiry_reminder');
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             Craft::error(
                 "Failed to send expiry reminder to user {$user->id}: " . $e->getMessage(),
                 'password-policy',
@@ -184,6 +212,61 @@ class NotificationService extends Component
             ->execute();
     }
 
+    /**
+     * Renders a template against the given vars and applies sender-overrides
+     * (or the system mailer defaults when overrides aren't set).
+     *
+     * The plain `body` field is sent as text/plain — there is no HTML body.
+     * Subject and body are both Twig sources rendered through Craft's
+     * shared view component, so token substitution works the same on the
+     * test-send AJAX path as on the queue-driven send path.
+     *
+     * Public so the test-send web controller can use the same render
+     * pipeline; `sendPasswordExpiryReminder()` calls this internally too.
+     *
+     * @param NotificationTemplateModel $template the template to render
+     * @param User $user the recipient (used as `from` for elevated session)
+     * @param array<string, mixed> $vars Twig render context
+     * @return \craft\mail\Message
+     *
+     * @throws Throwable when Twig fails to render
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function composeFromTemplate(NotificationTemplateModel $template, User $user, array $vars): \craft\mail\Message
+    {
+        $view = Craft::$app->getView();
+
+        $subject = $view->renderString($template->subject, $vars);
+        $body = $view->renderString($template->body, $vars);
+
+        $mailer = Craft::$app->getMailer();
+        $message = $mailer->compose()
+            ->setSubject($subject)
+            ->setTextBody($body);
+
+        $fromName = $template->senderName !== null
+            ? App::parseEnv($template->senderName)
+            : null;
+        $fromEmail = $template->senderEmail !== null
+            ? App::parseEnv($template->senderEmail)
+            : null;
+
+        if ($fromEmail !== null && $fromEmail !== '') {
+            $message->setFrom([$fromEmail => $fromName ?: $fromEmail]);
+        }
+
+        if ($template->replyTo !== null) {
+            $replyTo = App::parseEnv($template->replyTo);
+            if ($replyTo !== '') {
+                $message->setReplyTo($replyTo);
+            }
+        }
+
+        return $message;
+    }
+
     // Private Methods
     // =========================================================================
 
@@ -241,5 +324,36 @@ class NotificationService extends Component
                 'password-policy',
             );
         }
+    }
+
+    /**
+     * Resolves the site ID a user's notifications should render under.
+     *
+     * Strategy: match the user's `preferredLanguage` to a site's language;
+     * fall back to the primary site when nothing matches (or when the user
+     * has no preferred language set, e.g. front-end-only accounts).
+     *
+     * @param User $user
+     * @return int
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _resolveSiteIdForUser(User $user): int
+    {
+        $primarySiteId = Craft::$app->getSites()->getPrimarySite()->id;
+        $preferredLanguage = $user->getPreferredLanguage();
+
+        if ($preferredLanguage === null) {
+            return $primarySiteId;
+        }
+
+        foreach (Craft::$app->getSites()->getAllSites() as $site) {
+            if ($site->language === $preferredLanguage) {
+                return $site->id;
+            }
+        }
+
+        return $primarySiteId;
     }
 }
