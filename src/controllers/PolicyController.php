@@ -488,9 +488,9 @@ class PolicyController extends Controller
                 ],
             );
             $parts[] = Html::tag(
-                'div',
+                'blockquote',
                 Html::tag('p', Html::encode($message)),
-                ['class' => 'pp-conflict-banner'],
+                ['class' => 'note warning'],
             );
         }
 
