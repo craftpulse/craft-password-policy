@@ -398,7 +398,49 @@ Test each scenario after installing the plugin on a fresh Craft CMS 5 site. Star
 1. `ddev craft gc` — **ran without errors**
 2. Further verification of actual data cleanup pending
 
-### T9.4 — Notification dedup — PENDING
+### T9.4 — Email notifications index (P1.3) — PASS (Craft Pro)
+> **Verified 2026-04-30:** `/admin/password-policy/notifications` renders the VueAdminTable with the single `expiry-reminder` row. Columns: Notification | Key | Subject (primary site) | Sites with overrides. Subject column shows the seeded default. Row click navigates to `/admin/password-policy/notifications/expiry-reminder`. Subnav highlights "Notifications" (between Blocklist and Settings). Pro-gated — Lite users don't see the subnav at all and direct URL access returns 403.
+1. Settings → Plugins: confirm Pro edition.
+2. Visit `/admin/password-policy/notifications` — table renders with one row, primary-site subject populated.
+3. Click row → edit screen for primary site (`?siteId=1`).
+4. Switch to Lite via project.yaml + `craft up` → reloading the page returns 403.
+5. Restore Pro.
+
+### T9.5 — Notification template edit + multi-site persistence (P1.3) — PASS (Craft Pro)
+> **Verified 2026-04-30:** edit screen opens at `/admin/password-policy/notifications/expiry-reminder`. Three tabs (General, Advanced, Test send). Hidden inputs `notificationKey` and `siteId` round-trip correctly. POST to `password-policy/notification-template/save` returns the asModelSuccess JSON; reloading the edit screen shows the persisted values. EmailDefaults restored after testing. (Multi-site propagation listener test deferred to T9.7 since the playground has a single site — install fresh in a multi-site project to exercise the propagateToSite path.)
+1. Open the edit screen for `expiry-reminder`.
+2. Change Subject to "TEST — your password expires in {{ daysUntilExpiry }} days". Save.
+3. Reload the edit screen → field shows the new value.
+4. Click a token chip (e.g. `{{ daysUntilExpiry }}`) → CP notice toast says "Copied … to clipboard." Pasting elsewhere yields the literal token string.
+5. Restore the default subject before moving on.
+
+### T9.6 — Test-send AJAX (P1.3) — PASS (Craft Pro)
+> **Verified 2026-04-30:** clicking the "Send test email" button on the Test send tab fires a POST to `password-policy/notification-template/test-send`, returns JSON `{success: true, message: "Test email sent to <admin email>", renderedSubject, renderedBodyExcerpt}`. Result panel renders inline as `<blockquote class="note tip">` with rendered subject + 240-char body excerpt. Mailpit confirms message arrived at the admin's email address. Posted subject/body are previewed *without* requiring a save first — sample render uses `daysUntilExpiry: 7` and current admin user.
+1. Open edit screen for `expiry-reminder`.
+2. Modify subject + body (don't save).
+3. Switch to Test send tab → click Send test email.
+4. Inline blockquote renders with rendered subject reflecting the unsaved edits.
+5. Mailpit (https://plugin-playground-v5.ddev.site:8026) shows the message at the admin email.
+
+### T9.7 — Site propagation listener + CASCADE — DEFERRED (single-site playground)
+> The current playground has a single site, so `Sites::EVENT_AFTER_SAVE_SITE` with `isNew = true` and the FK CASCADE on `siteId` cannot be exercised here. Code review of `PasswordPolicy::_registerSiteListeners()` and `NotificationTemplateService::propagateToSite()` confirms: (1) listener fires only when `isNew = true`, (2) defensive try/catch never blocks the site save, (3) propagator inserts one row per known notification key copying primary-site content, skipping rows that already exist. FK migration definition has `'CASCADE'` on `siteId` referencing `Table::SITES`. Unit test in P2.5 will cover both paths.
+
+### T9.8 — Queue job + console command + dedup (P1.4) — PASS (Craft Pro)
+> **Verified 2026-04-30:** end-to-end on the playground. Set `expiryAmount=5` via project-config/set, configured the editor user (id=55) lastPasswordChangeDate to land 4 days from expiry. Console command `password-policy/notification/send-expiry-reminders --user=55` enqueues one job (queue/info shows waiting=1). `queue/run --verbose` processes it (~80ms) — Mailpit receives the rendered "Your … password expires in 4 days" message. Re-running the same command + queue/run produces a queued job that completes in ~1ms with no second send (dedup via `notification_log` exclusion subquery). Without `--user`, the command enqueues a job that processes all eligible users in batches of 100. Restored `expiryAmount=null` after testing.
+1. Project config: `ddev craft project-config/set plugins.password-policy.settings.expiryAmount 5`.
+2. `ddev craft password-policy/notification/send-expiry-reminders --user=<id>` → "enqueued for user <id>".
+3. `ddev craft queue/info` → waiting=1.
+4. `ddev craft queue/run` → job processes; Mailpit shows new message.
+5. Re-run steps 2-4 → job completes but no new message (dedup row in `passwordpolicy_notification_log`).
+6. Restore: `ddev craft project-config/set plugins.password-policy.settings.expiryAmount '~'`.
+
+### T9.9 — Lite edition gates (P1.3 + P1.4) — PASS (Craft Lite)
+> **Verified 2026-04-30:** with the playground temporarily flipped to Lite via project.yaml + dateModified bump + `craft up`, the console command exits with `ExitCode::UNSPECIFIED_ERROR` (1) and stderr "Pro edition required." Web controller's `beforeAction` throws `ForbiddenHttpException` (HTTP 403) on direct URL access. The Notifications subnav doesn't appear because `pp:notification-templates-manage` and `getIsPro()` both gate registration. Restored Pro after verification. Queue job's `execute()` Pro guard (`throw new RuntimeException`) and `NotificationService::sendPasswordExpiryReminder()` Pro guard (same) cover the case where a job was enqueued before the edition flip.
+1. Pro → Lite via project.yaml + dateModified bump + `ddev craft up`.
+2. `ddev craft password-policy/notification/send-expiry-reminders` → exits non-zero, stderr "Pro edition required."
+3. `/admin/password-policy/notifications` → 403.
+4. CP plugin subnav: Notifications link absent.
+5. Restore Pro via project.yaml + dateModified + `ddev craft up`.
 
 ---
 

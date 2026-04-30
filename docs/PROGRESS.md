@@ -270,24 +270,55 @@ Registered an observability listener on `craft\services\UserGroups::EVENT_BEFORE
 
 ---
 
+## Session: 2026-04-30 (P1.3 + P1.4 — Email Notifications)
+
+### Architecture: Path B with corrections
+
+Locked path was Path B (plugin-managed editor + queue). Implementation diverged from initial Path B sketch on the storage shape — rather than three separate Twig template files, one per notification, we used the Craft 5 element-content idiom: a single `passwordpolicy_notification_templates` table with one row per `(notificationKey, siteId)` and a JSON `content` column. That gives FK CASCADE on `siteId`, race-free per-site editing, and zero schema migrations when fields evolve. The shape mirrors how Craft 5 stores element content on `elements_sites` — same reasoning, same trade-offs.
+
+Memory entry added earlier in the day (`feedback_craft5_json_content_pattern.md`) was directly relevant — followed it.
+
+### Layered build, 7 commits
+
+1. `feat(notifications): add notification_templates table + per-site default seed (P1.3)` — schema migration generated via `ddev craft migrate/create AddNotificationTemplatesTable --plugin=password-policy` (never hand-pick timestamps), eager-seeds one row per (key × enabled site) using new `EmailDefaults::expiryReminder()` factory. `Install.php` updated with idempotent `_createNotificationTemplatesTable()` + `_seedNotificationTemplateDefaults()` for fresh installs. Schema bumped to `2.2.0`.
+2. `feat(notifications): add NotificationTemplateRecord and NotificationTemplateModel` — record maps to `{{%passwordpolicy_notification_templates}}` with property hints. Model has typed properties for the editable content fields, `fromRecord()` decodes the JSON `content` column with the same single/double-encoded handling pattern PolicyService uses. `getCpEditUrl()` constructs the per-site edit URL with siteId query param. `defineRules()` covers required + email-format + length validation.
+3. `feat(notifications): NotificationTemplateService + Pro-only send pipeline + site listener` — service has `getTemplate(key, siteId)` (with primary-site fallback), `getAllForKey()`, `saveTemplate()` (validate + upsert), `propagateToSite(int $siteId)` (copy primary-site rows into a new site, skip existing). Registered in `ServicesTrait` with proper getter. Updated `NotificationService::sendPasswordExpiryReminder()` to load from the templates table, render subject + body via `View::renderString()`, apply per-template sender overrides via `App::parseEnv()` (or fall back to system mailer defaults). Pro guard at the top — Lite throws `RuntimeException`. New `_registerSiteListeners()` on `PasswordPolicy` hooks `Sites::EVENT_AFTER_SAVE_SITE` with `isNew` check, defensive `try/catch (Throwable)` so site save never blocks. `composeFromTemplate()` exposed publicly so the test-send web controller reuses the same render pipeline.
+4. `feat(notifications): add NotificationTemplateController + permission + subnav + URL rules` — new `pp:notification-templates-manage` permission registered alongside the existing ones. Notifications subnav between Blocklist and Settings, gated on Pro + permission. URL rules for `index`, `edit` (with `siteId` query), `save`, `test-send`. Controller's `beforeAction` requires CP request + Pro + permission. `actionIndex` lists known notification keys with primary-site subject + a "sites with overrides" count computed by JSON-encoding each per-site content blob and comparing to primary. `actionEdit` uses `asCpScreen()` with General/Advanced/Test tabs. `actionSave` validates + persists via service. `actionTestSend` accepts posted unsaved subject/body so the admin can test edits *before* saving, renders against the current admin user with sample `daysUntilExpiry: 7`, sends through the real pipeline, returns JSON with rendered subject + body excerpt for inline preview.
+5. `feat(notifications): CP templates for index + edit (token picker + test-send)` — VueAdminTable index, tabbed edit screen with a site switcher (only when more than one site), `forms.textareaField` body with `rows: 12, class: 'code'`, token-picker `<blockquote class="note tip">` with click-to-copy chips using `navigator.clipboard.writeText` + `Craft.cp.displayNotice` for feedback. Advanced tab uses `forms.autosuggestField` + `suggestEnvVars: true` for the email overrides. Test-send AJAX panel renders result inline as `<blockquote class="note tip|warning">` with rendered subject + 240-char body excerpt. Pure Twig + inline JS, no new asset bundle.
+6. `feat(notifications): batched job + console command for expiry reminders (P1.4)` — `ExpiringPasswordUserBatcher implements \craft\base\Batchable` recomputes the pending-recipients query each `getSlice()` call so retries are naturally idempotent — already-notified users drop out via the `notification_log` exclusion subquery. Query is straight Yii2 `Query` against `Table::USERS` with `users.suspended/locked/pending` filters, a `lastPasswordChangeDate` threshold, and the dedup `not exists` subquery. Single-user mode via `--user=<id>`. `SendPasswordExpiryRemindersJob extends BaseBatchedJob`, `batchSize=100`, `ttr=300`, `canRetry($attempt) < 5`, Pro guard at top of `execute()` throws RuntimeException, per-user soft-fail in `processItem` via catch(Throwable). `defaultDescription()` (not `getDescription()` — that's final on BaseBatchedJob). Console command at `password-policy/notification/send-expiry-reminders`; Lite returns `ExitCode::UNSPECIFIED_ERROR` with stderr "Pro edition required" so cron monitoring catches the misconfiguration loudly. **No `actionPrune`** — `gc/run` already handles notification log retention.
+7. `docs/test/changelog` — TESTING.md grew T9.4–T9.9, PLAN.md struck P1.3 and P1.4 + closed Phase C, CHANGELOG got entries under [5.2.0] - Unreleased, NEXT-SESSION.md handover refreshed for Phase D.
+
+### Bugs caught during verification
+
+- **`UserQuery` doesn't select `lastPasswordChangeDate`** (already documented in earlier commit `bc6196d` for the variable; same bug bites the queue job). Job's `_lastPasswordChangeDate(int $userId)` direct-queries the column from `Table::USERS`. Otherwise `_daysRemaining` returns null and processItem silently no-ops. Caught when the queue worker reported "Done" with no email.
+- **`getDescription` is final on `BaseBatchedJob`.** First-run threw "Cannot override final method." Switched to `defaultDescription()` per Craft's BaseBatchedJob contract.
+- **Project config `set` of same value is a no-op.** Trying to push `expiryAmount=5` via `$pc->set` from a one-off CLI script didn't take when the previous value was `null` — used `ddev craft project-config/set` to land it. Cosmetic, came up only during testing.
+
+### Architectural decisions made during build
+
+- **Storage shape: JSON content per (key, site) row.** Memory entry `feedback_craft5_json_content_pattern.md` was the deciding factor. Mirrors Craft 5 elements_sites. Phase G adds `new-device-alert` and `admin-security-alert` keys to the same table — no schema change.
+- **Eager-seeding at install / on new-site listener.** Runtime never falls back to translation files — admins always see editable content from the moment the plugin is installed. `EmailDefaults::all()` is the manifest of known notification keys.
+- **Site resolution at send time** uses `$user->getPreferredLanguage()` to map onto a site's language; falls back to primary site. Doesn't try to be clever about "user's home site" because Craft users live at install level (single-site truth across the install for users).
+- **Test-send accepts unsaved POST values.** Lets admins dial in the copy + click Send test before committing. Render path is identical to the queue job, so what the admin sees is what eligible users will receive.
+
+### Process notes
+
+- All migrations generated via `ddev craft migrate/create <Name> --plugin=password-policy` per the durable rule.
+- Verification gates per layer ran clean: Layer 1 (migrate up + idempotency), Layer 2 (model hydration + validate), Layer 3 (service round-trip), Layer 4 + 5 paired (HTTP login + GET index + GET edit + POST save + reload-confirms-persist + POST test-send + Mailpit confirm), Layer 6 (queue/info shows waiting=1, queue/run --verbose shows job started + done, Mailpit confirms send, re-run shows dedup), Layer 7 (Lite via project.yaml + dateModified bump + craft up — exits non-zero with stderr message; restored Pro).
+- ECS still blocked by host PHP 8.4 vs DDEV PHP 8.3 vendor mismatch (unchanged from prior session). PHPStan ran clean throughout.
+- 7 commits, all conventional. Working tree clean after Layer 7.
+
+---
+
 ## Next Session
 
-Phase A (audit fix-ups) and Phase B (pre-release security tests) closed. Phase C (P1 backlog) underway — P1.2 + P1.5 done, **5 items remain**:
+Phase A (audit fix-ups), Phase B (pre-release security tests), and **Phase C (P1 backlog)** all closed. Next is Phase D — user index integration.
 
-**Priority 1 (small, fast win):**
-- P1.7 — `notificationLogRetentionDays` UI field. Setting already in model + validation; add input on retention page.
+**Priority 1 (Phase D):**
+- P2.1 — User index table attributes via `EVENT_REGISTER_TABLE_ATTRIBUTES` + `EVENT_SET_TABLE_ATTRIBUTE_HTML`. Columns: password status (badge), last change, expired, reset required. Lite edition.
+- P2.2 — Admin password change action. Element action with elevated session + `changedByUserId` tracking. Storage: Option A (see PLAN.md §6.2). New permission `pp:change-user-passwords`. Migration: nullable column on password history table.
 
-**Priority 2 (paired feature):**
-- P1.4 — `NotificationController` console controller (`password-policy/notification/send-expiry-reminders`, `.../prune` for cron).
-- P1.3 — 3 email template files + register via `EVENT_REGISTER_SYSTEM_MESSAGES`.
-
-**Priority 3 (Pro core feature):**
-- P1.11 — Custom dictionary EditableTable UI. `passwordpolicy_blocklist.source='custom'` column already exists; `pp:blocklist-manage` permission already exists; `BlocklistUtility` already wired up. Just needs the EditableTable UI surface.
-
-**Priority 4 (release blocker doc):**
-- P1.8 — Deployment documentation: 5.1.1 → 5.2.0 migration guide, GC cron setup, blocklist deployment notes, edition comparison table.
-
-After P1 → Phase D (P2.1/2.2 user index integration) → Phase E (P2.5 Pest tests, including the deferred T1.2/TX.2) → Phase F (P2.4/2.6 polish) → **Phase G (Enterprise — Phase 10/11/12)** → Phase H (release prep + tag 5.2.0).
+After Phase D → Phase E (P2.5 Pest tests, including the deferred T1.2 + TX.2 + T9.7 site propagation listener) → Phase F (P2.4/2.6 polish) → **Phase G (Enterprise — Phase 10/11/12)** → Phase H (release prep + tag 5.2.0).
 
 **Read first (in order):**
 1. `docs/NEXT-SESSION.md` — single-page handover with playground state + commands
@@ -295,4 +326,4 @@ After P1 → Phase D (P2.1/2.2 user index integration) → Phase E (P2.5 Pest te
 3. `docs/PROGRESS.md` — this file, full session history
 4. `docs/TESTING.md` — per-test PASS/PENDING/DEFERRED status
 
-**Memory store:** `~/.claude/projects/-Users-michtio-dev-craft-plugins-v5-craft-password-policy/memory/MEMORY.md` indexes all durable rules including release strategy (single 5.2.0 covers all editions; nothing tags until Enterprise done) and the migration generator rule (`ddev craft migrate/create <Name> --plugin=password-policy`).
+**Memory store:** `~/.claude/projects/-Users-michtio-dev-craft-plugins-v5-craft-password-policy/memory/MEMORY.md` indexes all durable rules including release strategy (single 5.2.0 covers all editions; nothing tags until Enterprise done), the migration generator rule (`ddev craft migrate/create <Name> --plugin=password-policy`), and the Craft 5 JSON content pattern.

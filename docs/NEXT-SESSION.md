@@ -1,4 +1,4 @@
-# Next Session — Handover (2026-04-30, end of day)
+# Next Session — Handover (2026-04-30, end of P1.3 + P1.4)
 
 Building **v5.2.0** of `craft-password-policy`. Single release covers Lite + Pro + Enterprise. Nothing tags until Enterprise (Phase G) is built and tested. **No "v5.2.x" or "v5.3" deferral framing for features** — features either land in 5.2.0 (at the right edition tier) or are dropped to IDEAS.md. 5.2.x is reserved for security patches only.
 
@@ -8,40 +8,37 @@ Building **v5.2.0** of `craft-password-policy`. Single release covers Lite + Pro
 
 1. `docs/PLAN.md` — master plan; sections 1 (status), 3 (backlog), 4 (build order)
 2. `docs/PROGRESS.md` — full session history; tail has the current "Next Session" priorities
-3. `docs/TESTING.md` — per-test status (51/52 PASS, 2 deferred to P2.5)
+3. `docs/TESTING.md` — per-test status (54/57 PASS, 3 deferred)
 4. This file (NEXT-SESSION.md) — playground state + commands
 
-Memory store: `~/.claude/projects/-Users-michtio-dev-craft-plugins-v5-craft-password-policy/memory/MEMORY.md` — durable rules across sessions. Includes: release strategy, retention/GC framing, native callout components, editableTable defaulting, and others. **Read it.**
+Memory store: `~/.claude/projects/-Users-michtio-dev-craft-plugins-v5-craft-password-policy/memory/MEMORY.md` — durable rules across sessions. Includes: release strategy, retention/GC framing, native callout components, editableTable defaulting, **Craft 5 JSON content pattern**, and others. **Read it.**
 
 ---
 
 ## State at handover
 
-**Branch:** `5.x`, **13 commits ahead of `origin/5.x` and unpushed**. Working tree clean.
+**Branch:** `5.x`, **21 commits ahead of `origin/5.x` and unpushed**. Working tree clean.
 
 **Latest commits (top → bottom = newest → oldest):**
 ```
+<latest> docs: update TESTING/PLAN/CHANGELOG/PROGRESS for P1.3 + P1.4
+04178bf feat(notifications): batched job + console command for expiry reminders (P1.4)
+868d995 feat(notifications): CP templates for index + edit (token picker + test-send)
+f4f759b feat(notifications): add NotificationTemplateController + permission + subnav + URL rules
+2ef03d5 feat(notifications): NotificationTemplateService + Pro-only send pipeline + site listener
+bc2f785 feat(notifications): add NotificationTemplateRecord and NotificationTemplateModel
+c3f6ffc feat(notifications): add notification_templates table + per-site default seed (P1.3)
+864578c docs: refresh NEXT-SESSION + PROGRESS for end of P1.7/P1.11 session
 ecccc63 refactor(policies): use native blockquote.note.warning for conflict banner
 e7a911f feat(blocklist): top-level Blocklist page with custom dictionary editor and word-check tool
-2a396fb refactor(gc): consolidate retention purges into single method
-6088ec9 feat(retention): add notificationLogRetentionDays UI field
-7f09e8d test(p1.5): mark T5.17 group deletion listener as PASS
-053575d feat(policies): observe group deletion to log dropped policy assignments
-b6ce443 docs: v5.2.0 master plan, progress log, ideas, planning notes
-730154d docs: refresh README, CHANGELOG, per-group policies guide
-069874c feat(blocklist): expand common passwords list to 10000 entries
-981cb68 feat(retention): force-reset action for user-edit tab
-44a5ba9 feat(migrations): single 5.1.1 → 5.2.0 upgrade migration
-3c879b3 feat(policies): named per-group policy system with HIBP rename
-19dbb18 chore(git): ignore Claude local settings
 ```
 
-**Manual tests:** 51/52 PASS. T1.2 + TX.2 deferred to P2.5 (Pest). Latest additions: T5.17 (group-deletion listener PASS), T5.18 (custom blocklist editor + validation round-trip PASS).
+**Manual tests:** 54/57 PASS. Deferred: T1.2 + TX.2 (P2.5 Pest), T9.7 (site propagation listener — single-site playground can't exercise FK cascade or `isNew = true` event; will land in P2.5).
 
 **Phase status (PLAN.md §4):**
 - A — audit fix-ups: **done 2026-04-29**
 - B — pre-release security tests: **done 2026-04-30**
-- C — P1 backlog: **in progress**, P1.2 / P1.5 / P1.7 / P1.11 done. **2 items remain**: P1.3 + P1.4 (paired, ~1 day Path B). P1.8 moved to Phase H.
+- C — P1 backlog: **done 2026-04-30**. P1.8 (deployment docs) deferred to Phase H since Enterprise must exist first.
 - D, E, F, G, H — pending.
 
 ---
@@ -52,49 +49,34 @@ b6ce443 docs: v5.2.0 master plan, progress log, ideas, planning notes
 - Path: `/Users/michtio/dev/craft-plugin-playground/cms_v5`
 - Login (admin): `development@craftpulse.com` / `Letmein-Craftpulse1!`
 - Plugin edition: **Pro** (project.yaml). Craft license: Pro.
-- Mailpit (for email testing in P1.3/P1.4): check `ddev describe` for the URL — typically `https://plugin-playground-v5.ddev.site:8025`.
+- Mailpit: `https://plugin-playground-v5.ddev.site:8026` (or `ddev mailpit`).
 
 **Plugin DB state at end of session:**
-- All 6 tables. `passwordpolicy_blocklist`: 10000 common rows + `acmecorp` custom row (left over from T5.18 — feel free to remove via the Blocklist editor for cleanup).
-- 3 named policies in `passwordpolicy_policies`: NIST → Team, OWASP → Editors+Managers, "Enterprise With Changes" → Managers. (Created in a previous session for testing; harmless to leave.)
-- `enablePerGroupPolicies` was toggled **off** during T5.18 to use global rules. **User may have re-enabled it in their CP session — verify with `ddev craft project-config/get plugins.password-policy.settings.enablePerGroupPolicies` before relying on either state.**
+- All 7 tables now (added `passwordpolicy_notification_templates` this session). One row in templates: `(notificationKey='expiry-reminder', siteId=1)` with default content.
+- Notification log was cleared post-test (no stale dedup rows).
+- `expiryAmount` reset to `null` in project config (was set to `5` during T9.8 testing, restored at end).
+- 3 named policies in `passwordpolicy_policies` (NIST → Team, OWASP → Editors+Managers, "Enterprise With Changes" → Managers — created in earlier session for testing, harmless).
 
 **Test users (Craft, persist across plugin uninstall):**
-- `editor` / `editor@playground.dev` / **password unknown** — was changed during T5.18 manual testing in an incognito window. Reset via `ddev craft users/set-password editor@playground.dev --password='<value>'` if you need a known starting value. With per-group policies on + OWASP applied to Editors, value must be 12+ chars.
-- `newuser` / `newuser@playground.dev` / (last-saved value — reset if needed) / Team + Editors
-- `multigroup` / `multigroup@playground.dev` / (last-saved value — reset if needed) / Editors + Managers
+- `editor` / `editor@playground.dev` / **password unknown** — was changed during T5.18 manual testing. Reset via `ddev craft users/set-password editor@playground.dev --password='<value>'` if you need a known starting value.
+- `newuser` / `newuser@playground.dev` / (last-saved value — reset if needed)
+- `multigroup` / `multigroup@playground.dev` / (last-saved value — reset if needed)
 
 ---
 
 ## What to build first
 
-### 1. P1.3 + P1.4 — Email Notifications (Path B, Pro, ~1 day) — *paired feature*
+### Phase D — User index integration
 
-Locked to **Path B** (plugin-managed editor + queue), not Path A (Craft SystemMessages). Decision in this session's PROGRESS.md and PLAN.md row P1.3.
+**P2.1 — User index table attributes.** `EVENT_REGISTER_TABLE_ATTRIBUTES` + `EVENT_SET_TABLE_ATTRIBUTE_HTML`. Columns: password status (badge), last change, expired, reset required. **Lite edition** (this is the headline Lite-tier feature — no edition gating beyond what Craft already provides).
 
-**Scope for v5.2.0 (Pro only — Enterprise notification types deferred to Phase G):**
+**P2.2 — Admin password change action.** Element action with elevated session + `changedByUserId` tracking. Storage: Option A (see PLAN.md §6.2 — store `changedByUserId` on password history table for all editions; not exposed via UI/API on non-Enterprise). New permission `pp:change-user-passwords`. Needs a migration to add the nullable `changedByUserId` column to `passwordpolicy_password_history`.
 
-- New plugin settings tab "Email Notifications" (Pro), CRUD-shaped UI even though only one notification ships in 5.2.0 (`expiryReminder`).
-- Per-notification editor: subject, plaintext body, optional HTML body, sender name, sender email, reply-to. Optional fields fall back to Craft system mailer defaults.
-- Token picker shown next to the editor — click-to-copy (`{{ user }}`, `{{ daysUntilExpiry }}`, `{{ siteName }}`).
-- Test-send button (renders against current admin user as sample data).
-- Storage in project config (deploys with code).
-- Per-language deferred to v5.3 — document the limitation; admins can override `siteOverrides` via `config/password-policy.php` if needed.
+**Also in Phase D scope:** the half-built `_users/password-security.twig` user-edit tab — template exists with a working POST target (`actionForceReset`), but no event handler registers the template as a CP user-edit tab. Hooks into the same User element work as P2.1/P2.2.
 
-**Queue + CLI:**
+### Then in order: E → F → G → H
 
-- New job `SendPasswordExpiryReminderJob` (Pro). Per-user. Calls `NotificationService::sendPasswordExpiryReminder()`. Inherits Craft queue retry + parallelism.
-- New `src/console/controllers/NotificationController.php` with `actionSendExpiryReminders()` — finds users whose passwords are about to expire (within `expiryReminderDays`) and pushes one queue job per user. Returns immediately; queue worker processes asynchronously. **Do NOT add `actionPrune` — `gc/run` already covers it (redundant, decided this session).**
-- `NotificationService` consults the editable per-notification config when rendering.
-
-**Enterprise notifications (`new-device-alert`, `admin-security-alert`) ship in Phase G**, not P1.3. The Email Notifications tab is designed extensibly — when Phase 10–12 land, those new notification types slot in as new rows in the same UI.
-
-Test: `ddev craft password-policy/notification/send-expiry-reminders` (or `--user=<id>` to scope), then `ddev craft queue/run` to flush, then check Mailpit.
-
-### Then in order: D → E → F → G → H
-
-- **D** — User index integration (P2.1 + P2.2)
-- **E** — Pest test infrastructure (P2.5; absorbs deferred T1.2 + TX.2)
+- **E** — Pest test infrastructure (P2.5; absorbs deferred T1.2 + TX.2 + T9.7)
 - **F** — Polish (P2.4 `passwordField()`, P2.6 `allowAdminChanges` verification)
 - **G** — Enterprise (Phase 10/11/12 + per-policy custom blocklist editor + Enterprise email notification types)
 - **H** — Release prep (tag, Plugin Store listing, marketing copy, **deployment docs P1.8**)
@@ -109,17 +91,20 @@ Test: `ddev craft password-policy/notification/send-expiry-reminders` (or `--use
 - **Use `ddev` shorthand commands.** Never `php`, `composer`, or `npm` on the host.
 - **Don't introduce `@deprecated` markers on code added in the same unreleased version.** Delete dead code instead.
 - **Don't blindly trust audit subagent reports.** Earlier audit had 2 of 4 findings wrong-as-stated.
-- **Default to native Craft components.** `forms.editableTableField` for admin-managed lists; `<blockquote class="note tip|warning">` for high-visibility callouts; `|datetime`/`|time` for locale-aware timestamps. See `feedback_editable_table_default.md` and `feedback_native_callout_components.md` in memory.
-- **Pruning is not "automatic".** Don't tell admins their data gets cleaned up automatically — `password-policy/gc/run` cron is the recommended production setup. See `feedback_retention_gc_framing.md`.
+- **Default to native Craft components.** `forms.editableTableField` for admin-managed lists; `<blockquote class="note tip|warning">` for high-visibility callouts; `|datetime`/`|time` for locale-aware timestamps. See feedback memory entries.
+- **Pruning is not "automatic".** Don't tell admins their data gets cleaned up automatically — `password-policy/gc/run` cron is the recommended production setup.
+- **Craft 5 storage idiom.** For per-(entity, site) editable content, prefer one row per (key, siteId) with a JSON `content` column over Craft-4-style relational columns. Memory entry `feedback_craft5_json_content_pattern.md`.
 
 ---
 
 ## Known follow-ups (deferred, not blocking)
 
 - **Phase 6 user-edit tab is half-built.** `_users/password-security.twig` exists with a working POST target (`actionForceReset`), but no event handler registers the template as a CP user-edit tab. Belongs in P2.1/P2.2 user index work.
+- **T9.7 — Site propagation listener test deferred.** Single-site playground can't exercise the `Sites::EVENT_AFTER_SAVE_SITE` `isNew = true` path or the FK CASCADE. Will land in P2.5 Pest tests with a multi-site fixture.
 - **Stale tracking rows in playground `migrations` table** for the deleted/replaced migration filenames. Cosmetic, Craft ignores them.
 - **Adversarial Test Suite** — `docs/IDEAS.md`. Future P3+ work after P2.5 lands.
 - **Per-policy custom blocklist editor (Phase G, Enterprise tier).** Schema column `policyId` already shipped in P1.11. Phase G adds the editor tab on the policy edit screen + validator merge logic.
+- **Enterprise notification keys** (`new-device-alert`, `admin-security-alert`) ship in Phase G — same table, same UI, just two more entries in `EmailDefaults::all()`.
 
 ---
 
@@ -127,9 +112,10 @@ Test: `ddev craft password-policy/notification/send-expiry-reminders` (or `--use
 
 These were tested or analyzed and are clean — don't waste a session re-verifying:
 
-- All P1.x items marked done in PLAN.md
+- All P1.x items marked done in PLAN.md (P1.2, P1.3, P1.4, P1.5, P1.6, P1.7, P1.9, P1.10, P1.11)
 - T1.4 uninstall/reinstall, T7.3 edition stripping, T1.3 query log suppression, TX.3 sensitive data grep
 - P1.2 common-passwords expansion (10k rows end-to-end verified)
-- Migration consolidation (single `m260429_224908_UpgradeTo520Schema.php` is canonical, plus `m260430_101611_AddPolicyIdToBlocklist.php` for the per-policy column)
-- Dead `groupPolicies` code path is fully excised
-- T5.18 — custom blocklist editor + validation round-trip end-to-end PASS
+- Migration consolidation (single `m260429_224908_UpgradeTo520Schema.php` is canonical, plus `m260430_101611_AddPolicyIdToBlocklist.php` and `m260430_170841_AddNotificationTemplatesTable.php`)
+- T9.4 / T9.5 / T9.6 (notifications index, edit + persist, test-send AJAX) — verified end-to-end via curl + Mailpit
+- T9.8 (queue + console + dedup) — verified end-to-end with `expiryAmount=5` then restored to null
+- T9.9 (Lite gates) — verified by flipping playground to Lite via project.yaml + dateModified bump + craft up, then back to Pro

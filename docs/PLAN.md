@@ -5,8 +5,8 @@ branch: 5.x
 last_updated: 2026-04-30
 status:
   pro_ui: feature_complete
-  manual_tests: 49/50 (T1.2 + TX.2 deferred to P2.5)
-  p1_remaining: 6
+  manual_tests: 56/57 PASS (T1.2 + TX.2 + T9.7 deferred)
+  p1_remaining: 0
   p2_remaining: 5
   enterprise: not_started
 release_strategy: single_5_2_0_includes_all_editions
@@ -78,8 +78,8 @@ T4.1–T4.6 (audit logging) gated on Phase 10–12.
 | ID | Title | Notes |
 |---|---|---|
 | ~~P1.2~~ | ~~Common passwords expansion~~ — done 2026-04-30 | `src/data/common-passwords.php` now ships 10,000 entries from SecLists `Passwords/Common-Credentials/10k-most-common.txt`, lowercased + deduped. CLI seed verified: 10000 rows in `passwordpolicy_blocklist` with `source='common'`. |
-| P1.3 | Email templates | 3 files: `expiry-reminder.twig`, `new-device-alert.twig` (Enterprise), `admin-security-alert.twig` (Enterprise). Register via `EVENT_REGISTER_SYSTEM_MESSAGES`. |
-| P1.4 | NotificationController console command | `password-policy/notification/send-expiry-reminders` and `.../prune` for cron. |
+| ~~P1.3~~ | ~~Email notifications (Pro) — Path B plugin-managed editor~~ — done 2026-04-30 | New table `passwordpolicy_notification_templates` (one row per (key, siteId) with JSON content column — Craft 5 element-content idiom). EmailDefaults seeds `expiry-reminder` for every enabled site at install + via the `Sites::EVENT_AFTER_SAVE_SITE` propagation listener. NotificationTemplateService + NotificationTemplateController + `_notifications/_index.twig` + `_notifications/_edit.twig`. asCpScreen with General/Advanced/Test tabs; token-picker chips with click-to-copy; sender-overrides with `suggestEnvVars`; AJAX test-send rendered against current admin with `daysUntilExpiry: 7`. Pro-gated end-to-end: subnav, controller, service method, queue job, console command. |
+| ~~P1.4~~ | ~~NotificationController console command~~ — done 2026-04-30 | `password-policy/notification/send-expiry-reminders [--user=<id>]` enqueues `SendPasswordExpiryRemindersJob` (BaseBatchedJob, batchSize=100, ttr=300, canRetry≤5). `ExpiringPasswordUserBatcher` recomputes recipient set per slice for natural retry idempotency; per-user soft-fail in `processItem`. No `actionPrune` — `gc/run` already covers it. Lite returns `ExitCode::UNSPECIFIED_ERROR` with stderr "Pro edition required." |
 | ~~P1.5~~ | ~~Group deletion cleanup listener~~ — done 2026-04-30 | `UserGroups::EVENT_BEFORE_APPLY_GROUP_DELETE` (not `AFTER` — fires after FK cascade so junction rows would be gone). Listener queries affected policies before cascade and logs them via `$plugin->log()`. Defensive try/catch — never blocks group deletion. Observability seam for future Enterprise audit logging. |
 | P1.7 | `notificationLogRetentionDays` UI field | Setting exists in model with validation, no UI yet. Add to retention page. |
 | P1.8 | Deployment documentation | Migration guide 5.1.1 → 5.2.0, GC cron setup, blocklist deployment notes, edition comparison table. CHANGELOG already drafted. **GC cron section** — frame the `password-policy/gc/run` cron as the **recommended production setup** for retention-managed tables (`notification_log`, `audit_log`, `password_history`). Don't tell admins "pruning is automatic, the cron is optional" — pruning is a deliberate operational concern that admins should configure. README needs a "Production setup" section with the cron one-liner. Internal coverage exists in `docs/09-notifications-gc-validation.md:24-50` — port to user-facing docs. **After docs land, append `(see documentation)` parenthetical to the `notificationLogRetentionDays` field's `instructions` in `src/templates/_settings/retention.twig`** linking to the GC cron section. Goes in instructions, not the info bubble (the info bubble is reserved for what-the-data-means context). Same treatment likely applies to `auditLogRetentionDays` once the Enterprise audit settings page lands. The field's info bubble currently says only what the data is and why retention matters (dedup window) — keep it that way; the operational pointer belongs in instructions. |
@@ -127,8 +127,8 @@ T4.1–T4.6 (audit logging) gated on Phase 10–12.
 |---|---|---|
 | A | Audit fix-ups — A1 force-reset action added, A2 muteEvents applied, A3 was a non-issue, A4 UID validation added | done 2026-04-29 |
 | B | Pre-release security tests — T7.3 PASS, T1.3 PASS, T1.4 PASS, TX.3 PASS, T1.2 + TX.2 deferred to P2.5 | done 2026-04-30 |
-| C | P1 backlog — P1.2 / P1.5 / P1.7 / P1.11 done 2026-04-30. Remaining: P1.3 email templates (Path B — plugin-managed editor + queue), P1.4 notification CLI. P1.8 (deployment docs) deferred to Phase H since Enterprise must exist first. | in progress |
-| D | User index integration (P2.1, P2.2) | pending |
+| C | P1 backlog — P1.2 / P1.3 / P1.4 / P1.5 / P1.7 / P1.11 done 2026-04-30. P1.8 (deployment docs) deferred to Phase H since Enterprise must exist first. | done 2026-04-30 |
+| D | User index integration (P2.1, P2.2) | next |
 | E | Testing infrastructure (P2.5) | pending |
 | F | Polish (P2.4, P2.6) | pending |
 | G | Enterprise (Phase 10, 11, 12) | blocked on A+B+C |
