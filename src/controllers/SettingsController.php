@@ -172,6 +172,7 @@ class SettingsController extends Controller
                 $settings['minimumCharacterTypes'],
                 $settings['enablePerGroupPolicies'],
                 $settings['expiryReminderDays'],
+                $settings['notificationLogRetentionDays'],
             );
         }
         if (!$plugin->getIsEnterprise()) {

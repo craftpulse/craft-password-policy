@@ -90,6 +90,23 @@
                 type: 'number',
                 disabled: readOnly,
             }) }}
+
+            <hr>
+
+            {% set notificationLogInfo %}
+                <span class="info">{{ "Records the expiry reminder emails sent to users — used to deduplicate so the same reminder isn't sent twice within this window."|t('password-policy') }}</span>
+            {% endset %}
+
+            {{ forms.textField({
+                label: 'Notification log retention (days)'|t('password-policy'),
+                instructions: "How long to keep notification log entries before garbage collection prunes them."|t('password-policy') ~ notificationLogInfo,
+                name: 'settings[notificationLogRetentionDays]',
+                value: settings.notificationLogRetentionDays,
+                size: 4,
+                type: 'number',
+                min: 1,
+                disabled: readOnly,
+            }) }}
         {% endif %}
     </div>
 {% endblock %}
