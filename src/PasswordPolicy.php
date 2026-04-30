@@ -251,6 +251,50 @@ class PasswordPolicy extends Plugin
     }
 
     /**
+     * Runs garbage collection on all retention-managed plugin tables.
+     *
+     * Single source of truth shared by the deterministic
+     * `password-policy/gc/run` console command and the probabilistic Craft
+     * `Gc::EVENT_RUN` listener. Adding a new retention table only requires
+     * updating this method.
+     *
+     * @return array<string, int> map of table key → purged row count.
+     *     Only tables that actually ran are included; skipped tables
+     *     (wrong edition, feature disabled, count floor zero) are absent.
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function runGc(): array
+    {
+        $settings = $this->getSettings();
+        $results = [];
+
+        if ($this->getIsPro() && $settings->passwordHistoryCount > 0) {
+            $results['passwordHistory'] = $this->getPasswordHistory()->purgeExpiredHistory(
+                $settings->passwordHistoryExpiryDays,
+                $settings->passwordHistoryCount,
+            );
+        }
+
+        if ($this->getIsPro()) {
+            $results['notificationLog'] = $this->getNotification()->pruneOldEntries(
+                $settings->notificationLogRetentionDays,
+            );
+        }
+
+        if ($this->getIsEnterprise() && $settings->enableAuditLog) {
+            $results['auditLog'] = $this->getAuditLog()->purgeOldEntries(
+                $settings->auditLogRetentionDays,
+            );
+        }
+
+        return $results;
+    }
+
+    /**
      * Returns whether the plugin is running the Lite edition.
      *
      * @return bool
@@ -803,31 +847,7 @@ class PasswordPolicy extends Plugin
         Event::on(
             Gc::class,
             Gc::EVENT_RUN,
-            function() {
-                $settings = $this->getSettings();
-
-                // Notification log (Pro+)
-                if ($this->getIsPro()) {
-                    $this->getNotification()->pruneOldEntries(
-                        $settings->notificationLogRetentionDays,
-                    );
-                }
-
-                // Password history TTL (Pro) — respects count floor per user
-                if ($this->getIsPro() && $settings->passwordHistoryCount > 0) {
-                    $this->getPasswordHistory()->purgeExpiredHistory(
-                        $settings->passwordHistoryExpiryDays,
-                        $settings->passwordHistoryCount,
-                    );
-                }
-
-                // Audit log (Enterprise)
-                if ($this->getIsEnterprise() && $settings->enableAuditLog) {
-                    $this->getAuditLog()->purgeOldEntries(
-                        $settings->auditLogRetentionDays,
-                    );
-                }
-            }
+            fn() => $this->runGc(),
         );
     }
 
