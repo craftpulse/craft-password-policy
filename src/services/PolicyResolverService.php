@@ -21,7 +21,7 @@ use yii\base\Component;
  * Class PolicyResolverService
  *
  * Resolves the effective password policy for a given user by merging
- * global settings with per-group overrides using "most restrictive wins" logic.
+ * global settings with named per-group policies using "most restrictive wins" logic.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -36,8 +36,8 @@ class PolicyResolverService extends Component
      * Resolves the effective password policy for a user.
      *
      * For Craft Solo or users with no groups, returns global settings.
-     * For multi-group users, merges all applicable group policies using
-     * "most restrictive wins" per setting type.
+     * For multi-group users, queries named policies from the database
+     * and merges all applicable ones using "most restrictive wins" per setting type.
      *
      * @param User $user
      * @return SettingsModel
@@ -55,12 +55,6 @@ class PolicyResolverService extends Component
             return $settings;
         }
 
-        $groupPolicies = $settings->groupPolicies;
-
-        if (empty($groupPolicies)) {
-            return $settings;
-        }
-
         // Get user's groups
         $groups = $user->getGroups();
 
@@ -68,39 +62,51 @@ class PolicyResolverService extends Component
             return $settings;
         }
 
-        // Collect applicable group policies
-        $applicablePolicies = [];
-        foreach ($groups as $group) {
-            if (isset($groupPolicies[$group->uid])) {
-                $policyData = $groupPolicies[$group->uid];
-                $groupPolicy = new GroupPolicyModel();
+        // Query named policies for user's group IDs
+        $groupIds = array_map(fn($g) => $g->id, $groups);
+        $policies = $plugin->getPolicies()->getPoliciesForGroupIds($groupIds);
 
-                if (is_array($policyData)) {
-                    $groupPolicy->setAttributes($policyData, false);
-                }
-
-                $applicablePolicies[] = $groupPolicy;
-            }
-        }
-
-        if (empty($applicablePolicies)) {
+        if (empty($policies)) {
             return $settings;
         }
 
-        // Merge all group policies with global: "most restrictive wins"
         $resolved = clone $settings;
 
-        foreach ($applicablePolicies as $groupPolicy) {
-            $resolved = $groupPolicy->mergeWithGlobal($resolved);
+        // Pre-pass: resolve booleans across all policies.
+        // Any explicit true wins over any explicit false; absent means inherit.
+        foreach (GroupPolicyModel::booleanOverrideFields() as $field) {
+            $hasTrue = false;
+            $hasFalse = false;
+            foreach ($policies as $policy) {
+                if ($policy->$field === true) {
+                    $hasTrue = true;
+                } elseif ($policy->$field === false) {
+                    $hasFalse = true;
+                }
+            }
+            if ($hasTrue) {
+                $resolved->$field = true;
+            } elseif ($hasFalse) {
+                $resolved->$field = false;
+            }
         }
 
-        // Post-merge validation: maxLength must not be less than minLength
+        // Apply non-boolean merges sequentially (numerics, selects, expiry)
+        foreach ($policies as $policy) {
+            $resolved = $policy->mergeWithGlobal($resolved);
+        }
+
+        // Post-merge validation: maxLength must not be less than minLength.
+        // When a policy bumps minLength above the configured maxLength, the
+        // two bounds are incompatible. Drop the maxLength cap (set to 0 /
+        // no limit) rather than forcing max = min — the minLength must be
+        // honored for security, the maxLength cap is defensive only.
         if ($resolved->maxLength > 0 && $resolved->maxLength < $resolved->minLength) {
             Craft::warning(
-                "Per-group policy merge produced invalid state: maxLength ({$resolved->maxLength}) < minLength ({$resolved->minLength}). Using minLength as effective maxLength.",
+                "Per-group policy merge produced invalid state: maxLength ({$resolved->maxLength}) < minLength ({$resolved->minLength}). Dropping maxLength cap (no upper limit).",
                 'password-policy',
             );
-            $resolved->maxLength = $resolved->minLength;
+            $resolved->maxLength = 0;
         }
 
         return $resolved;

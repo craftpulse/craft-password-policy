@@ -36,6 +36,8 @@ class Install extends Migration
         $this->_createAuditLogTable();
         $this->_createBlocklistTable();
         $this->_createNotificationLogTable();
+        $this->_createPoliciesTable();
+        $this->_createPolicyGroupsTable();
 
         return true;
     }
@@ -47,6 +49,8 @@ class Install extends Migration
      */
     public function safeDown(): bool
     {
+        $this->dropTableIfExists('{{%passwordpolicy_policy_groups}}');
+        $this->dropTableIfExists('{{%passwordpolicy_policies}}');
         $this->dropTableIfExists('{{%passwordpolicy_notification_log}}');
         $this->dropTableIfExists('{{%passwordpolicy_blocklist}}');
         $this->dropTableIfExists('{{%passwordpolicy_audit_log}}');
@@ -165,5 +169,63 @@ class Install extends Migration
 
         $this->createIndex(null, '{{%passwordpolicy_notification_log}}', ['userId', 'notificationType', 'sentAt'], false);
         $this->addForeignKey(null, '{{%passwordpolicy_notification_log}}', ['userId'], Table::USERS, ['id'], 'CASCADE', null);
+    }
+
+    /**
+     * Creates the policies table.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _createPoliciesTable(): void
+    {
+        if ($this->db->tableExists('{{%passwordpolicy_policies}}')) {
+            return;
+        }
+
+        $this->createTable('{{%passwordpolicy_policies}}', [
+            'id' => $this->primaryKey(),
+            'name' => $this->string(255)->notNull(),
+            'handle' => $this->string(255)->notNull(),
+            'preset' => $this->string(64)->null(),
+            'settings' => $this->json()->notNull(),
+            'sortOrder' => $this->smallInteger()->notNull()->defaultValue(0),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid' => $this->uid(),
+        ]);
+
+        $this->createIndex(null, '{{%passwordpolicy_policies}}', ['handle'], true);
+    }
+
+    /**
+     * Creates the policy groups junction table.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _createPolicyGroupsTable(): void
+    {
+        if ($this->db->tableExists('{{%passwordpolicy_policy_groups}}')) {
+            return;
+        }
+
+        $this->createTable('{{%passwordpolicy_policy_groups}}', [
+            'id' => $this->primaryKey(),
+            'policyId' => $this->integer()->notNull(),
+            'groupId' => $this->integer()->notNull(),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid' => $this->uid(),
+        ]);
+
+        $this->createIndex(null, '{{%passwordpolicy_policy_groups}}', ['policyId', 'groupId'], true);
+        $this->createIndex(null, '{{%passwordpolicy_policy_groups}}', ['groupId'], false);
+        $this->addForeignKey(null, '{{%passwordpolicy_policy_groups}}', ['policyId'], '{{%passwordpolicy_policies}}', ['id'], 'CASCADE', null);
+        $this->addForeignKey(null, '{{%passwordpolicy_policy_groups}}', ['groupId'], Table::USERGROUPS, ['id'], 'CASCADE', null);
     }
 }

@@ -1,0 +1,461 @@
+{# Policy edit — content template for asCpScreen() with tabs #}
+{# @var policy \craftpulse\passwordpolicy\models\PolicyModel #}
+{# @var allGroups \craft\models\UserGroup[] #}
+{# @var assignedGroupIds int[] #}
+{# @var globalSettings \craftpulse\passwordpolicy\models\SettingsModel #}
+{# @var isPro bool #}
+{# @var isNew bool #}
+{# @var readOnly bool #}
+
+{% import '_includes/forms.twig' as forms %}
+{% from 'password-policy/_policies/_macros' import overrideWarning, inheritsGlobal, expiryDisplay %}
+
+{# Divergent fields (vs preset) — used to apply the .pp-divergent class.
+   Empty when the policy has no preset (since "Custom" implies all overrides
+   are intentional). Use `in divergentFields` to check membership. #}
+{% set divergentFields = policy.preset ? policy.getDivergentFields() : [] %}
+
+{% if not isNew %}
+    {{ hiddenInput('policyId', policy.id) }}
+{% endif %}
+
+{# =========================================================================
+   Boolean override rule definitions — used by the Rules table
+   ========================================================================= #}
+
+{% set boolRules = [
+    { field: 'cases', label: 'Require mixed case'|t('password-policy'), instructions: 'Require both uppercase and lowercase letters.'|t('password-policy'), policyValue: policy.cases, globalValue: globalSettings.cases },
+    { field: 'numbers', label: 'Require numbers'|t('password-policy'), instructions: 'Require at least one digit.'|t('password-policy'), policyValue: policy.numbers, globalValue: globalSettings.numbers },
+    { field: 'symbols', label: 'Require symbols'|t('password-policy'), instructions: 'Require at least one special character.'|t('password-policy'), policyValue: policy.symbols, globalValue: globalSettings.symbols },
+    { field: 'hibp', label: 'Check HIBP breaches'|t('password-policy'), instructions: 'Reject passwords found in the Have I Been Pwned breach database.'|t('password-policy'), policyValue: policy.hibp, globalValue: globalSettings.hibp },
+    { field: 'checkSequentialChars', label: 'Block sequential characters'|t('password-policy'), instructions: 'Reject sequences like "abc" or "123".'|t('password-policy'), policyValue: policy.checkSequentialChars, globalValue: globalSettings.checkSequentialChars },
+    { field: 'checkRepeatedChars', label: 'Block repeated characters'|t('password-policy'), instructions: 'Reject runs like "aaaa".'|t('password-policy'), policyValue: policy.checkRepeatedChars, globalValue: globalSettings.checkRepeatedChars },
+    { field: 'checkContextual', label: 'Block contextual passwords'|t('password-policy'), instructions: 'Reject passwords containing the user’s name, username, or email.'|t('password-policy'), policyValue: policy.checkContextual, globalValue: globalSettings.checkContextual },
+    { field: 'checkCommonPasswords', label: 'Block common passwords'|t('password-policy'), instructions: 'Reject passwords found in the common-password blocklist.'|t('password-policy'), policyValue: policy.checkCommonPasswords, globalValue: globalSettings.checkCommonPasswords },
+] %}
+
+{# =========================================================================
+   General — name, handle, preset, groups
+   ========================================================================= #}
+
+<div id="general">
+    {{ forms.textField({
+        first: true,
+        label: 'Name'|t('app'),
+        id: 'name',
+        name: 'name',
+        value: policy.name,
+        autofocus: true,
+        required: true,
+        errors: policy.getErrors('name'),
+        disabled: readOnly,
+    }) }}
+
+    {{ forms.textField({
+        label: 'Handle'|t('app'),
+        id: 'handle',
+        name: 'handle',
+        class: 'code',
+        autocorrect: false,
+        autocapitalize: false,
+        value: policy.handle,
+        required: true,
+        errors: policy.getErrors('handle'),
+        disabled: readOnly,
+    }) }}
+
+    {% js %}
+        new Craft.HandleGenerator('#name', '#handle');
+    {% endjs %}
+
+    <hr>
+
+    {% set divergentCount = policy.preset ? policy.getDivergentFields()|length : 0 %}
+
+    {{ forms.selectField({
+        label: 'Preset'|t('password-policy'),
+        instructions: 'Apply a security standard as a starting point. You can adjust individual fields after.'|t('password-policy'),
+        warning: divergentCount > 0 ? '{n, number} {n, plural, =1{field differs} other{fields differ}} from preset defaults.'|t('password-policy', { n: divergentCount }),
+        id: 'preset',
+        name: 'preset',
+        options: [
+            { label: 'None (custom)'|t('password-policy'), value: '' },
+            { label: 'NIST 800-63B', value: 'nist_800_63b' },
+            { label: 'OWASP ASVS L1', value: 'owasp_asvs' },
+            { label: 'PCI-DSS v4.0', value: 'pci_dss_v4' },
+            { label: 'Strict Enterprise', value: 'strict_enterprise' },
+        ],
+        value: policy.preset ?? '',
+        disabled: readOnly,
+    }) }}
+
+    {% if not readOnly %}
+        <p>
+            <button type="button" id="pp-restore-defaults" class="btn"{% if not policy.preset %} disabled{% endif %}>
+                {{ 'Restore preset defaults'|t('password-policy') }}
+            </button>
+        </p>
+    {% endif %}
+
+    <hr>
+
+    {% set groupOptions = [] %}
+    {% for group in allGroups %}
+        {% set groupOptions = groupOptions|merge([{ label: group.name, value: group.id }]) %}
+    {% endfor %}
+
+    {{ forms.checkboxSelectField({
+        label: 'Assigned Groups'|t('password-policy'),
+        instructions: 'Select the user groups this policy applies to.'|t('password-policy'),
+        name: 'groupIds',
+        options: groupOptions,
+        values: assignedGroupIds,
+        disabled: readOnly,
+    }) }}
+</div>
+
+{# =========================================================================
+   Rules — length, history, HIBP fail mode, then the override table
+   ========================================================================= #}
+
+<div id="rules" class="hidden">
+    {# ----- Numerics ----- #}
+
+    {{ forms.autosuggestField({
+        label: 'Min length'|t('password-policy'),
+        instructions: 'Minimum number of characters. Leave empty to inherit global.'|t('password-policy'),
+        warning: (policy.minLength is not null and policy.minLength != globalSettings.minLength) ? overrideWarning(globalSettings.minLength),
+        fieldClass: 'minLength' in divergentFields ? 'pp-divergent',
+        id: 'settings-minLength',
+        name: 'settings[minLength]',
+        value: policy.minLength ?? '',
+        suggestEnvVars: true,
+        errors: policy.getErrors('minLength'),
+        disabled: readOnly,
+    }) }}
+
+    {{ forms.autosuggestField({
+        label: 'Max length'|t('password-policy'),
+        instructions: 'Maximum number of characters (0 = no limit). Leave empty to inherit global.'|t('password-policy'),
+        warning: (policy.maxLength is not null and policy.maxLength != (globalSettings.maxLength ?? 0)) ? overrideWarning(globalSettings.maxLength ?: ('no limit'|t('password-policy'))),
+        fieldClass: 'maxLength' in divergentFields ? 'pp-divergent',
+        id: 'settings-maxLength',
+        name: 'settings[maxLength]',
+        value: policy.maxLength ?? '',
+        suggestEnvVars: true,
+        errors: policy.getErrors('maxLength'),
+        disabled: readOnly,
+    }) }}
+
+    {{ forms.textField({
+        label: 'Password history count'|t('password-policy'),
+        instructions: 'Block reuse of the last N passwords (0 = disabled). Leave empty to inherit global.'|t('password-policy'),
+        warning: (policy.passwordHistoryCount is not null and policy.passwordHistoryCount != (globalSettings.passwordHistoryCount ?? 0)) ? overrideWarning(globalSettings.passwordHistoryCount ?? 0),
+        fieldClass: 'passwordHistoryCount' in divergentFields ? 'pp-divergent',
+        id: 'settings-passwordHistoryCount',
+        name: 'settings[passwordHistoryCount]',
+        value: policy.passwordHistoryCount ?? '',
+        type: 'number',
+        inputAttributes: { style: 'width: 6rem', min: 0 },
+        errors: policy.getErrors('passwordHistoryCount'),
+        disabled: readOnly,
+    }) }}
+
+    <hr>
+
+    {# ----- HIBP fail mode ----- #}
+
+    {{ forms.selectField({
+        label: 'HIBP fail mode'|t('password-policy'),
+        instructions: 'How to handle HIBP API failures.'|t('password-policy'),
+        warning: policy.hibpFailMode is null ? inheritsGlobal(globalSettings.hibpFailMode) : (policy.hibpFailMode != globalSettings.hibpFailMode ? overrideWarning(globalSettings.hibpFailMode)),
+        fieldClass: 'hibpFailMode' in divergentFields ? 'pp-divergent',
+        id: 'settings-hibpFailMode',
+        name: 'settings[hibpFailMode]',
+        options: [
+            { label: 'Inherit global'|t('password-policy'), value: '' },
+            { label: 'Open (accept on failure)'|t('password-policy'), value: 'open' },
+            { label: 'Closed (reject on failure)'|t('password-policy'), value: 'closed' },
+        ],
+        value: policy.hibpFailMode ?? '',
+        errors: policy.getErrors('hibpFailMode'),
+        disabled: readOnly,
+    }) }}
+
+    <hr>
+
+    {# ----- Boolean override table (off / global / on) ----- #}
+
+    {% set offTitle = 'Override off — this rule will not apply to assigned groups.'|t('password-policy') %}
+    {% set globalTitle = 'Inherit from global setting (currently {value}).'|t('password-policy') %}
+    {% set onTitle = 'Override on — this rule will apply to assigned groups.'|t('password-policy') %}
+
+    {% set rulesTable %}
+        <div class="pane" id="pp-rules-pane">
+            <table id="pp-rules" class="data">
+                {% for rule in boolRules %}
+                    {%- set value = rule.policyValue -%}
+                    {%- set globalText = rule.globalValue ? 'On'|t('app') : 'Off'|t('app') -%}
+                    {%- set divergent = rule.field in divergentFields -%}
+                    <tr data-pp-rule="{{ rule.field }}" data-pp-global="{{ rule.globalValue ? '1' : '0' }}"{% if divergent %} class="pp-divergent"{% endif %}>
+                        <th scope="row">
+                            <strong>{{ rule.label }}</strong>
+                            <div class="light smalltext">{{ rule.instructions }}</div>
+                        </th>
+                        <td>
+                            <div class="btngroup" tabindex="0" role="radiogroup" aria-label="{{ rule.label }}">
+                                <div class="btn pp-rule-off{% if value is same as(false) %} active{% endif %}" data-icon="remove" data-pp-value="0" title="{{ offTitle }}" aria-label="{{ 'Off'|t('app') }}" role="radio" aria-checked="{{ value is same as(false) ? 'true' : 'false' }}"></div>
+                                <div class="btn pp-rule-global{% if value is null %} active{% endif %}" data-pp-value="" title="{{ globalTitle|replace({'{value}': globalText}) }}" aria-label="{{ 'Global'|t('password-policy') }}" role="radio" aria-checked="{{ value is null ? 'true' : 'false' }}"><div class="status inactive"></div></div>
+                                <div class="btn pp-rule-on{% if value is same as(true) %} active{% endif %}" data-icon="checkmark" data-pp-value="1" title="{{ onTitle }}" aria-label="{{ 'On'|t('app') }}" role="radio" aria-checked="{{ value is same as(true) ? 'true' : 'false' }}"></div>
+                            </div>
+                            <input type="hidden" name="settings[{{ rule.field }}]" value="{% if value is null %}{% else %}{{ value ? '1' : '0' }}{% endif %}">
+                        </td>
+                    </tr>
+                {% endfor %}
+            </table>
+        </div>
+    {% endset %}
+
+    {{ forms.field({
+        label: 'Rule overrides'|t('password-policy'),
+        instructions: 'Each rule defaults to <strong>Global</strong>, inheriting your global setting. Choose <strong>Off</strong> or <strong>On</strong> to explicitly override.'|t('password-policy')|raw,
+        id: 'pp-rules-field',
+    }, rulesTable) }}
+</div>
+
+{# =========================================================================
+   Lifecycle — expiry
+   ========================================================================= #}
+
+<div id="lifecycle" class="hidden">
+    {% set globalExpiry = globalSettings.expiryAmount ? globalSettings.expiryAmount ~ ' ' ~ globalSettings.expiryPeriod ~ '(s)' : 'None'|t('password-policy') %}
+    {%- set expiryInput %}
+        <div class="flex">
+            <div>
+                {{ forms.text({
+                    class: 'ltr',
+                    id: 'settings-expiryAmount',
+                    name: 'settings[expiryAmount]',
+                    type: 'number',
+                    value: policy.expiryAmount ?? '',
+                    disabled: readOnly,
+                    inputAttributes: { style: 'width: 6rem', min: 0 },
+                }) }}
+            </div>
+            <div>
+                {{ forms.select({
+                    id: 'settings-expiryPeriod',
+                    name: 'settings[expiryPeriod]',
+                    options: [
+                        { label: 'Day(s)'|t('password-policy'), value: 'day' },
+                        { label: 'Week(s)'|t('password-policy'), value: 'week' },
+                        { label: 'Month(s)'|t('password-policy'), value: 'month' },
+                        { label: 'Year(s)'|t('password-policy'), value: 'year' },
+                    ],
+                    value: policy.expiryPeriod ?? 'day',
+                    disabled: readOnly,
+                }) }}
+            </div>
+        </div>
+    {%- endset -%}
+
+    {{ forms.field({
+        label: 'Expiry period'|t('password-policy'),
+        instructions: ('Force users in this group to change their password every N units. Empty = inherit global ({value}).'|t('password-policy', { value: globalExpiry })),
+        fieldClass: ('expiryAmount' in divergentFields or 'expiryPeriod' in divergentFields) ? 'pp-divergent',
+        id: 'expiryInput',
+        errors: policy.getErrors('expiryAmount')|merge(policy.getErrors('expiryPeriod')),
+    }, expiryInput) }}
+</div>
+
+{# =========================================================================
+   CSS — rule table styling (matches webhook plugin look)
+   ========================================================================= #}
+
+{% css %}
+#pp-rules-pane,
+#pp-rules-pane p {
+    display: inline-block;
+}
+#pp-rules-pane {
+    position: relative;
+}
+#pp-rules tr:first-child > * { border-top: none; padding-top: 0; }
+#pp-rules tr:last-child > * { border-bottom: none; padding-bottom: 0; }
+#pp-rules th { font-weight: normal; }
+#pp-rules .btngroup:focus { outline: none; }
+#pp-rules .btn[data-icon]:before { margin-top: -2px; width: 1em; }
+#pp-rules .pp-rule-on { color: var(--bg-enabled); }
+#pp-rules .pp-rule-off { color: var(--bg-disabled); }
+#pp-rules .pp-rule-global .status { margin: 0; }
+
+/* Equalise button widths within the rule group — fixed width + zero padding,
+   since Craft's default .btn uses padding-inline and our middle button's
+   content (status circle, 0.75rem) is narrower than icon buttons (1em). */
+#pp-rules .btngroup .btn {
+    width: 2.5rem;
+    padding-inline: 0;
+}
+
+/* High-contrast active states — colored fill + white icon (uses Craft's
+   accessibility-tested semantic vars). */
+#pp-rules .pp-rule-on.active {
+    background: var(--bg-enabled);
+    border-color: var(--bg-enabled);
+    color: var(--white);
+}
+#pp-rules .pp-rule-off.active {
+    background: var(--bg-disabled);
+    border-color: var(--bg-disabled);
+    color: var(--white);
+}
+
+/* When Global is active, the hollow circle's default --gray-500 outline sits
+   on Craft's dark active-button background (~1.6:1 contrast → fails WCAG AA
+   3:1 for graphics). Switch the outline to white. */
+#pp-rules .pp-rule-global.active .status.inactive {
+    --outline-color: var(--white);
+}
+
+/* Divergent-from-preset indicator — blue left border on changed fields.
+   Mirrors Craft's pattern for "this field differs from its source". */
+.field.pp-divergent {
+    border-left: 2px solid var(--blue-600);
+    padding-left: 12px;
+    margin-left: -14px;
+}
+#pp-rules tr.pp-divergent th {
+    border-left: 2px solid var(--blue-600);
+    padding-left: 10px;
+}
+
+/* Conflict banner — orange left border + warm tint, mirrors the .pp-divergent
+   visual language but escalated for global vs policy collisions surfaced by
+   PolicyController::_buildEditNoticeHtml(). */
+.pp-conflict-banner {
+    border-left: 4px solid var(--orange-500);
+    background-color: var(--orange-050);
+    color: var(--orange-900);
+    padding: 14px 18px;
+    margin-block: 14px;
+    border-radius: 4px;
+}
+.pp-conflict-banner p {
+    margin: 0;
+}
+{% endcss %}
+
+{# =========================================================================
+   JS — rule row click handling, numeric captions, preset auto-fill
+   ========================================================================= #}
+
+{% js %}
+(function() {
+    // NOTE: these values must match PolicyPreset::toGroupPolicy() exactly.
+    // Use '' (inherit) where the PHP enum leaves a field unset so that
+    // applying a preset produces a policy with 0 divergence.
+    var presets = {{ {
+        nist_800_63b: { minLength: 8, maxLength: '', cases: '0', numbers: '0', symbols: '0', hibp: '1', hibpFailMode: '', passwordHistoryCount: '', checkSequentialChars: '', checkRepeatedChars: '', checkContextual: '', checkCommonPasswords: '', expiryAmount: '', expiryPeriod: 'day' },
+        owasp_asvs: { minLength: 12, maxLength: 128, cases: '0', numbers: '0', symbols: '0', hibp: '1', hibpFailMode: '', passwordHistoryCount: '', checkSequentialChars: '', checkRepeatedChars: '', checkContextual: '', checkCommonPasswords: '', expiryAmount: '', expiryPeriod: 'day' },
+        pci_dss_v4: { minLength: 12, maxLength: '', cases: '1', numbers: '1', symbols: '', hibp: '1', hibpFailMode: '', passwordHistoryCount: 4, checkSequentialChars: '', checkRepeatedChars: '', checkContextual: '', checkCommonPasswords: '1', expiryAmount: 90, expiryPeriod: 'day' },
+        strict_enterprise: { minLength: 12, maxLength: '', cases: '1', numbers: '1', symbols: '1', hibp: '1', hibpFailMode: 'closed', passwordHistoryCount: 5, checkSequentialChars: '1', checkRepeatedChars: '1', checkContextual: '1', checkCommonPasswords: '1', expiryAmount: 90, expiryPeriod: 'day' },
+    }|json_encode|raw }};
+
+    var defaults = {
+        minLength: '', maxLength: '', cases: '', numbers: '', symbols: '',
+        hibp: '', hibpFailMode: '', passwordHistoryCount: '',
+        checkSequentialChars: '', checkRepeatedChars: '',
+        checkContextual: '', checkCommonPasswords: '',
+        expiryAmount: '', expiryPeriod: 'day'
+    };
+
+    // Rule row buttons — clicking sets active + updates the hidden input value
+    function setRuleValue(tr, value) {
+        tr.querySelectorAll('.btn').forEach(function(b) {
+            b.classList.remove('active');
+            b.setAttribute('aria-checked', 'false');
+        });
+        var btn = tr.querySelector('.btn[data-pp-value="' + value + '"]');
+        if (btn) {
+            btn.classList.add('active');
+            btn.setAttribute('aria-checked', 'true');
+        }
+        var input = tr.querySelector('input[type="hidden"]');
+        if (input) input.value = value;
+    }
+
+    document.querySelectorAll('#pp-rules tr[data-pp-rule]').forEach(function(tr) {
+        tr.querySelectorAll('.btn').forEach(function(btn) {
+            btn.addEventListener('click', function(ev) {
+                ev.preventDefault();
+                setRuleValue(tr, btn.getAttribute('data-pp-value'));
+            });
+        });
+    });
+
+    // Apply a preset (or defaults) to all fields. Reused by the change
+    // handler and the "Restore preset defaults" button.
+    function applyPreset(presetKey) {
+        var p = presets[presetKey] || defaults;
+
+        ['minLength', 'maxLength', 'passwordHistoryCount', 'expiryAmount'].forEach(function(field) {
+            var el = document.getElementById('settings-' + field);
+            if (el) {
+                el.value = p[field] !== undefined ? p[field] : '';
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        });
+
+        ['expiryPeriod', 'hibpFailMode'].forEach(function(field) {
+            var el = document.getElementById('settings-' + field);
+            if (el) {
+                el.value = p[field] !== undefined ? p[field] : '';
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
+
+        ['cases', 'numbers', 'symbols', 'hibp', 'checkSequentialChars', 'checkRepeatedChars', 'checkContextual', 'checkCommonPasswords'].forEach(function(field) {
+            var tr = document.querySelector('#pp-rules tr[data-pp-rule="' + field + '"]');
+            if (tr) setRuleValue(tr, p[field] !== undefined ? String(p[field]) : '');
+        });
+    }
+
+    var presetSelect = document.getElementById('preset');
+    if (presetSelect) {
+        presetSelect.addEventListener('change', function() {
+            applyPreset(this.value);
+        });
+    }
+
+    // "Restore preset defaults" button — re-apply the currently selected preset
+    var restoreBtn = document.getElementById('pp-restore-defaults');
+    if (restoreBtn && presetSelect) {
+        restoreBtn.addEventListener('click', function() {
+            if (presetSelect.value) applyPreset(presetSelect.value);
+        });
+    }
+
+    // "Reset all to global" — clears every override on the Rules tab,
+    // returning all fields to inherit/global state.
+    var resetBtn = document.getElementById('pp-reset-rules');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function() {
+            ['settings-minLength', 'settings-maxLength', 'settings-passwordHistoryCount'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) {
+                    el.value = '';
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            });
+            var hibp = document.getElementById('settings-hibpFailMode');
+            if (hibp) {
+                hibp.value = '';
+                hibp.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            document.querySelectorAll('#pp-rules tr[data-pp-rule]').forEach(function(tr) {
+                setRuleValue(tr, '');
+            });
+        });
+    }
+})();
+{% endjs %}

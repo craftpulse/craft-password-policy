@@ -171,7 +171,6 @@ class SettingsController extends Controller
                 $settings['complexityMode'],
                 $settings['minimumCharacterTypes'],
                 $settings['enablePerGroupPolicies'],
-                $settings['groupPolicies'],
                 $settings['expiryReminderDays'],
             );
         }

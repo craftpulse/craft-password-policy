@@ -158,7 +158,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '2.0.0';
+    public string $schemaVersion = '2.1.0';
 
     /**
      * @var bool
@@ -316,6 +316,17 @@ class PasswordPolicy extends Plugin
             return null;
         }
 
+        // Named policies subnav (Pro + per-group enabled) — listed first
+        if ($this->getIsPro() && $currentUser->can('pp:settings')) {
+            $settings = $this->getSettings();
+            if ($settings->enablePerGroupPolicies) {
+                $subNavs['policies'] = [
+                    'label' => Craft::t('password-policy', 'Policies'),
+                    'url' => 'password-policy/policies',
+                ];
+            }
+        }
+
         // Settings visible in read-only mode too (admins can view active policy)
         if ($currentUser->can('pp:settings')) {
             $subNavs['settings'] = [
@@ -398,7 +409,10 @@ class PasswordPolicy extends Plugin
                     return !array_intersect($attributes, ['password', 'newPassword']);
                 });
 
-                foreach (UserRules::defineRules() as $rule) {
+                /** @var User $user */
+                $user = $event->sender;
+
+                foreach (UserRules::defineRules($user) as $rule) {
                     $event->rules[] = $rule;
                 }
             }
@@ -465,6 +479,9 @@ class PasswordPolicy extends Plugin
                         'password-policy/settings' => 'password-policy/settings/edit',
                         'password-policy/settings/<section:{slug}>' => 'password-policy/settings/edit',
                         'password-policy/plugins/password-policy' => 'password-policy/settings/edit',
+                        'password-policy/policies' => 'password-policy/policy/index',
+                        'password-policy/policies/new' => 'password-policy/policy/edit',
+                        'password-policy/policies/<policyId:\d+>' => 'password-policy/policy/edit',
                         'password-policy/validate' => 'password-policy/validation/validate',
                     ],
                     $event->rules

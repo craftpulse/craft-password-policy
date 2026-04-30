@@ -1,0 +1,83 @@
+{# Policies index — VueAdminTable listing of named password policies #}
+{# @var policies \craftpulse\passwordpolicy\models\PolicyModel[] #}
+{# @var presetLabels array<string, string> #}
+{# @var readOnly bool #}
+{# @var isPro bool #}
+
+{% requirePermission "pp:settings" %}
+
+{% extends "password-policy/_layouts/password-policy-cp.twig" %}
+
+{% set selectedSubnavItem = 'policies' %}
+{% set title = 'Policies'|t('password-policy') %}
+
+{% do view.registerAssetBundle('craft\\web\\assets\\admintable\\AdminTableAsset') %}
+
+{% if readOnly %}
+    {% set contentNotice = readOnlyNotice() %}
+{% endif %}
+
+{% block actionButton %}
+    {% if not readOnly %}
+        <a href="{{ cpUrl('password-policy/policies/new') }}" class="btn submit add icon">{{ "New policy"|t('password-policy') }}</a>
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    <div id="policies-vue-admin-table"></div>
+{% endblock %}
+
+{% set tableData = [] %}
+{% for policy in policies %}
+    {% set groupNames = policy.getGroups()|map(g => g.name)|join(', ') %}
+    {% set divergentCount = policy.preset ? policy.getDivergentFields()|length : 0 %}
+    {% set presetName = policy.preset ? (presetLabels[policy.preset] ?? policy.preset) : 'Custom'|t('password-policy') %}
+    {% set policyUrl = cpUrl('password-policy/policies/' ~ policy.id) %}
+
+    {% set rowData = {
+        id: policy.id,
+        title: policy.name,
+        url: divergentCount > 0 ? policyUrl ~ '#rules' : policyUrl,
+        groups: groupNames ?: '-',
+        preset: presetName,
+        changes: divergentCount > 0 ? '{n, number} {n, plural, =1{change} other{changes}}'|t('password-policy', { n: divergentCount }) : '—',
+    } %}
+
+    {# Inline blue dot icon next to the title when this policy diverges
+       from its preset — uses Craft's built-in cp-icon system from App.vue. #}
+    {% if divergentCount > 0 %}
+        {% set rowData = rowData|merge({
+            icon: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg>',
+            iconColor: 'blue',
+        }) %}
+    {% endif %}
+
+    {% set tableData = tableData|merge([rowData]) %}
+{% endfor %}
+
+{% js %}
+var columns = [
+    { name: '__slot:title', title: Craft.t('password-policy', 'Name') },
+    { name: 'groups', title: Craft.t('password-policy', 'Groups') },
+    { name: 'preset', title: Craft.t('password-policy', 'Preset') },
+    { name: 'changes', title: Craft.t('password-policy', 'Changes') },
+];
+
+var tableData = {{ tableData|json_encode|raw }};
+
+var config = {
+    columns: columns,
+    container: '#policies-vue-admin-table',
+    emptyMessage: Craft.t('password-policy', 'No policies exist yet.'),
+    tableData: tableData,
+};
+
+{% if not readOnly %}
+    config.deleteAction = 'password-policy/policy/delete';
+    {% if policies|length > 1 %}
+        config.reorderAction = 'password-policy/policy/reorder';
+    {% endif %}
+{% endif %}
+
+new Craft.VueAdminTable(config);
+{% endjs %}
