@@ -46,7 +46,6 @@ use craftpulse\passwordpolicy\events\PasswordChangedEvent;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
 use craftpulse\passwordpolicy\services\ServicesTrait;
-use craftpulse\passwordpolicy\utilities\BlocklistUtility;
 use craftpulse\passwordpolicy\utilities\RetentionUtility;
 use craftpulse\passwordpolicy\variables\PasswordPolicyVariable;
 use Monolog\Formatter\LineFormatter;
@@ -373,6 +372,16 @@ class PasswordPolicy extends Plugin
             }
         }
 
+        // Blocklist subnav (Pro) — sits between Policies and Settings.
+        // Lite users don't see it (no editable feature behind it); discovery
+        // happens via plugin docs / marketing.
+        if ($this->getIsPro() && $currentUser->can('pp:blocklist-view')) {
+            $subNavs['blocklist'] = [
+                'label' => Craft::t('password-policy', 'Blocklist'),
+                'url' => 'password-policy/blocklist',
+            ];
+        }
+
         // Settings visible in read-only mode too (admins can view active policy)
         if ($currentUser->can('pp:settings')) {
             $subNavs['settings'] = [
@@ -531,6 +540,7 @@ class PasswordPolicy extends Plugin
                         'password-policy/policies' => 'password-policy/policy/index',
                         'password-policy/policies/new' => 'password-policy/policy/edit',
                         'password-policy/policies/<policyId:\d+>' => 'password-policy/policy/edit',
+                        'password-policy/blocklist' => 'password-policy/blocklist/index',
                         'password-policy/validate' => 'password-policy/validation/validate',
                     ],
                     $event->rules
@@ -559,8 +569,13 @@ class PasswordPolicy extends Plugin
                         'pp:force-reset-passwords' => [
                             'label' => Craft::t('password-policy', 'Force reset passwords retention access.'),
                         ],
-                        'pp:blocklist-manage' => [
-                            'label' => Craft::t('password-policy', 'Manage password blocklist.'),
+                        'pp:blocklist-view' => [
+                            'label' => Craft::t('password-policy', 'View password blocklist.'),
+                            'nested' => [
+                                'pp:blocklist-manage' => [
+                                    'label' => Craft::t('password-policy', 'Manage password blocklist.'),
+                                ],
+                            ],
                         ],
                     ],
                 ];
@@ -581,14 +596,6 @@ class PasswordPolicy extends Plugin
             Event::on(Utilities::class, Utilities::EVENT_REGISTER_UTILITIES,
                 function(RegisterComponentTypesEvent $event) {
                     $event->types[] = RetentionUtility::class;
-                }
-            );
-        }
-
-        if ($this->getIsPro()) {
-            Event::on(Utilities::class, Utilities::EVENT_REGISTER_UTILITIES,
-                function(RegisterComponentTypesEvent $event) {
-                    $event->types[] = BlocklistUtility::class;
                 }
             );
         }

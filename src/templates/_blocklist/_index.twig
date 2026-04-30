@@ -1,0 +1,239 @@
+{# Blocklist — top-level CP page. Two sections: bundled common list (refresh + last-seeded), and the editable custom words. #}
+{# @var commonCount int #}
+{# @var customWords array #}
+{# @var lastUpdated mixed #}
+{# @var isPro bool #}
+
+{% requirePermission "pp:blocklist-view" %}
+
+{% extends "password-policy/_layouts/password-policy-cp.twig" %}
+{% import '_includes/forms.twig' as forms %}
+
+{% set selectedSubnavItem = 'blocklist' %}
+{% set canManage = currentUser.can('pp:blocklist-manage') %}
+{% set customCount = customWords|length %}
+
+{# fullPageForm intentionally not set — the page hosts two independent
+   forms (refresh-common, save-custom). The header Save button binds to
+   the editor form via the HTML5 `form="..."` attribute, which lets the
+   canonical Save-in-the-header UX coexist with multiple body forms
+   without nesting them. #}
+
+{% block actionButton %}
+    {% if canManage and isPro %}
+        <input type="submit" form="customWordsForm" class="btn submit" value="{{ 'Save'|t('app') }}">
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    {% if not isPro %}
+        {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
+    {% endif %}
+
+    <div class="readable">
+        <h2>{{ 'Common passwords'|t('password-policy') }}</h2>
+
+        <p>
+            {{ "{count} bundled passwords from the public {source} corpus are rejected at validation time."|t('password-policy', {
+                count: tag('strong', { text: commonCount|number_format }),
+                source: tag('a', {
+                    class: 'go',
+                    href: 'https://github.com/danielmiessler/SecLists/blob/master/Passwords/Common-Credentials/10k-most-common.txt',
+                    target: '_blank',
+                    rel: 'noopener noreferrer',
+                    text: 'SecLists Top 10,000 Most Common Passwords'|t('password-policy'),
+                }),
+            })|raw }}
+        </p>
+
+        {% if lastUpdated %}
+            {% set thisDate = lastUpdated|date('Y-m-d') %}
+            {% set today = 'now'|date('Y-m-d') %}
+            {% set yesterday = 'yesterday'|date('Y-m-d') %}
+            {% if thisDate == today %}
+                {% set humanized = 'Today, {time}'|t('password-policy', { time: lastUpdated|time }) %}
+            {% elseif thisDate == yesterday %}
+                {% set humanized = 'Yesterday, {time}'|t('password-policy', { time: lastUpdated|time }) %}
+            {% else %}
+                {% set humanized = lastUpdated|datetime %}
+            {% endif %}
+            <blockquote class="note tip">
+                <p>
+                    <strong>{{ 'Last seeded:'|t('password-policy') }}</strong>
+                    {{ humanized }}
+                </p>
+            </blockquote>
+        {% else %}
+            <blockquote class="note warning">
+                <p>
+                    <strong>{{ "Common passwords have never been seeded on this environment."|t('password-policy') }}</strong>
+                    {{ 'Run “Update common passwords” below to populate the bundled list — until you do, no common-password matches will block password changes.'|t('password-policy') }}
+                </p>
+            </blockquote>
+        {% endif %}
+
+        {% if canManage and isPro %}
+            <form method="post" accept-charset="UTF-8">
+                {{ csrfInput() }}
+                {{ redirectInput('password-policy/blocklist') }}
+                <input type="hidden" name="action" value="password-policy/blocklist/update-common">
+
+                <p class="light">
+                    {{ "Re-seed from the bundled data file. Run on each environment after a plugin upgrade. Runs as a background job."|t('password-policy') }}
+                </p>
+
+                <input type="submit" class="btn" value="{{ 'Update common passwords'|t('password-policy') }}">
+            </form>
+        {% endif %}
+    </div>
+
+    {% if isPro %}
+        <hr>
+
+        <div class="readable">
+            <h2>{{ 'Check a word'|t('password-policy') }}</h2>
+
+            <p>{{ "Test whether a word is currently in the blocklist (bundled common or custom). The word is checked once and never logged."|t('password-policy') }}</p>
+
+            <div class="flex">
+                <div class="flex-grow">
+                    {{ forms.text({
+                        id: 'pp-blocklist-check-input',
+                        name: 'word',
+                        autocomplete: 'off',
+                        spellcheck: 'false',
+                        placeholder: 'word to check'|t('password-policy'),
+                    }) }}
+                </div>
+                <div>
+                    <button type="button" class="btn" id="pp-blocklist-check-button">{{ 'Check'|t('password-policy') }}</button>
+                </div>
+            </div>
+
+            {# Both result states use blockquote.note variants so they share the
+               same shape, padding, and icon system — only the variant
+               (warning vs. tip) and content differ. Inline `style="display:none"`
+               instead of the `hidden` attribute because sibling notice
+               components carry `display: flex` rules that override the
+               `hidden` attribute's default styling. #}
+
+            {# Blocked → blockquote.note.warning (amber alert icon). #}
+            <blockquote class="note warning" id="pp-blocklist-check-error" style="display:none">
+                <p id="pp-blocklist-check-error-message"></p>
+            </blockquote>
+
+            {# Not blocked / empty / fetch error → blockquote.note.tip (blue lightbulb). #}
+            <blockquote class="note tip" id="pp-blocklist-check-notice" style="display:none">
+                <p id="pp-blocklist-check-notice-message"></p>
+            </blockquote>
+        </div>
+
+        {% js %}
+            (function() {
+                const input = document.getElementById('pp-blocklist-check-input');
+                const button = document.getElementById('pp-blocklist-check-button');
+                const errorEl = document.getElementById('pp-blocklist-check-error');
+                const errorMsgEl = document.getElementById('pp-blocklist-check-error-message');
+                const noticeEl = document.getElementById('pp-blocklist-check-notice');
+                const noticeMsgEl = document.getElementById('pp-blocklist-check-notice-message');
+
+                if (!input || !button || !errorEl || !noticeEl) return;
+
+                const labels = {
+                    blockedCommon: {{ "Blocked — present in the bundled common-password list."|t('password-policy')|json_encode|raw }},
+                    blockedCustom: {{ "Blocked — present in the custom list."|t('password-policy')|json_encode|raw }},
+                    notBlocked: {{ "Not in the blocklist."|t('password-policy')|json_encode|raw }},
+                    empty: {{ "Enter a word to check."|t('password-policy')|json_encode|raw }},
+                    error: {{ "Couldn’t check that word — please try again."|t('password-policy')|json_encode|raw }},
+                };
+
+                function showError(message) {
+                    errorMsgEl.textContent = message;
+                    errorEl.style.display = '';
+                    noticeEl.style.display = 'none';
+                }
+
+                function showNotice(message) {
+                    noticeMsgEl.textContent = message;
+                    noticeEl.style.display = '';
+                    errorEl.style.display = 'none';
+                }
+
+                async function check() {
+                    const word = input.value.trim();
+                    if (word === '') {
+                        showNotice(labels.empty);
+                        return;
+                    }
+
+                    button.disabled = true;
+                    try {
+                        const formData = new FormData();
+                        formData.append(Craft.csrfTokenName, Craft.csrfTokenValue);
+                        formData.append('word', word);
+
+                        const response = await fetch(Craft.getActionUrl('password-policy/blocklist/check'), {
+                            method: 'POST',
+                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                            body: formData,
+                        });
+
+                        if (!response.ok) throw new Error('HTTP ' + response.status);
+
+                        const data = await response.json();
+                        if (data.blocked) {
+                            showError(data.source === 'common' ? labels.blockedCommon : labels.blockedCustom);
+                        } else {
+                            showNotice(labels.notBlocked);
+                        }
+                    } catch (e) {
+                        showNotice(labels.error);
+                    } finally {
+                        button.disabled = false;
+                    }
+                }
+
+                button.addEventListener('click', check);
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        check();
+                    }
+                });
+            })();
+        {% endjs %}
+    {% endif %}
+
+    {% if canManage and isPro %}
+        <hr>
+
+        <form method="post" accept-charset="UTF-8" id="customWordsForm">
+            {{ csrfInput() }}
+            {{ redirectInput('password-policy/blocklist') }}
+            <input type="hidden" name="action" value="password-policy/blocklist/save-custom">
+
+            {% set tableRows = {} %}
+            {% for w in customWords %}
+                {% set tableRows = tableRows|merge({ (w.id): { word: w.word } }) %}
+            {% endfor %}
+
+            {{ forms.editableTableField({
+                label: 'Custom words'|t('password-policy'),
+                instructions: 'Block these words in addition to the bundled common-password list. Stored lowercase; case-insensitive at validation time.'|t('password-policy'),
+                name: 'words',
+                cols: {
+                    word: {
+                        heading: 'Word'|t('password-policy'),
+                        type: 'singleline',
+                        code: true,
+                    },
+                },
+                rows: tableRows,
+                addRowLabel: 'Add a word'|t('password-policy'),
+                allowAdd: true,
+                allowDelete: true,
+                allowReorder: false,
+            }) }}
+        </form>
+    {% endif %}
+{% endblock %}

@@ -30,11 +30,11 @@ class CommonPasswordValidator extends Validator
     // =========================================================================
 
     /**
-     * Cache key for the blocklist word set.
+     * Cache key for the blocklist word→source map.
      *
      * @var string
      */
-    private const CACHE_KEY = 'passwordpolicy_blocklist_words';
+    private const CACHE_KEY = 'passwordpolicy_blocklist_word_sources';
 
     /**
      * Cache duration in seconds (1 hour).
@@ -57,26 +57,25 @@ class CommonPasswordValidator extends Validator
         $word = strtolower(trim($value));
         $blocklist = $this->_getBlocklist();
 
-        if (isset($blocklist[$word])) {
-            return [
-                Craft::t(
-                    'password-policy',
-                    'This password is too common. Please choose a more unique password.',
-                ),
-                [],
-            ];
+        if (!isset($blocklist[$word])) {
+            return null;
         }
 
-        return null;
+        $message = $blocklist[$word] === 'custom'
+            ? Craft::t('password-policy', 'This password is blocked. Please choose a different one.')
+            : Craft::t('password-policy', 'This password is too common. Please choose a more unique password.');
+
+        return [$message, []];
     }
 
     // Private Methods
     // =========================================================================
 
     /**
-     * Returns the cached blocklist as a hash map for O(1) lookups.
+     * Returns the cached blocklist as a hash map of word → source for O(1)
+     * lookups with source-aware error messages.
      *
-     * @return array<string, true>
+     * @return array<string, string> word → source ('common' | 'custom')
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -90,15 +89,14 @@ class CommonPasswordValidator extends Validator
             return $blocklist;
         }
 
-        // Load all words from the blocklist table into a hash map
-        $words = (new Query())
-            ->select(['word'])
+        $rows = (new Query())
+            ->select(['word', 'source'])
             ->from('{{%passwordpolicy_blocklist}}')
-            ->column();
+            ->all();
 
         $blocklist = [];
-        foreach ($words as $word) {
-            $blocklist[$word] = true;
+        foreach ($rows as $row) {
+            $blocklist[$row['word']] = $row['source'];
         }
 
         $cache->set(self::CACHE_KEY, $blocklist, self::CACHE_DURATION);
