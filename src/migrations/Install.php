@@ -10,8 +10,13 @@
 
 namespace craftpulse\passwordpolicy\migrations;
 
+use Craft;
 use craft\db\Migration;
+use craft\db\Query;
 use craft\db\Table;
+use craft\helpers\Json;
+use craft\helpers\StringHelper;
+use craftpulse\passwordpolicy\data\EmailDefaults;
 
 /**
  * Class Install
@@ -38,6 +43,8 @@ class Install extends Migration
         $this->_createPoliciesTable();
         $this->_createPolicyGroupsTable();
         $this->_createBlocklistTable();
+        $this->_createNotificationTemplatesTable();
+        $this->_seedNotificationTemplateDefaults();
 
         return true;
     }
@@ -49,6 +56,7 @@ class Install extends Migration
      */
     public function safeDown(): bool
     {
+        $this->dropTableIfExists('{{%passwordpolicy_notification_templates}}');
         $this->dropTableIfExists('{{%passwordpolicy_blocklist}}');
         $this->dropTableIfExists('{{%passwordpolicy_policy_groups}}');
         $this->dropTableIfExists('{{%passwordpolicy_policies}}');
@@ -238,5 +246,101 @@ class Install extends Migration
         $this->createIndex(null, '{{%passwordpolicy_policy_groups}}', ['groupId'], false);
         $this->addForeignKey(null, '{{%passwordpolicy_policy_groups}}', ['policyId'], '{{%passwordpolicy_policies}}', ['id'], 'CASCADE', null);
         $this->addForeignKey(null, '{{%passwordpolicy_policy_groups}}', ['groupId'], Table::USERGROUPS, ['id'], 'CASCADE', null);
+    }
+
+    /**
+     * Creates the notification templates table.
+     *
+     * One row per (notificationKey, siteId) combination, with a JSON
+     * `content` column holding subject/body/sender overrides — mirrors
+     * Craft 5's element content storage shape.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _createNotificationTemplatesTable(): void
+    {
+        if ($this->db->tableExists('{{%passwordpolicy_notification_templates}}')) {
+            return;
+        }
+
+        $this->createTable('{{%passwordpolicy_notification_templates}}', [
+            'id' => $this->primaryKey(),
+            'notificationKey' => $this->string(64)->notNull(),
+            'siteId' => $this->integer()->notNull(),
+            'content' => $this->json()->notNull(),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid' => $this->uid(),
+        ]);
+
+        $this->createIndex(
+            null,
+            '{{%passwordpolicy_notification_templates}}',
+            ['notificationKey', 'siteId'],
+            true,
+        );
+        $this->createIndex(
+            null,
+            '{{%passwordpolicy_notification_templates}}',
+            ['siteId'],
+            false,
+        );
+        $this->addForeignKey(
+            null,
+            '{{%passwordpolicy_notification_templates}}',
+            ['siteId'],
+            Table::SITES,
+            ['id'],
+            'CASCADE',
+            null,
+        );
+    }
+
+    /**
+     * Seeds default rows for every (notificationKey × enabled site)
+     * combination so the runtime never falls back to translation files.
+     *
+     * Idempotent — skips rows that already exist.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _seedNotificationTemplateDefaults(): void
+    {
+        $sites = Craft::$app->getSites()->getAllSites();
+        $now = (new \DateTime())->format('Y-m-d H:i:s');
+
+        foreach (EmailDefaults::all() as $key => $factory) {
+            $content = call_user_func($factory);
+            $contentJson = Json::encode($content);
+
+            foreach ($sites as $site) {
+                $exists = (new Query())
+                    ->from('{{%passwordpolicy_notification_templates}}')
+                    ->where([
+                        'notificationKey' => $key,
+                        'siteId' => $site->id,
+                    ])
+                    ->exists();
+
+                if ($exists) {
+                    continue;
+                }
+
+                $this->insert('{{%passwordpolicy_notification_templates}}', [
+                    'notificationKey' => $key,
+                    'siteId' => $site->id,
+                    'content' => $contentJson,
+                    'dateCreated' => $now,
+                    'dateUpdated' => $now,
+                    'uid' => StringHelper::UUID(),
+                ]);
+            }
+        }
     }
 }
