@@ -30,3 +30,7 @@
 !.vscode/extensions.json
 config.codekit3
 prepros-6.config
+
+# CLAUDE
+.claude/settings.local.json
+.claude/plans/
