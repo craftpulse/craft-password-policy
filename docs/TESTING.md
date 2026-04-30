@@ -323,8 +323,8 @@ Test each scenario after installing the plugin on a fresh Craft CMS 5 site. Star
 6. Reload Editors Policy edit screen → banner is gone.
 7. Restore Editors Policy `minLength` to whatever value the rest of the suite expects (the post-reset baseline, see T5.4 reset notes).
 
-### T5.17 — Group deletion observability listener (P1.5) — PENDING
-> Listener registered on `UserGroups::EVENT_BEFORE_APPLY_GROUP_DELETE` in `PasswordPolicy::_registerUserGroupListeners()`. Logs the named policies whose junction rows are about to be cascade-dropped. Defensive `try/catch` — never blocks group deletion. Observability-only seam for future Enterprise audit logging.
+### T5.17 — Group deletion observability listener (P1.5) — PASS (Craft Pro)
+> **Verified 2026-04-30:** created group "P1.5 Test" (id=4) + policy "P1.5 Test Policy" (id=2) attached only to that group. Deleted the group from CP. Listener fired exactly as designed: new log file `storage/logs/password-policy-2026-04-30.log` created with entry `[password-policy.INFO] User group "P1.5 Test" (id: 4) deleted; dropping policy assignments: P1.5 Test Policy`, structured JSON payload `{"groupName":"P1.5 Test","groupId":4,"policies":"P1.5 Test Policy","username":"michtio"}`. Post-delete DB: `usergroups` row 4 gone, `passwordpolicy_policy_groups` empty (FK cascade cleaned junction), `passwordpolicy_policies` row 2 survived (policy now orphaned, no group assignments). Policy edit screen still loads, Groups field shows no checkboxes — orphaned-policy state degrades gracefully.
 1. Settings → Users → User Groups: create a new group "P1.5 Test".
 2. Edit any existing policy (e.g. Editors Policy), assign "P1.5 Test" alongside its existing groups, save.
 3. Confirm the junction row exists: `ddev craft db/query "SELECT * FROM passwordpolicy_policy_groups WHERE groupId = (SELECT id FROM usergroups WHERE handle = 'p15Test')"` → 1 row.
