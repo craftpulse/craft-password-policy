@@ -49,39 +49,19 @@ class GcController extends Controller
     {
         $plugin = PasswordPolicy::$plugin;
         $settings = $plugin->getSettings();
+        $results = $plugin->runGc();
 
         $this->stdout("Password Policy — Garbage Collection\n");
         $this->stdout(str_repeat('-', 40) . "\n");
 
-        // Password history (Pro)
-        if ($plugin->getIsPro() && $settings->passwordHistoryCount > 0) {
-            $purged = $plugin->getPasswordHistory()->purgeExpiredHistory(
-                $settings->passwordHistoryExpiryDays,
-                $settings->passwordHistoryCount,
-            );
-            $this->stdout("Password history: {$purged} expired entries purged (count floor: {$settings->passwordHistoryCount}, TTL: {$settings->passwordHistoryExpiryDays} days)\n");
-        } else {
-            $this->stdout("Password history: skipped (disabled or Lite edition)\n");
+        if (isset($results['passwordHistory'])) {
+            $this->stdout("Password history: {$results['passwordHistory']} expired entries purged (count floor: {$settings->passwordHistoryCount}, TTL: {$settings->passwordHistoryExpiryDays} days)\n");
         }
-
-        // Notification log (Pro+)
-        if ($plugin->getIsPro()) {
-            $purged = $plugin->getNotification()->pruneOldEntries(
-                $settings->notificationLogRetentionDays,
-            );
-            $this->stdout("Notification log: {$purged} entries purged (TTL: {$settings->notificationLogRetentionDays} days)\n");
-        } else {
-            $this->stdout("Notification log: skipped (Lite edition)\n");
+        if (isset($results['notificationLog'])) {
+            $this->stdout("Notification log: {$results['notificationLog']} entries purged (TTL: {$settings->notificationLogRetentionDays} days)\n");
         }
-
-        // Audit log (Enterprise)
-        if ($plugin->getIsEnterprise() && $settings->enableAuditLog) {
-            $purged = $plugin->getAuditLog()->purgeOldEntries(
-                $settings->auditLogRetentionDays,
-            );
-            $this->stdout("Audit log: {$purged} entries purged (TTL: {$settings->auditLogRetentionDays} days)\n");
-        } else {
-            $this->stdout("Audit log: skipped (disabled or not Enterprise)\n");
+        if (isset($results['auditLog'])) {
+            $this->stdout("Audit log: {$results['auditLog']} entries purged (TTL: {$settings->auditLogRetentionDays} days)\n");
         }
 
         $this->stdout(str_repeat('-', 40) . "\n");
