@@ -23,6 +23,7 @@ use yii\base\InvalidConfigException;
  * @property BlocklistService $blocklist
  * @property PasswordHistoryService $passwordHistory
  * @property NotificationService $notification
+ * @property NotificationTemplateService $notificationTemplates
  * @property PasswordService $passwords
  * @property PolicyService $policies
  * @property PolicyResolverService $policyResolver
@@ -50,6 +51,7 @@ trait ServicesTrait
                 'blocklist' => BlocklistService::class,
                 'passwordHistory' => PasswordHistoryService::class,
                 'notification' => NotificationService::class,
+                'notificationTemplates' => NotificationTemplateService::class,
                 'passwords' => PasswordService::class,
                 'policies' => PolicyService::class,
                 'policyResolver' => PolicyResolverService::class,
@@ -132,6 +134,21 @@ trait ServicesTrait
     public function getNotification(): NotificationService
     {
         return $this->get('notification');
+    }
+
+    /**
+     * Returns the notification templates service.
+     *
+     * @return NotificationTemplateService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getNotificationTemplates(): NotificationTemplateService
+    {
+        return $this->get('notificationTemplates');
     }
 
     /**

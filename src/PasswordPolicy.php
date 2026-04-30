@@ -22,6 +22,7 @@ use craft\events\RegisterConditionRulesEvent;
 use craft\events\RegisterElementActionsEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
+use craft\events\SiteEvent;
 use craft\events\TemplateEvent;
 use craft\events\UserGroupEvent;
 use craft\helpers\ArrayHelper;
@@ -29,6 +30,7 @@ use craft\helpers\ElementHelper;
 use craft\helpers\Json;
 use craft\log\MonologTarget;
 use craft\services\Gc;
+use craft\services\Sites;
 use craft\services\UserGroups;
 use craft\services\UserPermissions;
 use craft\services\Users;
@@ -482,6 +484,9 @@ class PasswordPolicy extends Plugin
         // Observability seam for policy assignments dropped via group deletion
         $this->_registerUserGroupListeners();
 
+        // Notification template propagation when a new site is added
+        $this->_registerSiteListeners();
+
         // Safety net: clear any remaining cached passwords at end of request
         $this->_registerRequestCleanup();
 
@@ -808,6 +813,44 @@ class PasswordPolicy extends Plugin
                 } catch (Throwable $e) {
                     Craft::warning(
                         'Failed to log policy assignments for deleted group: ' . $e->getMessage(),
+                        'password-policy',
+                    );
+                }
+            },
+        );
+    }
+
+    /**
+     * Registers a listener that propagates notification template rows to a
+     * newly-added site. When `Sites::EVENT_AFTER_SAVE_SITE` fires with
+     * `isNew = true`, copies every primary-site template row into the new
+     * site so admins don't see a missing template on first edit.
+     *
+     * Defensive `try/catch (Throwable)` — if the propagation fails (e.g.
+     * DB transient), log a warning. Site save itself is never blocked;
+     * propagation is best-effort, and the runtime fallback in
+     * `NotificationTemplateService::getTemplate()` covers the gap.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerSiteListeners(): void
+    {
+        Event::on(
+            Sites::class,
+            Sites::EVENT_AFTER_SAVE_SITE,
+            function(SiteEvent $event): void {
+                if (!$event->isNew) {
+                    return;
+                }
+
+                try {
+                    $this->getNotificationTemplates()->propagateToSite($event->site->id);
+                } catch (Throwable $e) {
+                    Craft::warning(
+                        'Failed to propagate notification templates to new site: ' . $e->getMessage(),
                         'password-policy',
                     );
                 }
