@@ -1,0 +1,247 @@
+{# Notification template edit — content for asCpScreen() with General/Advanced/Test tabs #}
+{# @var template \craftpulse\passwordpolicy\models\NotificationTemplateModel #}
+{# @var key string #}
+{# @var sites \craft\models\Site[] #}
+{# @var currentSite \craft\models\Site #}
+{# @var primarySiteId int #}
+{# @var tokens string[] #}
+{# @var displayName string #}
+
+{% import '_includes/forms.twig' as forms %}
+
+{{ hiddenInput('notificationKey', key) }}
+{{ hiddenInput('siteId', currentSite.id) }}
+
+{# =========================================================================
+   Site switcher
+   ========================================================================= #}
+
+{% if sites|length > 1 %}
+    <div class="readable">
+        <div class="field">
+            <div class="heading">
+                <label for="pp-site-switcher">{{ 'Site'|t('app') }}</label>
+            </div>
+            <div class="input ltr">
+                <div class="select">
+                    <select id="pp-site-switcher">
+                        {% for site in sites %}
+                            <option
+                                value="{{ cpUrl('password-policy/notifications/' ~ key, { siteId: site.id }) }}"
+                                {{ site.id == currentSite.id ? 'selected' : '' }}
+                            >
+                                {{ site.name }}{% if site.id == primarySiteId %} ({{ 'primary'|t('password-policy') }}){% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% js %}
+        document.getElementById('pp-site-switcher').addEventListener('change', function(e) {
+            window.location.href = e.target.value;
+        });
+    {% endjs %}
+
+    <hr>
+{% endif %}
+
+{# =========================================================================
+   General — subject, body, token picker
+   ========================================================================= #}
+
+<div id="general">
+    {{ forms.textField({
+        label: 'Subject'|t('password-policy'),
+        instructions: 'The subject line for this email. Twig tokens are rendered at send time.'|t('password-policy'),
+        id: 'subject',
+        name: 'subject',
+        value: template.subject,
+        required: true,
+        errors: template.getErrors('subject'),
+    }) }}
+
+    {{ forms.textareaField({
+        label: 'Body'|t('password-policy'),
+        instructions: 'The plaintext body. Use the token chips below to insert dynamic values.'|t('password-policy'),
+        id: 'body',
+        name: 'body',
+        value: template.body,
+        rows: 12,
+        class: 'code',
+        required: true,
+        errors: template.getErrors('body'),
+    }) }}
+
+    <blockquote class="note tip">
+        <p>
+            <strong>{{ 'Available tokens'|t('password-policy') }}</strong>
+            <br>
+            {{ "Click a chip to copy it to your clipboard."|t('password-policy') }}
+        </p>
+
+        <p class="pp-token-chips">
+            {% for token in tokens %}
+                <button type="button" class="btn pp-token-chip" data-token="{{ token }}">
+                    <code>{{ token }}</code>
+                </button>
+            {% endfor %}
+        </p>
+    </blockquote>
+</div>
+
+{# =========================================================================
+   Advanced — sender overrides
+   ========================================================================= #}
+
+<div id="advanced" class="hidden">
+    <div class="readable">
+        <p>{{ "Override the system mailer's sender details for this notification. Leave empty to inherit from Craft's email settings."|t('password-policy') }}</p>
+    </div>
+
+    {{ forms.textField({
+        label: 'Sender name'|t('password-policy'),
+        instructions: 'Optional. Inherits from system mailer when blank.'|t('password-policy'),
+        id: 'senderName',
+        name: 'senderName',
+        value: template.senderName,
+        errors: template.getErrors('senderName'),
+    }) }}
+
+    {{ forms.autosuggestField({
+        label: 'Sender email'|t('password-policy'),
+        instructions: 'Optional. Inherits from system mailer when blank.'|t('password-policy'),
+        id: 'senderEmail',
+        name: 'senderEmail',
+        value: template.senderEmail,
+        suggestEnvVars: true,
+        errors: template.getErrors('senderEmail'),
+    }) }}
+
+    {{ forms.autosuggestField({
+        label: 'Reply-to'|t('password-policy'),
+        instructions: 'Optional. Adds a Reply-To header when set.'|t('password-policy'),
+        id: 'replyTo',
+        name: 'replyTo',
+        value: template.replyTo,
+        suggestEnvVars: true,
+        errors: template.getErrors('replyTo'),
+    }) }}
+</div>
+
+{# =========================================================================
+   Test send — AJAX preview against current admin
+   ========================================================================= #}
+
+<div id="test" class="hidden">
+    <div class="readable">
+        <p>
+            {{ "Send a test render of this notification to your own account ({email}). Sample values: {sample}."|t('password-policy', {
+                email: tag('code', { text: currentUser.email }),
+                sample: tag('code', { text: 'daysUntilExpiry: 7' }),
+            })|raw }}
+        </p>
+        <p class="light">
+            {{ "Tip: edits in the General tab are previewed too — you don't need to save first."|t('password-policy') }}
+        </p>
+    </div>
+
+    <p>
+        <button type="button" class="btn" id="pp-test-send-button">
+            {{ 'Send test email'|t('password-policy') }}
+        </button>
+        <span class="spinner hidden" id="pp-test-send-spinner"></span>
+    </p>
+
+    {# Result panels — same shape as the blocklist Check-a-word tool. #}
+    <blockquote class="note tip" id="pp-test-send-success" style="display:none">
+        <p><strong id="pp-test-send-success-message"></strong></p>
+        <p><strong>{{ 'Subject:'|t('password-policy') }}</strong> <span id="pp-test-send-rendered-subject"></span></p>
+        <p><strong>{{ 'Body excerpt:'|t('password-policy') }}</strong></p>
+        <pre id="pp-test-send-rendered-body" class="code" style="white-space:pre-wrap"></pre>
+    </blockquote>
+
+    <blockquote class="note warning" id="pp-test-send-error" style="display:none">
+        <p id="pp-test-send-error-message"></p>
+    </blockquote>
+</div>
+
+{% js %}
+    (function() {
+        // Tab toggling — Craft handles the actual tab UI via .hidden classes
+        // on the content wrappers. Wired through asCpScreen()->tabs() default
+        // behaviour, so nothing extra is needed here for switching panes.
+
+        // ===== Token picker — click-to-copy =====
+        document.querySelectorAll('.pp-token-chip').forEach(function(button) {
+            button.addEventListener('click', function() {
+                var token = button.getAttribute('data-token');
+                if (!token || !navigator.clipboard) {
+                    return;
+                }
+                navigator.clipboard.writeText(token).then(function() {
+                    Craft.cp.displayNotice(Craft.t('password-policy', 'Copied {token} to clipboard.', { token: token }));
+                });
+            });
+        });
+
+        // ===== Test-send AJAX =====
+        var sendButton = document.getElementById('pp-test-send-button');
+        var spinner = document.getElementById('pp-test-send-spinner');
+        var successEl = document.getElementById('pp-test-send-success');
+        var successMsgEl = document.getElementById('pp-test-send-success-message');
+        var subjectEl = document.getElementById('pp-test-send-rendered-subject');
+        var bodyEl = document.getElementById('pp-test-send-rendered-body');
+        var errorEl = document.getElementById('pp-test-send-error');
+        var errorMsgEl = document.getElementById('pp-test-send-error-message');
+
+        if (!sendButton) {
+            return;
+        }
+
+        sendButton.addEventListener('click', async function() {
+            sendButton.disabled = true;
+            spinner.classList.remove('hidden');
+            successEl.style.display = 'none';
+            errorEl.style.display = 'none';
+
+            try {
+                var formData = new FormData();
+                formData.append(Craft.csrfTokenName, Craft.csrfTokenValue);
+                formData.append('notificationKey', {{ key|json_encode|raw }});
+                formData.append('siteId', {{ currentSite.id|json_encode|raw }});
+                formData.append('subject', document.getElementById('subject').value);
+                formData.append('body', document.getElementById('body').value);
+
+                var response = await fetch(
+                    Craft.getActionUrl('password-policy/notification-template/test-send'),
+                    {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body: formData,
+                    }
+                );
+
+                var data = await response.json();
+
+                if (data.success) {
+                    successMsgEl.textContent = data.message;
+                    subjectEl.textContent = data.renderedSubject || '';
+                    bodyEl.textContent = data.renderedBodyExcerpt || '';
+                    successEl.style.display = '';
+                } else {
+                    errorMsgEl.textContent = data.message || {{ 'Send failed.'|t('password-policy')|json_encode|raw }};
+                    errorEl.style.display = '';
+                }
+            } catch (err) {
+                errorMsgEl.textContent = {{ 'Send failed: network error.'|t('password-policy')|json_encode|raw }};
+                errorEl.style.display = '';
+            } finally {
+                spinner.classList.add('hidden');
+                sendButton.disabled = false;
+            }
+        });
+    })();
+{% endjs %}

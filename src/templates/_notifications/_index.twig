@@ -1,0 +1,53 @@
+{# Email notifications index — VueAdminTable listing of editable templates. #}
+{# @var rows array<array{key: string, name: string, subject: string, overrides: int, totalOtherSites: int}> #}
+
+{% requirePermission "pp:notification-templates-manage" %}
+
+{% extends "password-policy/_layouts/password-policy-cp.twig" %}
+
+{% set selectedSubnavItem = 'notifications' %}
+{% set title = 'Notifications'|t('password-policy') %}
+
+{% do view.registerAssetBundle('craft\\web\\assets\\admintable\\AdminTableAsset') %}
+
+{% block content %}
+    <div class="readable">
+        <p>{{ "Edit the email templates the plugin sends to users. Each template is plaintext-only and rendered through Twig — token references like {{ user }} or {{ daysUntilExpiry }} are substituted at send time."|t('password-policy') }}</p>
+    </div>
+
+    <div id="notifications-vue-admin-table"></div>
+{% endblock %}
+
+{% set tableData = [] %}
+{% for row in rows %}
+    {% set overridesLabel = row.overrides > 0
+        ? '{n, number} of {t}'|t('password-policy', { n: row.overrides, t: row.totalOtherSites })
+        : '—' %}
+
+    {% set tableData = tableData|merge([{
+        id: row.key,
+        title: row.name,
+        url: cpUrl('password-policy/notifications/' ~ row.key),
+        key: row.key,
+        subject: row.subject,
+        overrides: overridesLabel,
+    }]) %}
+{% endfor %}
+
+{% js %}
+var columns = [
+    { name: '__slot:title', title: Craft.t('password-policy', 'Notification') },
+    { name: 'key', title: Craft.t('password-policy', 'Key') },
+    { name: 'subject', title: Craft.t('password-policy', 'Subject (primary site)') },
+    { name: 'overrides', title: Craft.t('password-policy', 'Sites with overrides') },
+];
+
+var tableData = {{ tableData|json_encode|raw }};
+
+new Craft.VueAdminTable({
+    columns: columns,
+    container: '#notifications-vue-admin-table',
+    emptyMessage: Craft.t('password-policy', 'No editable notifications.'),
+    tableData: tableData,
+});
+{% endjs %}
