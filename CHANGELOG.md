@@ -32,6 +32,11 @@
 - Info icon tooltips on all settings pages with NIST/PCI-DSS/GDPR references
 - Garbage collection hook (`gc/run`) for retention/expiry housekeeping
 - Group-deletion observability listener — logs which named policies lose an assignment when a Craft user group is deleted (seam for future Enterprise audit logging)
+- New top-level **Notifications** subnav (Pro) between Blocklist and Settings — per-(notification, site) editable email templates with subject + plaintext body Twig sources, click-to-copy token chips for `{{ user }}`, `{{ daysUntilExpiry }}`, `{{ siteName }}`, env-var-aware sender overrides, and an AJAX test-send rendering against the current admin
+- Storage table `passwordpolicy_notification_templates` — one row per (notificationKey, siteId) with a JSON `content` column (mirrors Craft 5's elements_sites content shape — race-free per-site editing, FK CASCADE on site delete)
+- `Sites::EVENT_AFTER_SAVE_SITE` propagation listener — when a new site is added, copies primary-site notification rows into the new site so admins don't see a missing-template state on first edit (defensive try/catch never blocks the site save)
+- `pp:notification-templates-manage` permission (Pro) — gates the Notifications page and all notification-template controllers actions
+- `password-policy/notification/send-expiry-reminders [--user=<id>]` console command — enqueues `SendPasswordExpiryRemindersJob` (BaseBatchedJob, batchSize=100, ttr=300, canRetry≤5) which recomputes its recipient set per batch for natural retry idempotency. Lite returns `ExitCode::UNSPECIFIED_ERROR` with stderr "Pro edition required."
 
 ### Changed
 
