@@ -187,10 +187,6 @@ class NotificationTemplateController extends Controller
                     'label' => Craft::t('password-policy', 'Advanced'),
                     'url' => '#advanced',
                 ],
-                'test' => [
-                    'label' => Craft::t('password-policy', 'Test send'),
-                    'url' => '#test',
-                ],
             ])
             ->contentTemplate('password-policy/_notifications/_edit', [
                 'template' => $template,
