@@ -1,0 +1,416 @@
+<?php
+/**
+ * Password policy plugin for Craft CMS
+ *
+ * Enforce a password policy on your users. This plugin is aimed to make sure users use a password that is secure.
+ *
+ * @link      https://craftpulse.com
+ * @copyright Copyright (c) 2024 CraftPulse
+ */
+
+namespace craftpulse\passwordpolicy\controllers;
+
+use Craft;
+use craft\helpers\Json;
+use craft\helpers\StringHelper;
+use craft\web\Controller;
+use craftpulse\passwordpolicy\data\EmailDefaults;
+use craftpulse\passwordpolicy\models\NotificationTemplateModel;
+use craftpulse\passwordpolicy\PasswordPolicy;
+use Throwable;
+use yii\web\BadRequestHttpException;
+use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
+use yii\web\Response;
+
+/**
+ * Class NotificationTemplateController
+ *
+ * Handles CRUD + test-send for the editable per-(notificationKey, siteId)
+ * email templates. Pro-gated (403 on Lite). Permission-gated on
+ * `pp:notification-templates-manage`.
+ *
+ * @author      CraftPulse
+ * @package     PasswordPolicy
+ * @since       5.2.0
+ */
+class NotificationTemplateController extends Controller
+{
+    // Public Methods
+    // =========================================================================
+
+    /**
+     * @inheritdoc
+     *
+     * @throws ForbiddenHttpException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function beforeAction($action): bool
+    {
+        if (!parent::beforeAction($action)) {
+            return false;
+        }
+
+        $this->requireCpRequest();
+
+        if (!PasswordPolicy::$plugin->getIsPro()) {
+            throw new ForbiddenHttpException('Email notification templates require the Pro edition.');
+        }
+
+        $this->requirePermission('pp:notification-templates-manage');
+
+        return true;
+    }
+
+    /**
+     * Renders the notifications index — one row per notification key, with
+     * primary-site subject + a count of sites whose content diverges from
+     * the primary site's row.
+     *
+     * @return Response
+     *
+     * @throws Throwable
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function actionIndex(): Response
+    {
+        $service = PasswordPolicy::$plugin->getNotificationTemplates();
+        $primarySiteId = Craft::$app->getSites()->getPrimarySite()->id;
+        $totalSites = count(Craft::$app->getSites()->getAllSites());
+
+        $rows = [];
+        foreach (array_keys(EmailDefaults::all()) as $key) {
+            $primary = $service->getTemplate($key, $primarySiteId);
+            $allForKey = $service->getAllForKey($key);
+
+            $primaryContentJson = $primary !== null
+                ? Json::encode($primary->toContentJson())
+                : null;
+
+            $overrides = 0;
+            foreach ($allForKey as $template) {
+                if ($template->siteId === $primarySiteId) {
+                    continue;
+                }
+                if (Json::encode($template->toContentJson()) !== $primaryContentJson) {
+                    $overrides++;
+                }
+            }
+
+            $rows[] = [
+                'key' => $key,
+                'name' => $this->_displayNameForKey($key),
+                'subject' => $primary?->subject ?? '',
+                'overrides' => $overrides,
+                'totalOtherSites' => max(0, $totalSites - 1),
+            ];
+        }
+
+        return $this->renderTemplate('password-policy/_notifications/_index', [
+            'rows' => $rows,
+        ]);
+    }
+
+    /**
+     * Renders the per-(key, site) edit screen using `asCpScreen()`.
+     *
+     * @param string $key the notification key
+     * @param int|null $siteId target site (defaults to primary)
+     * @param NotificationTemplateModel|null $template route-injected by asModelFailure
+     * @return Response
+     *
+     * @throws ForbiddenHttpException
+     * @throws NotFoundHttpException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function actionEdit(string $key, ?int $siteId = null, ?NotificationTemplateModel $template = null): Response
+    {
+        if (!isset(EmailDefaults::all()[$key])) {
+            throw new NotFoundHttpException("Unknown notification key: $key");
+        }
+
+        $sites = Craft::$app->getSites()->getAllSites();
+        $primarySiteId = Craft::$app->getSites()->getPrimarySite()->id;
+        $siteId = $siteId ?? $primarySiteId;
+
+        // Confirm the target site exists / is enabled.
+        $targetSite = Craft::$app->getSites()->getSiteById($siteId);
+        if ($targetSite === null) {
+            throw new NotFoundHttpException("Unknown site ID: $siteId");
+        }
+
+        $service = PasswordPolicy::$plugin->getNotificationTemplates();
+
+        if ($template === null) {
+            $template = $service->getTemplate($key, $siteId);
+
+            if ($template === null) {
+                // Defensive: row was deleted out of band. Hydrate from defaults
+                // so the admin can save and re-create the row.
+                $template = $this->_seedDefaultsModel($key, $siteId);
+            }
+        }
+
+        $tokens = [
+            '{{ user.friendlyName }}',
+            '{{ user.username }}',
+            '{{ user.email }}',
+            '{{ daysUntilExpiry }}',
+            '{{ siteName }}',
+        ];
+
+        return $this->asCpScreen()
+            ->title($this->_displayNameForKey($key))
+            ->selectedSubnavItem('notifications')
+            ->addCrumb(
+                Craft::t('password-policy', 'Password Policy'),
+                'password-policy',
+            )
+            ->addCrumb(
+                Craft::t('password-policy', 'Notifications'),
+                'password-policy/notifications',
+            )
+            ->action("password-policy/notifications/$key/save")
+            ->redirectUrl("password-policy/notifications/$key?siteId=$siteId")
+            ->tabs([
+                'general' => [
+                    'label' => Craft::t('password-policy', 'General'),
+                    'url' => '#general',
+                ],
+                'advanced' => [
+                    'label' => Craft::t('password-policy', 'Advanced'),
+                    'url' => '#advanced',
+                ],
+                'test' => [
+                    'label' => Craft::t('password-policy', 'Test send'),
+                    'url' => '#test',
+                ],
+            ])
+            ->contentTemplate('password-policy/_notifications/_edit', [
+                'template' => $template,
+                'key' => $key,
+                'sites' => $sites,
+                'currentSite' => $targetSite,
+                'primarySiteId' => $primarySiteId,
+                'tokens' => $tokens,
+                'displayName' => $this->_displayNameForKey($key),
+            ]);
+    }
+
+    /**
+     * Saves a template from POST.
+     *
+     * @return Response|null
+     *
+     * @throws BadRequestHttpException
+     * @throws ForbiddenHttpException
+     * @throws NotFoundHttpException
+     * @throws Throwable
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function actionSave(): ?Response
+    {
+        $this->requirePostRequest();
+
+        $request = Craft::$app->getRequest();
+        $key = (string)$request->getRequiredBodyParam('notificationKey');
+        $siteId = (int)$request->getRequiredBodyParam('siteId');
+
+        if (!isset(EmailDefaults::all()[$key])) {
+            throw new BadRequestHttpException("Unknown notification key: $key");
+        }
+
+        if (Craft::$app->getSites()->getSiteById($siteId) === null) {
+            throw new NotFoundHttpException("Unknown site ID: $siteId");
+        }
+
+        $service = PasswordPolicy::$plugin->getNotificationTemplates();
+        $template = $service->getTemplate($key, $siteId)
+            ?? $this->_seedDefaultsModel($key, $siteId);
+
+        $template->subject = (string)$request->getBodyParam('subject', '');
+        $template->body = (string)$request->getBodyParam('body', '');
+        $template->senderName = $this->_nullable($request->getBodyParam('senderName'));
+        $template->senderEmail = $this->_nullable($request->getBodyParam('senderEmail'));
+        $template->replyTo = $this->_nullable($request->getBodyParam('replyTo'));
+
+        if (!$service->saveTemplate($template)) {
+            return $this->asModelFailure(
+                $template,
+                Craft::t('password-policy', "Couldn't save notification template."),
+                'template',
+            );
+        }
+
+        return $this->asModelSuccess(
+            $template,
+            Craft::t('password-policy', 'Notification template saved.'),
+            'template',
+        );
+    }
+
+    /**
+     * Renders the template against the current admin user (with sample
+     * `daysUntilExpiry: 7`) and sends through the real mailer pipeline.
+     *
+     * Returns JSON for the inline test-send panel: success or failure
+     * with the rendered subject + a body excerpt for visual confirmation.
+     *
+     * @return Response
+     *
+     * @throws BadRequestHttpException
+     * @throws Throwable
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function actionTestSend(): Response
+    {
+        $this->requirePostRequest();
+        $this->requireAcceptsJson();
+
+        $request = Craft::$app->getRequest();
+        $key = (string)$request->getRequiredBodyParam('notificationKey');
+        $siteId = (int)$request->getRequiredBodyParam('siteId');
+
+        if (!isset(EmailDefaults::all()[$key])) {
+            throw new BadRequestHttpException("Unknown notification key: $key");
+        }
+
+        $admin = Craft::$app->getUser()->getIdentity();
+        if ($admin === null || $admin->email === null) {
+            return $this->asJson([
+                'success' => false,
+                'message' => Craft::t('password-policy', 'Could not resolve a recipient email for the current user.'),
+            ]);
+        }
+
+        $service = PasswordPolicy::$plugin->getNotificationTemplates();
+        $template = $service->getTemplate($key, $siteId);
+
+        if ($template === null) {
+            return $this->asJson([
+                'success' => false,
+                'message' => Craft::t('password-policy', 'No template found for this site.'),
+            ]);
+        }
+
+        // Use posted subject/body so the admin can test edits *before* saving.
+        $previewSubject = (string)$request->getBodyParam('subject', $template->subject);
+        $previewBody = (string)$request->getBodyParam('body', $template->body);
+        $template->subject = $previewSubject;
+        $template->body = $previewBody;
+
+        $site = Craft::$app->getSites()->getSiteById($siteId);
+        $vars = [
+            'user' => $admin,
+            'daysUntilExpiry' => 7,
+            'siteName' => $site?->getName() ?? Craft::$app->getSystemName(),
+        ];
+
+        try {
+            $message = PasswordPolicy::$plugin->getNotification()
+                ->composeFromTemplate($template, $admin, $vars);
+            $message->setTo($admin->email)->send();
+        } catch (Throwable $e) {
+            Craft::error(
+                "Test-send failed: " . $e->getMessage(),
+                'password-policy',
+            );
+            return $this->asJson([
+                'success' => false,
+                'message' => Craft::t('password-policy', 'Send failed: {error}', [
+                    'error' => $e->getMessage(),
+                ]),
+            ]);
+        }
+
+        $renderedSubject = Craft::$app->getView()->renderString($previewSubject, $vars);
+        $renderedBody = Craft::$app->getView()->renderString($previewBody, $vars);
+
+        return $this->asJson([
+            'success' => true,
+            'message' => Craft::t('password-policy', 'Test email sent to {email}.', [
+                'email' => $admin->email,
+            ]),
+            'renderedSubject' => $renderedSubject,
+            'renderedBodyExcerpt' => StringHelper::truncate($renderedBody, 240, '…'),
+        ]);
+    }
+
+    // Private Methods
+    // =========================================================================
+
+    /**
+     * Returns the human-readable display name for a notification key.
+     *
+     * @param string $key
+     * @return string
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _displayNameForKey(string $key): string
+    {
+        return match ($key) {
+            'expiry-reminder' => Craft::t('password-policy', 'Password expiry reminder'),
+            default => StringHelper::titleize(str_replace('-', ' ', $key)),
+        };
+    }
+
+    /**
+     * Hydrates a fresh model from EmailDefaults — used as a defensive
+     * fallback when the underlying row is missing for an admin who clicked
+     * straight to a per-site edit URL.
+     *
+     * @param string $key
+     * @param int $siteId
+     * @return NotificationTemplateModel
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _seedDefaultsModel(string $key, int $siteId): NotificationTemplateModel
+    {
+        $factory = EmailDefaults::all()[$key];
+        $defaults = call_user_func($factory);
+
+        $model = new NotificationTemplateModel();
+        $model->notificationKey = $key;
+        $model->siteId = $siteId;
+        $model->subject = (string)($defaults['subject'] ?? '');
+        $model->body = (string)($defaults['body'] ?? '');
+        $model->senderName = $defaults['senderName'] ?? null;
+        $model->senderEmail = $defaults['senderEmail'] ?? null;
+        $model->replyTo = $defaults['replyTo'] ?? null;
+
+        return $model;
+    }
+
+    /**
+     * Trims a posted string and returns null when empty.
+     *
+     * @param mixed $value
+     * @return string|null
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _nullable(mixed $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+        return $trimmed === '' ? null : $trimmed;
+    }
+}
