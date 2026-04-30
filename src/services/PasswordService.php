@@ -32,7 +32,14 @@ class PasswordService extends Component
     // Constants
     // =========================================================================
 
-    public const PWNED_ENDPOINT = 'https://api.pwnedpasswords.com/range/';
+    public const HIBP_ENDPOINT = 'https://api.pwnedpasswords.com/range/';
+
+    /**
+     * @var string
+     *
+     * @deprecated in 5.2.0. Use [[HIBP_ENDPOINT]] instead.
+     */
+    public const PWNED_ENDPOINT = self::HIBP_ENDPOINT;
 
     // Private Properties
     // =========================================================================
@@ -102,14 +109,15 @@ class PasswordService extends Component
      * @return bool|null true = breached, false = clean, null = API failure
      *
      * @author CraftPulse
+     * @since 5.2.0
      */
-    public function pwned(#[\SensitiveParameter] string $password): ?bool
+    public function hibp(#[\SensitiveParameter] string $password): ?bool
     {
         $hash = strtoupper(sha1($password));
         $prefix = substr($hash, 0, 5);
         $suffix = substr($hash, 5);
 
-        $endpoint = self::PWNED_ENDPOINT . $prefix;
+        $endpoint = self::HIBP_ENDPOINT . $prefix;
 
         try {
             $client = Craft::createGuzzleClient([
@@ -133,6 +141,21 @@ class PasswordService extends Component
             PasswordPolicy::$plugin->log($exception->getMessage(), [], Logger::LEVEL_ERROR);
             return null;
         }
+    }
+
+    /**
+     * Validates a password against the "Have I Been Pwned" database.
+     *
+     * @param string $password
+     * @return bool|null true = breached, false = clean, null = API failure
+     *
+     * @deprecated in 5.2.0. Use [[hibp()]] instead.
+     *
+     * @author CraftPulse
+     */
+    public function pwned(#[\SensitiveParameter] string $password): ?bool
+    {
+        return $this->hibp($password);
     }
 
     // Private Methods

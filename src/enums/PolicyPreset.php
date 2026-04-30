@@ -102,7 +102,7 @@ enum PolicyPreset: string
         $policy->cases = false;
         $policy->numbers = false;
         $policy->symbols = false;
-        $policy->pwned = true;
+        $policy->hibp = true;
         $policy->expiryAmount = null;
     }
 
@@ -122,7 +122,7 @@ enum PolicyPreset: string
         $policy->cases = false;
         $policy->numbers = false;
         $policy->symbols = false;
-        $policy->pwned = true;
+        $policy->hibp = true;
         $policy->expiryAmount = null;
     }
 
@@ -141,7 +141,8 @@ enum PolicyPreset: string
         $policy->cases = true;
         $policy->numbers = true;
         $policy->symbols = true;
-        $policy->pwned = true;
+        $policy->hibp = true;
+        $policy->hibpFailMode = 'closed';
         $policy->passwordHistoryCount = 5;
         $policy->checkSequentialChars = true;
         $policy->checkRepeatedChars = true;
@@ -168,7 +169,7 @@ enum PolicyPreset: string
         $policy->minLength = 12;
         $policy->cases = true;
         $policy->numbers = true;
-        $policy->pwned = true;
+        $policy->hibp = true;
         $policy->passwordHistoryCount = 4;
         $policy->checkCommonPasswords = true;
         $policy->expiryAmount = 90;

@@ -60,11 +60,16 @@ class ValidationController extends Controller
         $password = $request->getRequiredBodyParam('password');
 
         $plugin = PasswordPolicy::$plugin;
-        $settings = $plugin->getSettings();
         $isPro = $plugin->getIsPro();
 
         // Build a temporary user model for contextual validation
         $user = $this->_buildTempUser($request);
+
+        // Resolve effective policy — uses per-group policies if the user
+        // belongs to groups, otherwise returns global settings.
+        $settings = $user->id !== null
+            ? $plugin->getPolicyResolver()->resolveForUser($user)
+            : $plugin->getSettings();
 
         $rules = [];
 
@@ -147,10 +152,10 @@ class ValidationController extends Controller
         }
 
         // HIBP check (async-friendly — returns null if still checking)
-        if ($settings->pwned) {
-            $result = $plugin->getPasswords()->pwned($password);
+        if ($settings->hibp) {
+            $result = $plugin->getPasswords()->hibp($password);
             $rules[] = [
-                'key' => 'pwned',
+                'key' => 'hibp',
                 'pass' => $result === null ? null : !$result,
                 'message' => Craft::t('password-policy', 'Not found in breach database'),
             ];

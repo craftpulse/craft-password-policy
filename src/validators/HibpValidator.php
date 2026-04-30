@@ -15,7 +15,7 @@ use craftpulse\passwordpolicy\PasswordPolicy;
 use yii\validators\Validator;
 
 /**
- * Class PwnedValidator
+ * Class HibpValidator
  *
  * Validates passwords against the HIBP Pwned Passwords database.
  * Supports fail-open (default) and fail-closed modes. Logs breach
@@ -23,9 +23,9 @@ use yii\validators\Validator;
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
- * @since       5.0.0
+ * @since       5.2.0
  */
-class PwnedValidator extends Validator
+class HibpValidator extends Validator
 {
     // Public Methods
     // =========================================================================
@@ -39,7 +39,7 @@ class PwnedValidator extends Validator
     {
         $plugin = PasswordPolicy::$plugin;
         $settings = $plugin->getSettings();
-        $result = $plugin->getPasswords()->pwned($value);
+        $result = $plugin->getPasswords()->hibp($value);
 
         if ($result === true) {
             // Password found in breach database — log if Enterprise
@@ -66,12 +66,12 @@ class PwnedValidator extends Validator
                 $plugin->getAuditLog()->logEvent(
                     userId: null,
                     event: 'hibp_check_failed',
-                    details: ['failMode' => $settings->pwnedFailMode],
+                    details: ['failMode' => $settings->hibpFailMode],
                     outcome: 'warning',
                 );
             }
 
-            if ($settings->pwnedFailMode === 'closed') {
+            if ($settings->hibpFailMode === 'closed') {
                 return [
                     Craft::t(
                         'password-policy',

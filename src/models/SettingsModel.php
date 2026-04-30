@@ -57,16 +57,18 @@ class SettingsModel extends Model
     public bool $showStrengthIndicator = false;
 
     /**
-     * @var bool if we should check against the "i have been pwned" database
+     * @var bool if we should check against the HIBP breach database
+     *
+     * @since 5.2.0
      */
-    public bool $pwned = false;
+    public bool $hibp = false;
 
     /**
      * @var string HIBP failure behavior: 'open' accepts password when API unreachable, 'closed' rejects it
      *
      * @since 5.2.0
      */
-    public string $pwnedFailMode = 'open';
+    public string $hibpFailMode = 'open';
 
     /**
      * @var bool if we should show and enable the retention utilities
@@ -162,13 +164,6 @@ class SettingsModel extends Model
      * @since 5.2.0
      */
     public bool $enablePerGroupPolicies = false;
-
-    /**
-     * @var array|null per-group policy overrides keyed by group UID
-     *
-     * @since 5.2.0
-     */
-    public ?array $groupPolicies = null;
 
     /**
      * @var int the number of days before password expiry to send a reminder notification
@@ -385,7 +380,7 @@ class SettingsModel extends Model
                     'symbols',
                     'retentionUtilities',
                     'showStrengthIndicator',
-                    'pwned',
+                    'hibp',
                     'forceChangeOnFirstLogin',
                     'checkSequentialChars',
                     'checkRepeatedChars',
@@ -403,7 +398,7 @@ class SettingsModel extends Model
 
             // Enum rules
             [
-                ['pwnedFailMode'],
+                ['hibpFailMode'],
                 'in',
                 'range' => ['open', 'closed'],
                 'message' => Craft::t('password-policy', 'The HIBP fail mode must be either "open" or "closed".'),

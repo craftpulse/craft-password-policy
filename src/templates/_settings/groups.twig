@@ -1,3 +1,8 @@
+{# Group policies settings — toggle + link to named policies manager #}
+{# @var settings \craftpulse\passwordpolicy\models\SettingsModel #}
+{# @var readOnly bool #}
+{# @var isPro bool #}
+
 {% requirePermission "pp:settings" %}
 
 {% extends "password-policy/_layouts/password-policy-cp-settings.twig" %}
@@ -22,21 +27,33 @@
         {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
     {% endif %}
 
-    <div class="flex-fields">
-        {{ forms.lightswitchField({
-            label: 'Enable per-group policies'|t('password-policy'),
-            instructions: "Override password policy settings per user group. When a user belongs to multiple groups, the most restrictive value for each setting is applied."|t('password-policy'),
-            name: 'settings[enablePerGroupPolicies]',
-            on: settings.enablePerGroupPolicies,
-            disabled: readOnly or editionLocked,
-        }) }}
+    {% set perGroupInfo %}
+        <span class="info">{{ "When a user belongs to multiple groups, each setting is resolved independently using \"most restrictive wins\" logic. Boolean checks can only be strengthened (enabled), never weakened. Numeric minimums take the highest value, numeric maximums take the lowest."|t('password-policy') }}</span>
+    {% endset %}
+    {{ forms.lightswitchField({
+        label: 'Enable per-group policies'|t('password-policy'),
+        instructions: "Override password policy settings per user group."|t('password-policy') ~ perGroupInfo,
+        id: 'enablePerGroupPolicies',
+        name: 'settings[enablePerGroupPolicies]',
+        on: settings.enablePerGroupPolicies,
+        disabled: readOnly or editionLocked,
+        toggle: '#group-policies-container',
+    }) }}
 
-        {% if settings.enablePerGroupPolicies and not editionLocked %}
-            <div class="readable">
-                <blockquote class="note tip">
-                    <p>{{ "Per-group policy configuration UI coming in a future release. Configure via config/password-policy.php or project config."|t('password-policy') }}</p>
-                </blockquote>
-            </div>
+    <div id="group-policies-container" {% if not settings.enablePerGroupPolicies %}class="hidden"{% endif %}>
+        <hr>
+
+        {% set policyService = craft.app.plugins.getPlugin('password-policy').getPolicies() %}
+        {% set policyCount = policyService.getAllPolicies()|length %}
+
+        {% if policyCount > 0 %}
+            <p class="light">{{ "{count, number} {count, plural, =1{policy} other{policies}} configured. Each policy can be assigned to one or more user groups."|t('password-policy', { count: policyCount }) }}</p>
+        {% else %}
+            <p class="light">{{ "No policies have been created yet. Create policies to override the global password rules for specific user groups."|t('password-policy') }}</p>
         {% endif %}
+
+        <p>
+            <a class="btn go" href="{{ cpUrl('password-policy/policies') }}">{{ "Manage policies"|t('password-policy') }}</a>
+        </p>
     </div>
 {% endblock %}

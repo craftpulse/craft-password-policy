@@ -1,0 +1,21 @@
+{# =========================================================================
+   Policy edit screen macros
+   Mirrors the pattern used by Blitz's `_macros.twig` (configWarning).
+   ========================================================================= #}
+
+{# Warning shown on a field when the policy overrides the global value. #}
+{% macro overrideWarning(globalValue) -%}
+    {{ 'This setting overrides the global value of `{value}`.'|t('password-policy', { value: globalValue })|markdown(inlineOnly=true) }}
+{%- endmacro %}
+
+{# Informational warning shown when a field inherits from the global
+   setting — used on selects where the global value isn't visible via a
+   placeholder. #}
+{% macro inheritsGlobal(globalValue) -%}
+    {{ 'Currently using the global setting: `{value}`.'|t('password-policy', { value: globalValue })|markdown(inlineOnly=true) }}
+{%- endmacro %}
+
+{# Pretty-printed expiry value for warnings ("90 day(s)" or "None"). #}
+{% macro expiryDisplay(amount, period) -%}
+    {%- if amount -%}{{ amount }} {{ period }}(s){%- else -%}{{ 'none'|t('password-policy') }}{%- endif -%}
+{%- endmacro %}

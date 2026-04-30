@@ -60,7 +60,14 @@ class GroupPolicyModel extends Model
     /**
      * @var bool|null check HIBP (null = inherit global)
      */
-    public ?bool $pwned = null;
+    public ?bool $hibp = null;
+
+    /**
+     * @var string|null HIBP failure mode: 'open' or 'closed' (null = inherit global)
+     *
+     * @since 5.2.0
+     */
+    public ?string $hibpFailMode = null;
 
     /**
      * @var int|null password history count (null = inherit global)
@@ -111,14 +118,15 @@ class GroupPolicyModel extends Model
     // =========================================================================
 
     /**
-     * Merges this group policy with the global settings, returning
-     * a complete SettingsModel with all fields resolved.
+     * Merges this group policy's NON-BOOLEAN fields with the merged settings,
+     * returning the updated SettingsModel.
      *
-     * For each field: if this group policy has a non-null value, it overrides
-     * the global setting. Otherwise, the global value is used.
+     * Boolean fields are resolved separately by PolicyResolverService using a
+     * cross-policy pre-pass (any explicit true wins; otherwise any explicit
+     * false wins; otherwise the global value is preserved).
      *
-     * @param SettingsModel $global
-     * @return SettingsModel
+     * @param SettingsModel $global the running merged settings
+     * @return SettingsModel the updated merged settings
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -147,30 +155,13 @@ class GroupPolicyModel extends Model
             }
         }
 
-        // Boolean enablers: true wins
-        if ($this->cases === true) {
-            $merged->cases = true;
-        }
-        if ($this->numbers === true) {
-            $merged->numbers = true;
-        }
-        if ($this->symbols === true) {
-            $merged->symbols = true;
-        }
-        if ($this->pwned === true) {
-            $merged->pwned = true;
-        }
-        if ($this->checkSequentialChars === true) {
-            $merged->checkSequentialChars = true;
-        }
-        if ($this->checkRepeatedChars === true) {
-            $merged->checkRepeatedChars = true;
-        }
-        if ($this->checkContextual === true) {
-            $merged->checkContextual = true;
-        }
-        if ($this->checkCommonPasswords === true) {
-            $merged->checkCommonPasswords = true;
+        // HIBP fail mode: fail-closed wins over fail-open (more restrictive)
+        if ($this->hibpFailMode !== null) {
+            if ($this->hibpFailMode === 'closed' || $merged->hibpFailMode === 'closed') {
+                $merged->hibpFailMode = 'closed';
+            } else {
+                $merged->hibpFailMode = $this->hibpFailMode;
+            }
         }
 
         // Complexity mode: 'individual' wins over 'minimum' (more prescriptive)
@@ -196,6 +187,29 @@ class GroupPolicyModel extends Model
         }
 
         return $merged;
+    }
+
+    /**
+     * Returns the boolean override fields that participate in cross-policy
+     * resolution (any explicit true wins over any explicit false).
+     *
+     * @return string[]
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public static function booleanOverrideFields(): array
+    {
+        return [
+            'cases',
+            'numbers',
+            'symbols',
+            'hibp',
+            'checkSequentialChars',
+            'checkRepeatedChars',
+            'checkContextual',
+            'checkCommonPasswords',
+        ];
     }
 
     // Private Methods
