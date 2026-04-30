@@ -1,5 +1,53 @@
 # Release Notes for Password Policy
 
+## Unreleased — 5.2.0
+
+> Pro edition expansion. Introduces editions (Lite / Pro / Enterprise), per-group named policies, password history, advanced validators, audit logging infrastructure, and a redesigned settings UI.
+
+### Added
+
+- Plugin editions: Lite (default), Pro, Enterprise — gated via `project.yaml` (`edition: pro`)
+- Per-group named policies (Pro) — CRUD manager at Password Policy → Policies for assigning override policies to user groups
+- Tri-state rule overrides per policy (Off / Global / On) — explicit Off honored against global, "most-restrictive wins" across multi-group users
+- 4 policy presets — NIST 800-63B, OWASP ASVS L1, PCI-DSS v4.0, Strict Enterprise — applied as starting templates
+- Password history (Pro) — block reuse of the last N passwords (configurable count + retention)
+- Advanced validators (Pro) — sequential characters, repeated characters, contextual data, common password blocklist
+- HIBP fail mode setting — "open" (accept on API failure) or "closed" (reject on failure)
+- HIBP TLS verification override — plugin-level requests force `verify => true` even when `config/guzzle.php` disables it globally
+- Tabbed policy edit screen — General / Rules / Lifecycle
+- Divergence indicators — blue left border on fields differing from the policy's preset, blue dot + "N changes" in the policies index
+- "Restore preset defaults" button — re-apply the selected preset's values to a customized policy
+- "Reset all to global" button — clear every override on the current policy in one click
+- Override warnings — Craft-native `warning:` notices on numeric fields and HIBP fail mode when a policy value differs from global
+- Element actions: Force Password Reset (Pro) for bulk operations on the Users index
+- Element condition rules: Password Expired, Password Reset Required, Password Never Changed
+- Twig variables — `craft.passwordpolicy.passwordStatus()`, `daysUntilExpiry()`, `isExpiring(N)`, `activeSessionCount()`
+- AJAX validation endpoint at `password-policy/validate` for live password strength feedback
+- `BlocklistUtility` (Pro) — CP utility to view blocklist stats and trigger common-password seeding via queue
+- `SeedBlocklist` queue job — seeds the common-password blocklist in the background
+- `pp:blocklist-manage` permission for blocklist administration
+- Custom CP icons for the password policy nav section
+- Audit log table and `AuditLogService` (Enterprise — view/export gated to Enterprise)
+- Info icon tooltips on all settings pages with NIST/PCI-DSS/GDPR references
+- Garbage collection hook (`gc/run`) for retention/expiry housekeeping
+
+### Changed
+
+- Settings UI redesigned — sidebar grouped under Policy / Validation / Monitoring with edition badges
+- `pwned` setting renamed to `hibp` (project config + DB) — migration handles the rename
+- Subnav lists Policies before Settings (when per-group policies enabled)
+- `Sequential characters` validator detects ASCII sequences (e.g. `pqr`, `xyz`) in addition to keyboard rows
+- `lastPasswordChangeDate` queried directly to bypass `UserQuery::beforePrepare()` not selecting it
+- Sensitive keys (`password`, `newPassword`, `plaintext`, `hash`, `passwordHash`) automatically stripped from plugin log entries
+- Common password blocklist stored separately from custom dictionary (`source = 'common'` vs `'custom'`) — prevents flooding the admin UI
+
+### Fixed
+
+- `getIsLite()` no longer hardcoded to `return true` — uses `is(self::EDITION_LITE)`
+- Validation order — content rules run before HIBP/history checks (avoids unnecessary API calls on weak passwords)
+- Common password blocklist auto-seeds via queue when the toggle is enabled with an empty blocklist (previously failed silently)
+- `expiryPeriod` no longer persisted on policy settings without an `expiryAmount`
+
 ## 5.1.1 - 2026-04-17
 ### Changed
 - Symbols regex now accepts any non-alphanumeric character (hyphens, underscores, etc.) instead of a limited set [#46](https://github.com/craftpulse/craft-password-policy/issues/46)
