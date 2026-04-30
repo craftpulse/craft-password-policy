@@ -210,6 +210,48 @@ Policy edit form now mirrors the global Settings page for `minLength` / `maxLeng
 
 ---
 
+## Session: 2026-04-30 (end of day — P1.7 + P1.11 + GC refactor)
+
+### P1.7 — `notificationLogRetentionDays` UI field
+
+Added `forms.textField` to `src/templates/_settings/retention.twig` inside the existing Pro block (after `expiryReminderDays`, with `<hr>` separator). Field has its own `info` span explaining what notification log entries are (dedup window for expiry reminders). Added to `SettingsController::actionSave` Pro-strip list for parity with `expiryReminderDays`. PROGRESS.md got a new memory `feedback_retention_gc_framing.md` after a UX iteration: don't say "pruned automatically" — `password-policy/gc/run` cron is recommended production setup, not edge case. Operational pointer "(see documentation)" deferred to instructions field once P1.8 docs exist.
+
+Manual test: change value 30 → 60, save, reload, value persists.
+
+### Refactor — single source of truth for retention purges
+
+While in P1.7 territory, consolidated the duplicated GC orchestration. Pre-refactor: `GcController::actionRun` had three guarded service calls (passwordHistory + notification + audit) with stdout reporting; `_registerGarbageCollection()` listener had the same three calls without stdout. Adding a fourth retention table required updating both. Post-refactor: new `PasswordPolicy::runGc(): array` is the single source of truth — returns `[tableKey => purgedCount]` for tables that ran, skipped tables absent. Listener becomes `fn() => $this->runGc()`. Controller iterates the result map, prints contextual stdout per table that ran, drops the "skipped (disabled or Lite)" else branches per UX feedback (noise, not signal).
+
+### P1.11 — Top-level Blocklist page with custom dictionary editor + word-check tool (Pro)
+
+Originally specced as "EditableTable inside `BlocklistUtility` (Pro)". Significant scope iteration during the session ended at a different shape. Final architecture:
+
+- **New top-level subnav** "Blocklist" between Policies and Settings (not a Settings sub-tab, not a Utility — both rejected). Reasoning: Settings communicates "deploy via project config" mental model, which is wrong for per-environment DB state; Utilities communicates "diagnostic/one-off action", which doesn't fit configuration data. A top-level page signals "manageable on production directly without dev team intervention."
+- **Permission split** — new `pp:blocklist-view` (read-only access to the page) with `pp:blocklist-manage` nested (gates writes: editor saves and "Update Common Passwords" seed action).
+- **Single page houses everything blocklist-related:** stats prose with SecLists 10k source citation (lineage / auditor transparency), `<blockquote class="note tip">` Last Seeded callout (escalates to `note warning` when never-seeded), Update Common Passwords button (cron-driven seed, production-runnable), the editable custom-words table (`forms.editableTableField` with diff-on-save: numeric rowId = keep, non-numeric = insert, missing = delete), and a "Check a word" AJAX tool with native validation-error / notice-tip rendering. `BlocklistUtility` and `_utilities/blocklist.twig` deleted.
+- **Schema** — new migration `m260430_101611_AddPolicyIdToBlocklist` adds nullable `policyId` to `passwordpolicy_blocklist` (FK CASCADE to policies). Pro stores rows with `policyId IS NULL`. Phase G uses the column for per-policy custom-dictionary entries (Enterprise differentiator). Reordered `Install.php` so policies table is created before blocklist (FK target requirement) for fresh installs.
+- **Validator now emits source-aware messages** — `CommonPasswordValidator` queries word + source, caches `[word => source]` map (cache key bumped to `passwordpolicy_blocklist_word_sources` to avoid colliding with old `[word => true]` shape). Bundled common returns "too common, choose a more unique password"; custom returns "blocked, choose a different one". User caught the misleading-message issue during T5.18 manual test.
+- **Form-nesting bug fixed** — earlier draft had two nested `<form>`s on the page (Update Common + editor). Browser drops the inner `<form>` tag but keeps its inner `<input name=action value=update-common>`, so the outer form ends up with two `name=action` inputs, last one wins; clicking Save submitted to the wrong action and the editor's words were never saved. Final architecture: no `fullPageForm`, two explicit body forms (Update Common + customWordsForm), Save button in actionButton block uses HTML5 `form="customWordsForm"` attribute to bind to the editor form despite living in the page header.
+- **UX iteration** — multiple rounds tightening copy, callout treatment, timestamp display. Notable lessons captured in memory: `feedback_native_callout_components.md` (default to `<blockquote class="note tip|warning">` instead of hand-rolled custom CSS callouts; `|timestamp` is compact-only and drops the date for today — use `|datetime`/`|time` for locale-aware full timestamps); `feedback_editable_table_default.md` (default to `forms.editableTableField` instead of hand-rolled HTML tables for admin-managed lists).
+
+T5.18 in TESTING.md — validation round-trip end-to-end PASS as `editor` user (per-group policies temporarily disabled for global-rules test, six password change attempts: 5 rejects with correct messages, 1 accept). Confirmed source-aware messages work.
+
+### Refactor — `.pp-conflict-banner` → native `<blockquote class="note warning">`
+
+Tangential cleanup while polishing the blocklist page. The custom `.pp-conflict-banner` div (orange left border + tinted background + custom CSS in `_policies/_edit.twig`) was the previous approach for the policy min/max conflict notice. Replaced with native `<blockquote class="note warning">` in `PolicyController::_buildEditNoticeHtml()`. Visual consistency across the plugin: every high-visibility callout now uses the same Craft-native primitive. ~14 lines of custom CSS deleted.
+
+### P1.3 + P1.4 path locked — Path B (plugin-managed editor + queue)
+
+Decision discussion captured in PLAN.md row P1.3 + memory `project_release_strategy.md`. Three options weighed: A (Craft SystemMessages, minimal), A+sender-overrides (medium), B (plugin-managed Email Notifications tab with token picker + test-send + queue). Selected B for the Pro differentiation positioning. Enterprise notification types (`new-device-alert`, `admin-security-alert`) deferred to Phase G — same UI accommodates them when Phase 10–12 land.
+
+### Process
+
+- 13 commits ahead of `origin/5.x`, unpushed. Working tree clean.
+- Memory store grew by 3 entries: retention/GC framing, native callout components, editable table defaulting.
+- Updated PLAN.md, CHANGELOG.md, TESTING.md (T5.17 + T5.18), NEXT-SESSION.md to reflect end-of-session state.
+
+---
+
 ## Session: 2026-04-30 (continued — P1.5)
 
 ### P1.5 — Group deletion cleanup listener
