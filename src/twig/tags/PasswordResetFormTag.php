@@ -40,6 +40,9 @@ class PasswordResetFormTag extends BaseTag
      *
      * @param string $code
      * @return $this
+     *
+     * @author CraftPulse
+     * @since 5.2.0
      */
     public function code(string $code): self
     {
@@ -48,15 +51,41 @@ class PasswordResetFormTag extends BaseTag
     }
 
     /**
+     * Sets the user identifier from the reset email URL. Craft renders the
+     * reset link as `?code=…&id=…` — the `id` URL param IS the user UID.
+     *
+     * Canonical setter; mirrors the URL param name so consumers can write
+     * `.id(craft.app.request.queryParam('id'))` without mental translation.
+     *
+     * @param string $id
+     * @return $this
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function id(string $id): self
+    {
+        $this->config['userUid'] = $id;
+        return $this;
+    }
+
+    /**
      * Sets the user UID from the URL.
      *
      * @param string $userUid
      * @return $this
+     *
+     * @deprecated since 5.2.0 use [[id()]] instead — Craft's reset email URL
+     *     param is named `id`, not `userUid`. The legacy setter is preserved
+     *     indefinitely for backward compatibility but new code should call
+     *     `->id($value)`.
+     *
+     * @author CraftPulse
+     * @since 5.2.0
      */
     public function userUid(string $userUid): self
     {
-        $this->config['userUid'] = $userUid;
-        return $this;
+        return $this->id($userUid);
     }
 
     /**
