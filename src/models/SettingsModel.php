@@ -325,6 +325,146 @@ class SettingsModel extends Model
      */
     public bool $apiEnabled = false;
 
+    // Public Methods
+    // =========================================================================
+
+    /**
+     * Returns the list of attribute names — extended to surface the legacy
+     * `pwned` / `pwnedFailMode` keys so `setAttributes()` (which Craft's
+     * `Plugin::setSettings()` invokes during file-based config load) doesn't
+     * skip them as "unknown attributes".
+     *
+     * @return string[]
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function attributes(): array
+    {
+        return array_merge(parent::attributes(), ['pwned', 'pwnedFailMode']);
+    }
+
+    /**
+     * Returns whether reading `$name` is allowed. Overridden so the legacy
+     * `pwned` / `pwnedFailMode` keys resolve through this model even though
+     * no native property or `getXxx()` method exists for them — required so
+     * `setAttributes()` (during file-based config load) routes assignments
+     * through [[__set]] instead of throwing "unknown property".
+     *
+     * @param string $name
+     * @param bool $checkVars
+     * @param bool $checkBehaviors
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function canGetProperty($name, $checkVars = true, $checkBehaviors = true): bool
+    {
+        if ($name === 'pwned' || $name === 'pwnedFailMode') {
+            return true;
+        }
+
+        return parent::canGetProperty($name, $checkVars, $checkBehaviors);
+    }
+
+    /**
+     * Symmetric counterpart to [[canGetProperty]] — see that method's
+     * docblock for rationale.
+     *
+     * @param string $name
+     * @param bool $checkVars
+     * @param bool $checkBehaviors
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function canSetProperty($name, $checkVars = true, $checkBehaviors = true): bool
+    {
+        if ($name === 'pwned' || $name === 'pwnedFailMode') {
+            return true;
+        }
+
+        return parent::canSetProperty($name, $checkVars, $checkBehaviors);
+    }
+
+    /**
+     * Aliases legacy `pwned` / `pwnedFailMode` reads onto the new `hibp` /
+     * `hibpFailMode` properties so legacy code that still does
+     * `$settings->pwned` keeps working without warning.
+     *
+     * @param string $name
+     * @return mixed
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function __get($name)
+    {
+        if ($name === 'pwned') {
+            return $this->hibp;
+        }
+
+        if ($name === 'pwnedFailMode') {
+            return $this->hibpFailMode;
+        }
+
+        return parent::__get($name);
+    }
+
+    /**
+     * Aliases legacy `pwned` / `pwnedFailMode` writes onto the new `hibp` /
+     * `hibpFailMode` properties.
+     *
+     * The 5.1.1 release shipped two public settings keys — `pwned: bool` and
+     * `pwnedFailMode: 'open'|'closed'` — both renamed in 5.2.0 to use the
+     * "HIBP" terminology. Project-config rows are handled by a dedicated
+     * migration, but file-based config (`config/password-policy.php`)
+     * bypasses project config: those keys land in
+     * `Plugins::_getPluginConfigData()` and are passed to `setAttributes()`
+     * directly. Without an alias, a `pwned: true` line in the file fails
+     * loud at boot with "Setting unknown property: pwned".
+     *
+     * Strategy: override `__set` so that assigning `$model->pwned = true`
+     * (whether from `setAttributes` during config load, or from explicit
+     * code) routes to `$model->hibp = true`. Same for `pwnedFailMode`. Yii2's
+     * `Model::__set` is bypassed for the two legacy keys; everything else
+     * falls through to the parent.
+     *
+     * Logs a `Craft::warning` per write so site operators see the deprecation
+     * notice during a `craft up` or any cache warm.
+     *
+     * @param string $name
+     * @param mixed $value
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function __set($name, $value): void
+    {
+        if ($name === 'pwned') {
+            Craft::warning(
+                'Password Policy config key `pwned` is deprecated since 5.2.0; use `hibp` instead.',
+                'password-policy',
+            );
+            $this->hibp = (bool)$value;
+            return;
+        }
+
+        if ($name === 'pwnedFailMode') {
+            Craft::warning(
+                'Password Policy config key `pwnedFailMode` is deprecated since 5.2.0; use `hibpFailMode` instead.',
+                'password-policy',
+            );
+            $this->hibpFailMode = (string)$value;
+            return;
+        }
+
+        parent::__set($name, $value);
+    }
+
     // Protected Methods
     // =========================================================================
 
