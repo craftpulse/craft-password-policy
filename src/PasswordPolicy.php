@@ -983,6 +983,14 @@ class PasswordPolicy extends Plugin
      */
     private function _runHibpOnLoginCheck(User $user, #[\SensitiveParameter] string $plaintext): void
     {
+        // Site-wide HIBP rate-limit guard. If the API recently 429'd us,
+        // skip the check entirely — login is never blocked, and we don't
+        // want to hammer HIBP while already throttled. PasswordService::hibp()
+        // also short-circuits on the same key, so this is defense-in-depth.
+        if ($this->getPasswords()->isHibpBackoffActive()) {
+            return;
+        }
+
         $sha1Prefix = strtoupper(substr(sha1($plaintext), 0, 5));
         $cacheKey = "pp:hibp-login:{$user->id}:{$sha1Prefix}";
 
