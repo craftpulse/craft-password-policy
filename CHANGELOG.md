@@ -37,6 +37,8 @@
 - `Sites::EVENT_AFTER_SAVE_SITE` propagation listener — when a new site is added, copies primary-site notification rows into the new site so admins don't see a missing-template state on first edit (defensive try/catch never blocks the site save)
 - `pp:notification-templates-manage` permission (Pro) — gates the Notifications page and all notification-template controllers actions
 - `password-policy/notification/send-expiry-reminders [--user=<id>]` console command — enqueues `SendPasswordExpiryRemindersJob` (BaseBatchedJob, batchSize=100, ttr=300, canRetry≤5) which recomputes its recipient set per batch for natural retry idempotency. Lite returns `ExitCode::UNSPECIFIED_ERROR` with stderr "Pro edition required."
+- `RegistrationService::register(array $params): User` — programmatic helper for consumer registration controllers. Resolves group **handles** (more dev-friendly than IDs) and pre-validates the proposed password against the resolved policy (Lite uses global; Pro resolves per-group via `PolicyResolverService`). Persists the user, assigns groups, optionally sends Craft's activation email, fires `UserRegisteredEvent` on success. Throws `\InvalidArgumentException` on missing required params, unknown group handles, or validation failures (with attribute-prefixed messages for clean surfacing in consumer forms).
+- New `UserRegisteredEvent` (`craftpulse\passwordpolicy\events\UserRegisteredEvent`) — fired by `RegistrationService` after successful registration. Payload: `User $user`, `string[] $groups` (the group handles assigned), `bool $viaService = true`. Plaintext intentionally absent — already validated and persisted by event time.
 
 ### Changed
 
