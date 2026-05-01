@@ -6,10 +6,10 @@ Building **v5.2.0** of `craft-password-policy`. Single release covers Lite + Pro
 
 ## Read in this order, no skipping
 
-1. `docs/PLAN.md` — master plan; sections 1 (status), 3 (backlog), 4 (build order)
-2. `docs/PROGRESS.md` — full session history; tail has the current "Next Session" priorities
-3. `docs/TESTING.md` — per-test status (54/57 PASS, 3 deferred)
-4. This file (NEXT-SESSION.md) — playground state + commands
+1. `plan.md` — master plan; sections 1 (status), 3 (backlog), 4 (build order)
+2. `progress.md` — current-phase session log; tail has the current "Next Session" priorities (older phases rotated to `history/`)
+3. `manual-tests.md` — per-test status (54/57 PASS, 3 deferred)
+4. This file (`handover.md`) — playground state + commands
 
 Memory store: `~/.claude/projects/-Users-michtio-dev-craft-plugins-v5-craft-password-policy/memory/MEMORY.md` — durable rules across sessions. Includes: release strategy, retention/GC framing, native callout components, editableTable defaulting, **Craft 5 JSON content pattern**, and others. **Read it.**
 
@@ -103,7 +103,7 @@ Memory store: `~/.claude/projects/-Users-michtio-dev-craft-plugins-v5-craft-pass
 - **Phase 6 user-edit tab is half-built.** `_users/password-security.twig` exists with a working POST target (`actionForceReset`), but no event handler registers the template as a CP user-edit tab. Belongs in P2.1/P2.2 user index work.
 - **T9.7 — Site propagation listener test deferred.** Single-site playground can't exercise the `Sites::EVENT_AFTER_SAVE_SITE` `isNew = true` path or the FK CASCADE. Will land in P2.5 Pest tests with a multi-site fixture.
 - **Stale tracking rows in playground `migrations` table** for the deleted/replaced migration filenames. Cosmetic, Craft ignores them.
-- **Adversarial Test Suite** — `docs/IDEAS.md`. Future P3+ work after P2.5 lands.
+- **Adversarial Test Suite** — `ideas.md`. Future P3+ work after P2.5 lands.
 - **Per-policy custom blocklist editor (Phase G, Enterprise tier).** Schema column `policyId` already shipped in P1.11. Phase G adds the editor tab on the policy edit screen + validator merge logic.
 - **Enterprise notification keys** (`new-device-alert`, `admin-security-alert`) ship in Phase G — same table, same UI, just two more entries in `EmailDefaults::all()`.
 

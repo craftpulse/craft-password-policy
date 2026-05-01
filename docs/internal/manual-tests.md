@@ -621,7 +621,7 @@ Test each scenario after installing the plugin on a fresh Craft CMS 5 site. Star
 4. Enterprise: not tested
 
 ### T7.3 — Edition stripping on save — PASS via code review
-> **Verified 2026-04-30:** `SettingsController::actionSave()` lines 163-176 (Pro keys) and 177-197 (Enterprise keys) unconditionally `unset()` edition-gated keys after `array_merge` and before `savePluginSettings()`. Even crafted POST payloads carrying Pro/Enterprise keys can't survive. Pro UI doesn't render the gated fields on Lite (T7.2 PASS), making the strip pure defence-in-depth. **Live positive POST test deferred to adversarial test suite** — see `docs/IDEAS.md` "Adversarial Test Suite" section. The security plugin should test its own boundaries.
+> **Verified 2026-04-30:** `SettingsController::actionSave()` lines 163-176 (Pro keys) and 177-197 (Enterprise keys) unconditionally `unset()` edition-gated keys after `array_merge` and before `savePluginSettings()`. Even crafted POST payloads carrying Pro/Enterprise keys can't survive. Pro UI doesn't render the gated fields on Lite (T7.2 PASS), making the strip pure defence-in-depth. **Live positive POST test deferred to adversarial test suite** — see `ideas.md` "Adversarial Test Suite" section. The security plugin should test its own boundaries.
 
 ### T7.4 — Complexity mode toggle — PASS
 1. Pro: select "Minimum character types" → individual toggles hidden — **confirmed**

@@ -148,7 +148,7 @@ Two of four audit findings turned out wrong-as-stated (A2 syntax, A3 entirely). 
 
 ### Track B — pre-release security tests (4 PASS, 2 deferred)
 
-- **T7.3 — PASS via code review.** `SettingsController::actionSave()` lines 163-176 (Pro keys) and 177-197 (Enterprise keys) unconditionally `unset()` after `array_merge` and before `savePluginSettings`. Crafted POSTs carrying gated keys cannot survive. Live-POST positive test deferred to a future "Adversarial Test Suite" entry in `docs/IDEAS.md` — the security plugin should test its own boundaries.
+- **T7.3 — PASS via code review.** `SettingsController::actionSave()` lines 163-176 (Pro keys) and 177-197 (Enterprise keys) unconditionally `unset()` after `array_merge` and before `savePluginSettings`. Crafted POSTs carrying gated keys cannot survive. Live-POST positive test deferred to a future "Adversarial Test Suite" entry in `ideas.md` — the security plugin should test its own boundaries.
 - **T1.3 — PASS via code review.** `_seedPasswordHistory()` saves `enableLogging`/`enableProfiling`, sets both `false` before any user-table SELECT or `batchInsert`, restores in `finally`. Bcrypt hashes never reach the Yii debug logger.
 - **T1.4 — PASS empirically.** `ddev craft plugin/uninstall password-policy` triggers `Install::safeDown()` which drops all 6 tables in correct reverse-FK order. Verified `SELECT COUNT(*)... LIKE 'passwordpolicy_%' = 0` post-uninstall. `ddev craft plugin/install password-policy` recreates everything cleanly. Edition defaulted to Lite on reinstall — flipped back to Pro via project.yaml + `craft up` to restore the playground baseline.
 - **TX.3 — PASS via analysis.** All 14 direct `Craft::error/warning/info/debug` calls reviewed for sensitive payloads — clean. All `PasswordPolicy::$plugin->log()` calls go through `SENSITIVE_LOG_KEYS` strip. `#[\SensitiveParameter]` on every plaintext/hash function arg. Zero `print_r`/`var_dump`/`dd` in `src/`. Yii DB exception messages use `?` placeholders for bound values, so `getMessage()` never inlines bcrypt hashes. Empirical grep on actual log files already PASS via T0.4.
@@ -363,7 +363,7 @@ The Craft CP JS is bundled and minified, the DOM signature drifts across version
 
 ### P1.15 — Events catalog
 
-`docs/events.md` synthesizes all event classes added across Phase A through Phase C2: `PasswordChangedEvent` (Lite), `UserRegisteredEvent` (Lite, P1.14), `BreachDetectedEvent` (Pro, P1.13), `PasswordValidationEvent` (Lite, pre-existing). Each entry has the FQ class, when it fires, payload table, edition tier, and an example listener with imports. Future events placeholder section (`PolicyValidatedEvent`, `PasswordExpiredEvent`, `LockoutThresholdReachedEvent`) flagged for 5.3+ / Phase G. Cross-linked from `README.md` "Events" section.
+`../user/reference/events.md` synthesizes all event classes added across Phase A through Phase C2: `PasswordChangedEvent` (Lite), `UserRegisteredEvent` (Lite, P1.14), `BreachDetectedEvent` (Pro, P1.13), `PasswordValidationEvent` (Lite, pre-existing). Each entry has the FQ class, when it fires, payload table, edition tier, and an example listener with imports. Future events placeholder section (`PolicyValidatedEvent`, `PasswordExpiredEvent`, `LockoutThresholdReachedEvent`) flagged for 5.3+ / Phase G. Cross-linked from `README.md` "Events" section.
 
 ### Process notes
 
@@ -379,7 +379,7 @@ The Craft CP JS is bundled and minified, the DOM signature drifts across version
 
 ### Spec premise correction
 
-The original `docs/C2-BUILD-PLAN.md` Layer 4b framing — "replace Craft's native zxcvbn meter on the CP" — was wrong. Confirmed empirically: `find vendor/craftcms/cms -name "*.js" | xargs grep -l zxcvbn` returns zero matches. Craft 5 ships no client-side zxcvbn meter. `Craft.PasswordInput` exists but is a Garnish wrapper for show/hide toggle + capslock detection — not a strength evaluator.
+The original `history/phase-c2-build-plan.md` Layer 4b framing — "replace Craft's native zxcvbn meter on the CP" — was wrong. Confirmed empirically: `find vendor/craftcms/cms -name "*.js" | xargs grep -l zxcvbn` returns zero matches. Craft 5 ships no client-side zxcvbn meter. `Craft.PasswordInput` exists but is a Garnish wrapper for show/hide toggle + capslock detection — not a strength evaluator.
 
 What did exist before this session was an unrelated asymmetry: the plugin shipped its **own** client-side strength indicator at `buildchain/src/js/indicator.ts` using `@zxcvbn-ts/core` (TS port). It hardcoded `#newPassword`, ran zxcvbn entirely in the browser, and had no awareness of the plugin's blocklist, per-group policy resolution, or the new `useZxcvbnStrength` Pro toggle. Layers 1–7 of P1.12 (commit `ffa7aa9`) added a server-side `bjeavons/zxcvbn-php` engine, `StrengthService` with two modes (baseline + zxcvbn-php), and a `password-policy.js` consumer asset that hits `/validate` for builder-rendered front-end forms. Result was two parallel zxcvbn implementations on different sides of the fence with diverging awareness of plugin features.
 
@@ -441,7 +441,7 @@ C2 followup. Foreground code-review on the four C2 commits + a deep look at the 
 
 **HIBP 429 backoff (1 commit) — `fix(security): site-wide HIBP 429 backoff cache`.** The HIBP-on-login dedup cache only keyed on `(userId, sha1Prefix)`, so every login from a different user with a different prefix burned a fresh API request even when HIBP was already 429-rate-limiting the site. New `PasswordService::HIBP_BACKOFF_CACHE_KEY` sentinel cached at the cache layer with a TTL parsed from `Retry-After` (defaults to 60s if absent or non-numeric). Two layers of short-circuit: `PasswordService::hibp()` checks at the top before any network call; `PasswordPolicy::_runHibpOnLoginCheck()` also checks before its existing per-user dedup cache. Privacy guard: sentinel value is the literal string `'1'`, never user-derived. New public method `isHibpBackoffActive()` exposes the state for future Enterprise diagnostics.
 
-**Variable handle (1 commit) — `fix(variables): register both passwordpolicy and passwordPolicy handles + update C2 docs to camelCase`.** 5.1.1 shipped `craft.passwordpolicy` (lowercase). C2 docs use `craft.passwordPolicy` (camelCase). Renaming would break 5.1.1 consumers; instead, register under both handles. The lowercase form ships permanently for backward compat — never `@deprecated`. The camelCase form is canonical going forward. Updated `docs/10-frontend-twig-surface.md` and three CHANGELOG entries to use the canonical form. PHP namespace `craftpulse\passwordpolicy\...` is unchanged (PHP namespaces are always lowercase here).
+**Variable handle (1 commit) — `fix(variables): register both passwordpolicy and passwordPolicy handles + update C2 docs to camelCase`.** 5.1.1 shipped `craft.passwordpolicy` (lowercase). C2 docs use `craft.passwordPolicy` (camelCase). Renaming would break 5.1.1 consumers; instead, register under both handles. The lowercase form ships permanently for backward compat — never `@deprecated`. The camelCase form is canonical going forward. Updated `../user/features/frontend-twig.md` and three CHANGELOG entries to use the canonical form. PHP namespace `craftpulse\passwordpolicy\...` is unchanged (PHP namespaces are always lowercase here).
 
 **Settings model (1 commit) — `fix(settings): alias deprecated pwned/pwnedFailMode on SettingsModel for 5.1.1 file-config compat`.** Pre-tag blocker. The 5.1.1 → 5.2.0 rename of `pwned` → `hibp` and `pwnedFailMode` → `hibpFailMode` was covered by a project-config migration, but file-based config (`config/password-policy.php`) bypasses project config entirely. A 5.1.1 consumer with `pwned: true` in their file config would fail loud at boot with "Setting unknown property: pwned" on the first request after `composer update`. Fix: override four hooks on `SettingsModel`:
 
@@ -481,9 +481,9 @@ Phase A (audit fix-ups), Phase B (pre-release security tests), and **Phase C (P1
 After Phase D → Phase E (P2.5 Pest tests, including the deferred T1.2 + TX.2 + T9.7 site propagation listener) → Phase F (P2.4/2.6 polish) → **Phase G (Enterprise — Phase 10/11/12)** → Phase H (release prep + tag 5.2.0).
 
 **Read first (in order):**
-1. `docs/NEXT-SESSION.md` — single-page handover with playground state + commands
-2. `docs/PLAN.md` — master plan, build order, gating
-3. `docs/PROGRESS.md` — this file, full session history
-4. `docs/TESTING.md` — per-test PASS/PENDING/DEFERRED status
+1. `handover.md` — single-page handover with playground state + commands
+2. `plan.md` — master plan, build order, gating
+3. `progress.md` — this file, current-phase session log (older phases rotated to `history/`)
+4. `manual-tests.md` — per-test PASS/PENDING/DEFERRED status
 
 **Memory store:** `~/.claude/projects/-Users-michtio-dev-craft-plugins-v5-craft-password-policy/memory/MEMORY.md` indexes all durable rules including release strategy (single 5.2.0 covers all editions; nothing tags until Enterprise done), the migration generator rule (`ddev craft migrate/create <Name> --plugin=password-policy`), and the Craft 5 JSON content pattern.

@@ -284,7 +284,7 @@ This is intentional. Consumer site templates should never need an edition check 
 
 ## Programmatic registration helper
 
-For consumer-built registration controllers, `RegistrationService::register()` provides a Lite+Pro entry point that pre-validates the password against the resolved policy. See `docs/events.md` for the `UserRegisteredEvent` shape.
+For consumer-built registration controllers, `RegistrationService::register()` provides a Lite+Pro entry point that pre-validates the password against the resolved policy. See [`../reference/events.md`](../reference/events.md) for the `UserRegisteredEvent` shape.
 
 ```php
 use craftpulse\passwordpolicy\PasswordPolicy;
