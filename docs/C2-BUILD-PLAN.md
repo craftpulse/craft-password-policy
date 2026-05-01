@@ -84,7 +84,7 @@ Don't wrap methods in defensive null returns or try/catch. Throw `\InvalidArgume
 - **A** (always on, ships with plugin): rule-counting × length-tier label (`weak/fair/strong/excellent`). Blocklist hit forces `weak`. No client-side or server-side dependencies. Returned in the validate response payload as `{strength: {label, ruleCount, lengthTier}}`.
 - **B** (opt-in via Pro setting `useZxcvbnStrength: true`, default off): adds `bjeavons/zxcvbn-php` composer dep (~200KB minus dictionaries, MIT, **approved 2026-05-01**). Server-side. Augments the validate response with `{strength: {score: 0..4, label, suggestions: [], crackTime: '...'}}`. JS just renders.
 
-CP-side strength meter (Craft's native zxcvbn-js) stays as-is — out of scope.
+**Engine applies to both front-end builders AND CP password inputs (Pro only on the CP side).** Lite installs keep Craft's native zxcvbn-js on the CP — the asymmetry is an upgrade incentive. Pro installs replace Craft's CP meter with ours so per-group policy + blocklist hits + zxcvbn-php (when enabled) all surface consistently across every place a user can enter a password.
 
 ### Distribution — Twig helper, no Vite dependency on consumer
 
@@ -321,7 +321,11 @@ Naming convention: namespace `craftpulse\passwordpolicy\twig\tags\` (or similar)
 **Verify**
 - Twig `{{ craft.passwordPolicy.passwordField({name: 'pwd'}).render() }}` produces the expected `<input>`. Same for every other builder.
 
-## Layer 4 — JS asset + AJAX wiring
+## Layer 4 — JS asset + AJAX wiring (front-end + CP-side)
+
+This layer is a single coherent unit: same engine, same AJAX endpoint, two distribution targets (front-end consumer pages + CP password inputs).
+
+### 4a — Front-end client asset
 
 **Build**
 - New `src/web/assets/dist/` directory. Add `password-policy.js` (vanilla, ~5KB minified). Build with whatever bundler we use during plugin dev (esbuild / rollup / Vite — whatever's quickest to wire). Commit the **built artifact** to the repo.
@@ -338,7 +342,7 @@ Naming convention: namespace `craftpulse\passwordpolicy\twig\tags\` (or similar)
   - Show/hide toggle: bind click on `[data-pp-toggle-visibility]`, toggle input `type` between `password` and `text`, flip `aria-label` and inner SVG.
 - Asset bundle: `src/assetbundles/passwordpolicyclient/PasswordPolicyClientAsset.php` extending `\craft\web\AssetBundle`. `$sourcePath = '@craftpulse/passwordpolicy/web/assets/dist'`. `$js = ['password-policy.js']`.
 
-**Verify**
+**Verify (4a)**
 - Build a registration template at `templates/test-registration.twig` (in the playground): one form using `passwordField()` + `requirementList()` + `strengthMeter()` + `requirementsHint()` + a submit button.
 - Visit the page, type a password slowly. Confirm:
   - Requirement list items toggle pass/fail/pending in real time.
@@ -347,6 +351,49 @@ Naming convention: namespace `craftpulse\passwordpolicy\twig\tags\` (or similar)
   - HIBP-pending state appears for ~200-500ms after typing stops, then resolves.
   - VoiceOver reads state changes from the live region.
   - Show/hide toggle works.
+
+### 4b — CP-side strength replacement (Pro only)
+
+**Research-before-coding step.** Before writing any JS, read `vendor/craftcms/cms/src/web/assets/cp/dist/js/Craft.js` (or wherever `Craft.PasswordInput` lives in Craft 5) and document:
+- The DOM signature of CP password inputs (likely `<input type="password" autocomplete="new-password">` inside a `.password-input` wrapper — verify).
+- Which CP screens use it (admin's own account, new-user creation, plugin password fields, others).
+- How `Craft.PasswordInput` exposes its strength evaluator — public method, prototype, jQuery plugin?
+- Whether the score gates form submission anywhere (we must preserve or replicate any gating; we do NOT want to allow weak passwords to submit when Craft would have blocked them).
+- Where Craft's strength meter renders in the DOM (so we can hide it via CSS or replace its container).
+
+Findings get a paragraph in PROGRESS.md before code lands.
+
+**Build**
+- New `src/web/assets/dist/cp-strength.js` (vanilla, ~3KB minified). Same AJAX engine as 4a, but:
+  - Selects CP password inputs by their stable HTML semantics (`input[type="password"][autocomplete="new-password"]`) — avoid Craft-specific class names where possible to stay stable across Craft upgrades.
+  - Hides Craft's native meter (CSS rule `display: none` or DOM removal of Craft's specific meter element).
+  - Renders our requirement-list + strength-meter markup in the same slot.
+  - Preserves any submit-gating Craft does — if Craft's meter prevents form submit at score < threshold, our replacement does the same (or stricter, never weaker).
+  - a11y: live region, `aria-describedby`, `aria-invalid`, `aria-busy` — same surface as 4a.
+- New asset bundle: `src/assetbundles/passwordpolicycpstrength/PasswordPolicyCpStrengthAsset.php`. Depends on `\craft\web\assets\cp\CpAsset` so it loads after Craft's CP JS. `$js = ['cp-strength.js']`.
+- Auto-register the bundle on every CP request, **only when `getIsPro() === true`**. Hook into `craft\web\View::EVENT_BEFORE_RENDER_PAGE_TEMPLATE` or similar lifecycle event scoped to CP requests. Lite installs keep Craft's native zxcvbn-js untouched.
+- Same AJAX endpoint (`password-policy/validation/validate`) — no new server code in this sub-layer; the engine is shared with 4a.
+
+**Verify (4b)**
+- Pro edition active. Visit the admin's own account password change screen. Confirm:
+  - Craft's native strength meter is hidden / replaced.
+  - Our requirement list + strength meter render in its place.
+  - Typing updates state in real time via the same AJAX path 4a uses.
+  - Per-group resolution shows up: a user in the Editors group sees the Editors policy criteria, not the global policy.
+  - Blocklist hits force `weak` (Craft's meter never knew about our blocklist).
+  - With `useZxcvbnStrength: true`, zxcvbn-php-driven score + suggestions appear.
+  - Submit-gating preserved: a password that Craft's native meter would have blocked is still blocked by ours.
+  - VoiceOver announces state transitions.
+- Repeat on the CP "Create new user" form. Same expectations.
+- Switch to Lite via `project.yaml` + `craft up`. Confirm:
+  - CP-strength bundle does NOT register.
+  - Craft's native zxcvbn-js meter renders normally.
+  - Front-end builders still work (Lite degrades to global policy resolution).
+
+**Risks to verify during build**
+- Craft's password meter may use the score to gate submit. Our replacement must preserve that gating — never allow weaker passwords through than Craft would have.
+- Craft upgrades may move the DOM signature. Use stable HTML semantics (`type="password"` + `autocomplete`) over Craft-specific class names.
+- CP pages span multiple inputs (current password + new password + confirm). Only attach to the "new password" inputs (the ones with `autocomplete="new-password"`); skip current-password fields and confirmation fields where strength evaluation isn't useful.
 
 ## Layer 5 — Strength engine A baseline
 
@@ -403,7 +450,8 @@ Naming convention: namespace `craftpulse\passwordpolicy\twig\tags\` (or similar)
 Layer 1 → `feat(variables): requirements/requirementsText/requirementRules accessors with group preview (P1.12 layer 1)`
 Layer 2 → `feat(twig-tags): fluent Tag classes for field + form renderers (P1.12 layer 2)`
 Layer 3 → `feat(variables): wire Tag classes to craft.passwordPolicy.* methods (P1.12 layer 3)`
-Layer 4 → `feat(client): JS asset + AJAX validation + a11y live region (P1.12 layer 4)`
+Layer 4a → `feat(client): JS asset + AJAX validation + a11y live region (P1.12 layer 4a)`
+Layer 4b → `feat(cp): replace Craft native zxcvbn meter with plugin strength engine on Pro (P1.12 layer 4b)`
 Layer 5 → `feat(strength): rule-counting + length-tier baseline strength engine (P1.12 layer 5)`
 Layer 6 → `feat(strength): zxcvbn-php Pro opt-in strength engine (P1.12 layer 6)`
 Layer 7 → `feat(controllers): Front\PasswordChangeController + PasswordResetController (P1.12 layer 7)`
