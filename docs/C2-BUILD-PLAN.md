@@ -354,7 +354,13 @@ This layer is a single coherent unit: same engine, same AJAX endpoint, two distr
 
 ### 4b — CP-side strength replacement (Pro only)
 
-**Research-before-coding step.** Before writing any JS, read `vendor/craftcms/cms/src/web/assets/cp/dist/js/Craft.js` (or wherever `Craft.PasswordInput` lives in Craft 5) and document:
+> **Spec premise correction (2026-05-01):** the framing below — "replace Craft's native zxcvbn meter on the CP" — was wrong. Craft 5 ships **no** client-side zxcvbn meter (verified empirically: `find vendor/craftcms/cms -name "*.js" | xargs grep -l zxcvbn` → zero matches). `Craft.PasswordInput` is a Garnish wrapper for show/hide toggle and capslock detection, not a strength evaluator.
+>
+> What the plugin actually had pre-Layer-4b was a separate client-side indicator at `buildchain/src/js/indicator.ts` using `@zxcvbn-ts/core` (TS port). It hardcoded `#newPassword`, ran zxcvbn entirely in the browser, and had no awareness of the plugin's blocklist, per-group policy resolution, or the new `useZxcvbnStrength` Pro toggle. Layers 1–7 of P1.12 added a parallel server-side `bjeavons/zxcvbn-php` engine — so the plugin ended up with two independent zxcvbn implementations on different sides of the fence.
+>
+> **Layer 4b's actual job: unify.** Refactored the CP-side indicator to consume the same AJAX `/validate` endpoint the front-end builders use. The server-side `StrengthService` is now THE strength engine; the CP indicator is a thin renderer. Single source of truth, blocklist-aware, per-group-aware, Pro-toggle-aware. Bundle size dropped from ~1.65 MB to ~2.2 KB once the zxcvbn-ts deps were removed. The original spec text below is preserved for historical context — ignore the "hide Craft's native meter" framing.
+
+**Research-before-coding step (kept for historical context).** Before writing any JS, read `vendor/craftcms/cms/src/web/assets/cp/dist/js/Craft.js` (or wherever `Craft.PasswordInput` lives in Craft 5) and document:
 - The DOM signature of CP password inputs (likely `<input type="password" autocomplete="new-password">` inside a `.password-input` wrapper — verify).
 - Which CP screens use it (admin's own account, new-user creation, plugin password fields, others).
 - How `Craft.PasswordInput` exposes its strength evaluator — public method, prototype, jQuery plugin?

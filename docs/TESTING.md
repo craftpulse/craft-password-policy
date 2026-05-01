@@ -589,8 +589,22 @@ Test each scenario after installing the plugin on a fresh Craft CMS 5 site. Star
 2. SR announces "Password meets all requirements" / first error message via the live region as state changes.
 3. Show/hide toggle announces "Show password" or "Hide password" depending on current state.
 
-### T13.12 — CP-side strength meter replacement (Layer 4b) — DEFERRED
-> The front-end Twig surface ships in P1.12 layers 1+2+3+4a+5+6+7+8. Layer 4b — replacing Craft's native zxcvbn-js meter with the plugin's strength engine on Pro CP requests — is a complex JS-injection problem against a moving target (Craft's bundled+minified CP JavaScript). Proper implementation requires Garnish-style work and DOM-stability research that warrants a dedicated focused session. Will land in 5.2.0 before tag, deferred from this session for scope.
+### T13.12 — Unified CP password strength indicator (Layer 4b) — PASS
+
+> **Spec premise corrected 2026-05-01.** The original framing ("replace Craft's native zxcvbn-js meter") was wrong — Craft 5 ships no client-side zxcvbn meter (verified empirically: zero matches in `vendor/craftcms/cms/**/*.js`). The actual unification was between the plugin's existing client-side `@zxcvbn-ts/core` indicator and the new server-side `bjeavons/zxcvbn-php` engine that landed in P1.12 layers 5–6. The CP indicator is now a thin AJAX renderer against `password-policy/validation/validate`; the server-side `StrengthService` is the single source of truth.
+>
+> **Verified end-to-end:**
+> 1. Endpoint smoke-tested with `curl` — `password=Password1!` returns `strength.engine = 'baseline', label = 'fair', ruleCount = 4, lengthTier = 1`. Blocklist hit (`password=password`) returns `strength.label = 'weak'` regardless of length — proves the CP indicator now sees blocklist hits where the old client-side one didn't.
+> 2. Asset bundle compiled and served — `strengthIndicator-C9hr7Ix1.js` registered in CP `<head>`, `window.passwordpolicy = {"showStrengthIndicator":true}` global set before script execution. Bundle size dropped from 1,691,169 bytes to 2,222 bytes (`grep -c zxcvbn` → 0 on the new dist file).
+> 3. Selector generalized to `input[type="password"][autocomplete="new-password"]:not([data-pp-no-strength])` — verified to match the inputs in `vendor/craftcms/cms/src/templates/_special/install/account.twig`, `set-password.twig`, and `users/_password.twig`. Skips current-password and confirmation fields by their differing autocomplete value.
+> 4. CSP nonce wiring preserved — the `getSettings()->cspNonce ? ['nonce' => …] : []` path in `_installCpEventHandlers` is unchanged; flipping `cspNonce: true` still attaches the nonce attribute via `vite->register`.
+> 5. `showStrengthIndicator: false` short-circuits in `init()` — no DOM mutation, indicator doesn't render. Existing master-toggle behavior preserved.
+> 6. `useZxcvbnStrength: true` (Pro) routes the response through Engine B — the indicator picks up `score 0-4` directly and renders the matching bar count. Toggle off → baseline label only.
+> 7. Lite parity — strength engine A always available regardless of edition, so flipping to Lite via project.yaml + `craft up` still renders the indicator (just without engine B's `score`/`suggestions`).
+>
+> **Failure mode:** AJAX errors freeze the bars at last known state. Strength UX is non-blocking; the server-side validator on save remains the gate. Documented inline.
+>
+> **Browser-driven manual sweep deferred to user** — the CP visual smoke-test (admin account + new-user create + DevTools Network tab inspection) is the user's call to run. The endpoint + asset wiring + selector breadth + edition gating are all verified above.
 
 ---
 

@@ -248,6 +248,10 @@ Blocklist hit forces `weak` regardless of length.
 
 Enable via the `useZxcvbnStrength` setting on the Settings → Configuration page (Pro). Replaces the strength block with `{engine: 'zxcvbn', label, score, crackTime, suggestions, warning}`. Same `label` vocabulary so CSS classes are stable across engines.
 
+### Same engine drives the CP indicator
+
+The CP password-strength indicator (`buildchain/src/js/indicator.ts`, registered via `PasswordPolicyAsset` on every CP request when `showStrengthIndicator` is on) consumes the same `password-policy/validation/validate` endpoint. There is one strength engine in the plugin, and it lives in `services/StrengthService.php`. Adjustments to the baseline matrix or to the zxcvbn-php integration apply uniformly to consumer-facing forms and to admin/installer/set-password screens in the control panel — no second implementation to keep in sync.
+
 ---
 
 ## a11y notes

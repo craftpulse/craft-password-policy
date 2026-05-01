@@ -1,4 +1,4 @@
-# Next Session — Handover (2026-05-01, end of Phase C2)
+# Next Session — Handover (2026-05-01, Phase C2 fully closed)
 
 Building **v5.2.0** of `craft-password-policy`. Single release covers Lite + Pro + Enterprise. Nothing tags until Enterprise (Phase G) is built and tested. **No "v5.2.x" or "v5.3" deferral framing for features** — features either land in 5.2.0 (at the right edition tier) or are dropped to IDEAS.md. 5.2.x is reserved for security patches only.
 
@@ -17,11 +17,12 @@ Memory store: `~/.claude/projects/-Users-michtio-dev-craft-plugins-v5-craft-pass
 
 ## State at handover
 
-**Branch:** `5.x`, ~7 commits ahead of `origin/5.x` and unpushed. Working tree clean.
+**Branch:** `5.x`, ~8 commits ahead of `origin/5.x` and unpushed. Working tree clean.
 
 **Latest commits (top → bottom = newest → oldest):**
 ```
-<latest> docs(events): catalog of plugin events with example listeners (P1.15)
+<latest> refactor(strength): unify CP and front-end strength engines via AJAX (P1.12 layer 4b)
+<...>    docs(events): catalog of plugin events with example listeners (P1.15)
 <...>    feat(frontend): Pro front-end Twig surface — fluent builders, JS asset, strength engine A+B (P1.12)
 <...>    feat(hibp): HIBP-on-login Pro listener + breach-detected notification + BreachDetectedEvent (P1.13)
 <...>    feat(registration): RegistrationService + UserRegisteredEvent + Pro per-group validation (P1.14)
@@ -30,13 +31,13 @@ Memory store: `~/.claude/projects/-Users-michtio-dev-craft-plugins-v5-craft-pass
 76ddfc8 docs: refresh PLAN.md status block — Phase C closed, P1 empty, front-end Twig gap surfaced
 ```
 
-**Manual tests:** core suite still 54/57 PASS for the legacy phases. Phase C2 added T11.1–T11.5 (RegistrationService PASS), T12.1–T12.5 PASS + T12.6 deferred (Enterprise gate), T13.1–T13.5 + T13.7 + T13.8 + T13.9 + T13.10 PASS, T13.6 + T13.11 require browser/SR verification, T13.12 deferred (Layer 4b CP-side strength meter replacement).
+**Manual tests:** core suite still 54/57 PASS for the legacy phases. Phase C2 added T11.1–T11.5 (RegistrationService PASS), T12.1–T12.5 PASS + T12.6 deferred (Enterprise gate), T13.1–T13.5 + T13.7 + T13.8 + T13.9 + T13.10 + **T13.12 (CP indicator unified)** PASS, T13.6 + T13.11 require browser/SR verification.
 
 **Phase status (PLAN.md §4):**
 - A — audit fix-ups: **done 2026-04-29**
 - B — pre-release security tests: **done 2026-04-30**
 - C — P1 backlog: **done 2026-04-30**. P1.8 (deployment docs) deferred to Phase H since Enterprise must exist first.
-- C2 — Pro front-end surface bundle (P1.12 + P1.13 + P1.14 + P1.15): **done 2026-05-01**. P1.12 Layer 4b (CP-side strength meter replacement) deferred to a separate session before tag.
+- C2 — Pro front-end surface bundle (P1.12 + P1.13 + P1.14 + P1.15): **fully closed 2026-05-01** including P1.12 Layer 4b (CP-side strength engine unified with the front-end pipeline via AJAX `/validate`).
 - D, E, F, G, H — pending.
 
 ---
@@ -66,17 +67,7 @@ Memory store: `~/.claude/projects/-Users-michtio-dev-craft-plugins-v5-craft-pass
 
 ## What to build first
 
-### P1.12 Layer 4b — CP-side strength meter replacement (Pro)
-
-Deferred from Phase C2 — the only remaining piece of P1.12 before Phase C2 is fully closed. Replaces Craft's native zxcvbn-js meter on Pro CP password inputs with the plugin's strength engine (so per-group policy + blocklist hits + zxcvbn-php-when-enabled surface consistently across every place a user enters a password). The plan section in `docs/C2-BUILD-PLAN.md` Layer 4b has the spec; PROGRESS.md "Layer 4b deferral" section captures the research checklist.
-
-Implementation requires:
-1. Reading bundled CP JS (`vendor/craftcms/cms/src/web/assets/cp/dist/cp.js`) to confirm the DOM signature and any submit-gating semantics.
-2. New `cp-strength.js` asset bundle that hides Craft's native meter (CSS or DOM remove) and re-renders the plugin's requirement-list + strength-meter markup in the same slot.
-3. Auto-register the bundle on every CP request, gated to `getIsPro()`.
-4. Preserve Craft's submit-gating (never weaker than Craft).
-
-### Then Phase D — User index integration
+### Phase D — User index integration
 
 **P2.1 — User index table attributes.** `EVENT_REGISTER_TABLE_ATTRIBUTES` + `EVENT_SET_TABLE_ATTRIBUTE_HTML`. Columns: password status (badge), last change, expired, reset required. **Lite edition** (this is the headline Lite-tier feature — no edition gating beyond what Craft already provides).
 

@@ -375,9 +375,57 @@ The Craft CP JS is bundled and minified, the DOM signature drifts across version
 
 ---
 
+## Session: 2026-05-01 (P1.12 Layer 4b — strength engine unification)
+
+### Spec premise correction
+
+The original `docs/C2-BUILD-PLAN.md` Layer 4b framing — "replace Craft's native zxcvbn meter on the CP" — was wrong. Confirmed empirically: `find vendor/craftcms/cms -name "*.js" | xargs grep -l zxcvbn` returns zero matches. Craft 5 ships no client-side zxcvbn meter. `Craft.PasswordInput` exists but is a Garnish wrapper for show/hide toggle + capslock detection — not a strength evaluator.
+
+What did exist before this session was an unrelated asymmetry: the plugin shipped its **own** client-side strength indicator at `buildchain/src/js/indicator.ts` using `@zxcvbn-ts/core` (TS port). It hardcoded `#newPassword`, ran zxcvbn entirely in the browser, and had no awareness of the plugin's blocklist, per-group policy resolution, or the new `useZxcvbnStrength` Pro toggle. Layers 1–7 of P1.12 (commit `ffa7aa9`) added a server-side `bjeavons/zxcvbn-php` engine, `StrengthService` with two modes (baseline + zxcvbn-php), and a `password-policy.js` consumer asset that hits `/validate` for builder-rendered front-end forms. Result was two parallel zxcvbn implementations on different sides of the fence with diverging awareness of plugin features.
+
+Layer 4b's actual job: unify. Refactor the CP-side indicator to consume the same AJAX `/validate` endpoint the front-end builders use. Single engine, single source of truth.
+
+### Architectural decisions (made up front, before code)
+
+- **Selector strategy → `input[type="password"][autocomplete="new-password"]:not([data-pp-no-strength])`.** Verified by reading Craft 5 CP password screens: `_special/install/account.twig`, `set-password.twig`, `users/_password.twig` all render via the `forms.passwordField` macro with `autocomplete: 'new-password'`. The macro renders `<input type="password" autocomplete="new-password">` inside `.passwordwrapper`. Broad enough to attach on installer, set-password, admin account, and new-user screens; narrow enough to skip current-password and confirmation fields (which use `autocomplete="current-password"` or no autocomplete). Opt-out via `data-pp-no-strength` for plugin fields that explicitly want to skip the indicator. Rejected `#newPassword` (too narrow — only matches the admin-account screen) and `[data-pp-cp-strength]` (would require Craft to opt in everywhere — not happening).
+- **Failure mode → silent.** AJAX failures freeze the bars at last known state. Strength UX is non-blocking; the server-side validator on save remains the actual gate. Same behavior as the existing front-end consumer asset's `bindValidate` callback. Documented in code comment.
+- **Visual language → preserved.** Keep 5-bar grid, keep `pp-bg-red-400 / pp-bg-orange-400 / pp-bg-amber-300 / pp-bg-teal-400 / pp-bg-green-500` color stops. Map server label to bar count: `weak` → 1 bar red, `fair` → 2 bars orange, `strong` → 3 bars teal, `excellent` → 5 bars green. When engine B's `score 0-4` is present, use it directly for the bar count (more granular than the 4-label vocabulary) — same color stops keyed off the rounded label.
+- **Asset bundle → unchanged.** Reuse `PasswordPolicyAsset`. The Vite-registered `indicator.ts` is what changes; the bundle wiring is identical.
+- **Insert location → closest `.field` ancestor of the input, falling back to the input's parent.** Replaces hardcoded `#newPassword-field`. Works on every CP screen because `forms.passwordField` always renders the input inside a `.field` wrapper.
+- **Settings copy → tweaked.** Existing `instructions: "Display a password strength meter powered by zxcvbn in the control panel."` was already accurate (server engine is also zxcvbn through `bjeavons/zxcvbn-php`). Reworded to mention the unified pipeline (blocklist + per-group + Pro `useZxcvbnStrength` for detailed feedback).
+
+### Build
+
+Refactored `buildchain/src/js/indicator.ts` from a self-contained zxcvbn-ts client to a thin AJAX renderer against `password-policy/validation/validate`. Dropped `@zxcvbn-ts/core`, `@zxcvbn-ts/language-common`, `@zxcvbn-ts/language-en` from `buildchain/package.json` and `buildchain/package-lock.json` and ran `ddev npm install` inside the buildchain to refresh the lockfile. Bundle size dropped from **~1.65 MB → ~3 KB** (the entire zxcvbn dictionaries went away). `grep -c zxcvbn` on the new dist file returns 0.
+
+Settings template: `_settings/configuration.twig` instructions tweaked to reflect the unified pipeline.
+
+PROGRESS-PROGRESS link from C2-BUILD-PLAN.md crossed-out at the top of the Layer 4b section, replaced with the unification rationale; PLAN.md status block updated to mark P1.12 fully closed.
+
+### Side effects: what the CP indicator now sees that it didn't before
+
+- **Blocklist hits force `weak`.** Type `acmecorp` (or any custom blocklist word) — the CP indicator now flips red, where the old client-side one had no concept of the blocklist.
+- **Per-group policy resolution.** A user in a group with a higher `minLength` than global gets the group's resolved settings reflected in the strength block. The old indicator never knew per-group existed.
+- **Pro `useZxcvbnStrength` toggle.** When the toggle is on, the response carries engine-B-specific keys (`score`, `suggestions`, `crackTime`, `warning`). Toggle off → baseline label only. Same engine selection logic as the front-end builders — a single code path now governs strength UX everywhere.
+- **CSP nonce wiring → preserved.** `cspNonce: true` in plugin settings still adds the nonce attribute to the registered script tag.
+
+### Bugs / footguns surfaced
+
+- The old `indicator.ts` hardcoded `#newPassword-field` for its insert anchor — fine on `users/_password.twig` (which uses that exact id), but it never even attached on `set-password.twig` or `_special/install/account.twig`, so the CP installer + reset paths weren't getting an indicator at all. Fixed by switching to `closest('.field')` ancestor.
+- Yii cache `bool false` collides with "missing key returns false" — the same pattern that bit P1.13 dedup. Listed in skill gaps memory; nothing new to log here.
+
+### Process notes
+
+- One commit: `refactor(strength): unify CP and front-end strength engines via AJAX (P1.12 layer 4b)`.
+- PHPStan pre-existing baseline of 3 errors in `NotificationTemplateModel.php` / `NotificationService.php` / `NotificationTemplateService.php` was already there before this session. None of my touched files (`buildchain/src/js/indicator.ts`, `buildchain/package.json`, `buildchain/package-lock.json`, `src/templates/_settings/configuration.twig`, docs) touched those files. Final PHPStan count remains 3.
+- ECS still blocked by host PHP 8.4 vs DDEV PHP 8.3 vendor mismatch (unchanged from prior sessions).
+- Phase C2 is now fully closed. Next is Phase D (P2.1 + P2.2).
+
+---
+
 ## Next Session
 
-Phase A (audit fix-ups), Phase B (pre-release security tests), and **Phase C (P1 backlog)** all closed. Next is Phase D — user index integration.
+Phase A (audit fix-ups), Phase B (pre-release security tests), and **Phase C (P1 backlog)** all closed. Phase C2 (Pro front-end surface bundle) closed in full as of 2026-05-01. Next is Phase D — user index integration.
 
 **Priority 1 (Phase D):**
 - P2.1 — User index table attributes via `EVENT_REGISTER_TABLE_ATTRIBUTES` + `EVENT_SET_TABLE_ATTRIBUTE_HTML`. Columns: password status (badge), last change, expired, reset required. Lite edition.
