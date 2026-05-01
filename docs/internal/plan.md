@@ -12,12 +12,14 @@ status:
 release_strategy: single_5_2_0_includes_all_editions
 gate: enterprise_must_complete_before_release_prep
 read_order_active: [1, 2, 3, 4]
-read_order_reference: [5, 6, 7]
+companion: reference.md (sections 5–7 — completed work, architecture decisions, source-code inventory)
 ---
 
 # Password Policy v5.2.0 — Master Plan
 
-Master plan for the v5.2.0 Pro/Enterprise expansion. Sections 1–4 cover active work. Sections 5–7 are reference for completed history, settled architecture decisions, and source-code inventory. Skip 5–7 unless investigating prior context.
+Master plan for the v5.2.0 Pro/Enterprise expansion. Sections 1–4 cover active work and live in this file.
+
+Reference material — completed work history, settled architecture decisions, and source-code inventory — lives in the companion file [`reference.md`](./reference.md). Skip the reference unless investigating prior context.
 
 ## Contents
 
@@ -27,9 +29,7 @@ Master plan for the v5.2.0 Pro/Enterprise expansion. Sections 1–4 cover active
 | 2 | [Manual testing remaining](#2-manual-testing-remaining) | done — 56/57 PASS, 3 deferred to P2.5 (T1.2 + TX.2 + T9.7) |
 | 3 | [Backlog](#3-backlog) | active |
 | 4 | [Build order](#4-build-order) | active |
-| 5 | [Reference: completed work](#5-reference-completed-work) | done, skippable |
-| 6 | [Reference: architecture decisions](#6-reference-architecture-decisions) | settled, skippable |
-| 7 | [Reference: source code inventory](#7-reference-source-code-inventory) | snapshot, skippable |
+| — | [Reference (completed work, architecture, inventory)](./reference.md) | done, skippable |
 
 State legend: `active` = read now, `pending` = scheduled, `done` = built, `blocked` = gated, `settled` = decided.
 
@@ -40,7 +40,7 @@ State legend: `active` = read now, `pending` = scheduled, `done` = built, `block
 - 10 alpha/beta branches merged into `5.x`, plus end-of-Phase-C work (P1.3 + P1.4 paired Email Notifications, P1.7 retention UI, P1.11 blocklist editor, P1.5 group-deletion listener) shipped on 5.x directly.
 - Pro CP UI feature-complete: named-policy CRUD with presets + tri-state + divergence indicators + conflict UX, env-var inputs, blocklist subnav with custom dictionary editor + word-check tool, retention page with `notificationLogRetentionDays`, **Email Notifications subnav with token picker + per-(key, siteId) editing + sender overrides + AJAX test-send**, group-deletion observability listener, force-reset action.
 - **Pro front-end Twig surface — closed 2026-05-01, polished 2026-05-02 via the C2 code-review bug-fix sweep.** `PasswordPolicyVariable` exposes status helpers (`daysUntilExpiry`, `isExpired`, `isExpiring`, `passwordStatus`, `lastPasswordChange`, `activeSessionCount`) and the full P1.12 builder surface: fluent render builders for fields (`passwordField`, `requirementList`, `strengthMeter`, `requirementsHint`, `passwordWidget`) + forms (`loginForm`, `passwordChangeForm`, `passwordResetForm`), data accessors (`requirements`, `requirementsText`, `requirementRules`), JS asset bundle (no Vite dep on consumer side), strength engine A baseline + B Pro opt-in (`bjeavons/zxcvbn-php`, approved 2026-05-01), a11y baseline, show/hide toggle. **Both `craft.passwordPolicy` (camelCase) and `craft.passwordpolicy` (legacy lowercase) handles work.** P2.4 absorbed.
-- **Bug fix sweep — done 2026-05-02 (6 commits, all PHPStan clean).** C2 code-review followups + a 5.1.1 file-based config compatibility blocker. Twig tag layer (composite null-gating, `id()` setter alias on `PasswordResetFormTag`, `__toString()` docblock correction); controllers (explicit session invalidation via new `PasswordService::destroyOtherSessions()`, ValidationController context-input hardening); client asset (auto-register on any interactivity flag, blocklist-hit propagation in zxcvbn-php engine, cpTrigger-safe fallback URL with rebuilt CP strength bundle); HIBP 429 site-wide backoff cache; dual variable handle registration; SettingsModel alias for legacy `pwned` / `pwnedFailMode` keys. P1.12 fully closed (Layer 4b + bug fixes). Phase C2 closed-closed. See PROGRESS.md "Session: 2026-05-02" for per-bug details.
+- **Bug fix sweep — done 2026-05-02 (6 commits, all PHPStan clean).** C2 code-review followups + a 5.1.1 file-based config compatibility blocker. Twig tag layer (composite null-gating, `id()` setter alias on `PasswordResetFormTag`, `__toString()` docblock correction); controllers (explicit session invalidation via new `PasswordService::destroyOtherSessions()`, ValidationController context-input hardening); client asset (auto-register on any interactivity flag, blocklist-hit propagation in zxcvbn-php engine, cpTrigger-safe fallback URL with rebuilt CP strength bundle); HIBP 429 site-wide backoff cache; dual variable handle registration; SettingsModel alias for legacy `pwned` / `pwnedFailMode` keys. P1.12 fully closed (Layer 4b + bug fixes). Phase C2 closed-closed. See `progress.md` "Session: 2026-05-02" for per-bug details.
 - Manual tests: **56/57 PASS** (Phases A + B + C closed 2026-04-30; T1.2 + TX.2 + T9.7 deferred to P2.5 Pest fixtures).
 - **P1 backlog: 0 items remaining (Phase C2 closed-closed).**
 - P1.8 (deployment docs) moved to Phase H — Enterprise must exist before authoritative deployment docs can be written.
@@ -52,7 +52,7 @@ State legend: `active` = read now, `pending` = scheduled, `done` = built, `block
 
 ## 2. Manual testing remaining
 
-Per-test results in `docs/TESTING.md`. Phases A + B closed; nothing remains in this section that's not gated on Enterprise.
+Per-test results in `manual-tests.md`. Phases A + B closed; nothing remains in this section that's not gated on Enterprise.
 
 ### Pro CRUD + resolver — done 2026-04-29 (all PASS)
 
@@ -88,15 +88,15 @@ T4.1–T4.6 (audit logging) gated on Phase 10–12.
 | ~~P1.7~~ | ~~`notificationLogRetentionDays` UI field~~ — done 2026-04-30 | `forms.textField` added to `src/templates/_settings/retention.twig` inside the Pro block (after `expiryReminderDays`, with `<hr>` separator). Field has its own `info` span explaining what notification log entries are (dedup window for expiry reminders). Added to `SettingsController::actionSave` Pro-strip list. Operational "(see documentation)" pointer to the GC cron deferred until P1.8 docs exist. |
 | P1.8 | ~~Deployment documentation~~ — moved to Phase H | Migration guide 5.1.1 → 5.2.0, GC cron setup, blocklist deployment notes, edition comparison table. **Moved to Phase H (release prep)** because authoritative deployment docs need Enterprise to exist before they can describe the full edition comparison + Enterprise audit cron. CHANGELOG already drafted. Operational pointers ("(see documentation)" parentheticals on `notificationLogRetentionDays` + `auditLogRetentionDays` instructions) get appended once docs land. Frame the `password-policy/gc/run` cron as the **recommended production setup** for retention-managed tables — don't say "pruning is automatic." |
 | ~~P1.11~~ | ~~Custom dictionary editor (Pro)~~ — done 2026-04-30 | New top-level **Blocklist** subnav (between Policies and Settings), Pro-gated. Page consolidates: stats prose with SecLists 10k source citation, Last Seeded callout (`<blockquote class="note tip">`, never-seeded variant escalates to `note warning`), "Update Common Passwords" cron-driven seed button, "Check a word" tool (AJAX, results render in `<blockquote class="note tip|warning">` matching), and `forms.editableTableField` for custom words with diff-on-save (numeric rowId = keep, non-numeric = insert, missing existing IDs = delete). Permission split: `pp:blocklist-view` gates page access, `pp:blocklist-manage` (nested) gates writes. Schema includes nullable `policyId` column from day one (Phase G uses it for per-policy custom dictionaries — Enterprise tier). Validator emits source-aware messages: bundled common → "too common, choose a more unique password"; custom → "blocked, choose a different one". Old `BlocklistUtility` deleted. |
-| ~~P1.12~~ | ~~Pro front-end Twig surface~~ — fully closed 2026-05-01 (incl. Layer 4b strength engine unification) | Image-optimize-style fluent render builders shipped under `craft.passwordpolicy.*` (`passwordField`, `requirementList`, `strengthMeter`, `requirementsHint`, `passwordWidget`, `loginForm`, `passwordChangeForm`, `passwordResetForm`). Data accessors `requirements()` / `requirementsText()` / `requirementRules()` with optional `groups` for anonymous group preview. Vanilla-JS client asset (`PasswordPolicyClientAsset`) auto-registered by any builder with `liveValidation: true` — no Vite assumption on consumer side. Strength engine A (baseline rule-counting × length-tier) ships free on every edition; engine B (zxcvbn-php opt-in) adds score 0-4 + suggestions + crackTime on Pro. New `Front\PasswordChangeController` for logged-in change. **Layer 4b (CP-side indicator)** refactored to consume the same AJAX `/validate` endpoint the front-end builders use — single engine, blocklist-aware, per-group-aware, Pro-toggle-aware. Bundle dropped from ~1.65 MB to ~2.2 KB after `@zxcvbn-ts/*` deps were removed. The original "replace Craft's native zxcvbn meter" framing in C2-BUILD-PLAN.md was a spec-premise error — Craft 5 ships no client-side zxcvbn meter; the work was actually unifying the plugin's own duplicate implementation. T13.1–T13.12 in TESTING.md. Full reference at `docs/10-frontend-twig-surface.md`. |
-| ~~P1.13~~ | ~~HIBP-on-login (Pro)~~ — done 2026-05-01 | Listener on `User::EVENT_BEFORE_AUTHENTICATE` (only Craft 5 hook with synchronous plaintext-in-scope access — research write-up in PROGRESS.md). Hashes plaintext to SHA-1, sends only 5-char k-anonymity prefix to HIBP, never logs plaintext / full hash / bucket suffix. On match: sets `passwordResetRequired = true` (saved with `muteEvents` to avoid recursion), sends `breach-detected` notification email (new key in `EmailDefaults`), writes audit-log entry on Enterprise + audit-toggle, fires `EVENT_BREACH_DETECTED`. 24h dedup cache keyed by `(userId, sha1Prefix)` with string values to avoid Yii's bool-false / missing-key collision. Login never blocked. New setting `enableHibpOnLogin: bool` (default true, Pro). T12.1–T12.5 in TESTING.md. |
-| ~~P1.14~~ | ~~Registration helper service (Lite + Pro per-group validation)~~ — done 2026-05-01 | New `RegistrationService::register(array $params): User`. Resolves group handles up front (more dev-friendly than IDs), populates `setGroups()` BEFORE `validate()` so `UserRules::defineRules()` picks up the per-group context via `PolicyResolverService::resolveForUser()`. On success: persists, assigns groups, optionally sends activation email, fires `UserRegisteredEvent`. Throws `\InvalidArgumentException` on missing required params, unknown handles, or validation failure (with attribute-prefixed messages flattened). T11.1–T11.5 in TESTING.md. |
-| ~~P1.15~~ | ~~Event catalog + documentation~~ — done 2026-05-01 | `docs/events.md` published with FQ class names, payload tables, edition tiers, and example listener code for `PasswordChangedEvent` (Lite), `UserRegisteredEvent` (Lite), `BreachDetectedEvent` (Pro), `PasswordValidationEvent` (Lite). README cross-link via new "Events" section. Future events placeholder for 5.3+/Phase G. Cross-cutting build rule: every new feature ships with its event class defined + docs/events.md row in the same commit. |
+| ~~P1.12~~ | ~~Pro front-end Twig surface~~ — fully closed 2026-05-01 (incl. Layer 4b strength engine unification) | Image-optimize-style fluent render builders shipped under `craft.passwordpolicy.*` (`passwordField`, `requirementList`, `strengthMeter`, `requirementsHint`, `passwordWidget`, `loginForm`, `passwordChangeForm`, `passwordResetForm`). Data accessors `requirements()` / `requirementsText()` / `requirementRules()` with optional `groups` for anonymous group preview. Vanilla-JS client asset (`PasswordPolicyClientAsset`) auto-registered by any builder with `liveValidation: true` — no Vite assumption on consumer side. Strength engine A (baseline rule-counting × length-tier) ships free on every edition; engine B (zxcvbn-php opt-in) adds score 0-4 + suggestions + crackTime on Pro. New `Front\PasswordChangeController` for logged-in change. **Layer 4b (CP-side indicator)** refactored to consume the same AJAX `/validate` endpoint the front-end builders use — single engine, blocklist-aware, per-group-aware, Pro-toggle-aware. Bundle dropped from ~1.65 MB to ~2.2 KB after `@zxcvbn-ts/*` deps were removed. The original "replace Craft's native zxcvbn meter" framing in `history/phase-c2-build-plan.md` was a spec-premise error — Craft 5 ships no client-side zxcvbn meter; the work was actually unifying the plugin's own duplicate implementation. T13.1–T13.12 in `manual-tests.md`. Full reference at `../user/features/frontend-twig.md`. |
+| ~~P1.13~~ | ~~HIBP-on-login (Pro)~~ — done 2026-05-01 | Listener on `User::EVENT_BEFORE_AUTHENTICATE` (only Craft 5 hook with synchronous plaintext-in-scope access — research write-up in `progress.md`). Hashes plaintext to SHA-1, sends only 5-char k-anonymity prefix to HIBP, never logs plaintext / full hash / bucket suffix. On match: sets `passwordResetRequired = true` (saved with `muteEvents` to avoid recursion), sends `breach-detected` notification email (new key in `EmailDefaults`), writes audit-log entry on Enterprise + audit-toggle, fires `EVENT_BREACH_DETECTED`. 24h dedup cache keyed by `(userId, sha1Prefix)` with string values to avoid Yii's bool-false / missing-key collision. Login never blocked. New setting `enableHibpOnLogin: bool` (default true, Pro). T12.1–T12.5 in `manual-tests.md`. |
+| ~~P1.14~~ | ~~Registration helper service (Lite + Pro per-group validation)~~ — done 2026-05-01 | New `RegistrationService::register(array $params): User`. Resolves group handles up front (more dev-friendly than IDs), populates `setGroups()` BEFORE `validate()` so `UserRules::defineRules()` picks up the per-group context via `PolicyResolverService::resolveForUser()`. On success: persists, assigns groups, optionally sends activation email, fires `UserRegisteredEvent`. Throws `\InvalidArgumentException` on missing required params, unknown handles, or validation failure (with attribute-prefixed messages flattened). T11.1–T11.5 in `manual-tests.md`. |
+| ~~P1.15~~ | ~~Event catalog + documentation~~ — done 2026-05-01 | `../user/reference/events.md` published with FQ class names, payload tables, edition tiers, and example listener code for `PasswordChangedEvent` (Lite), `UserRegisteredEvent` (Lite), `BreachDetectedEvent` (Pro), `PasswordValidationEvent` (Lite). README cross-link via new "Events" section. Future events placeholder for 5.3+/Phase G. Cross-cutting build rule: every new feature ships with its event class defined + a `user/reference/events.md` row in the same commit. |
 
 ### P1: shipped (this session)
 
-- P1.1 — manual testing tracking (moved to TESTING.md)
-- P1.6 — group policies CP UI (named-policies CRUD, see `docs/05-per-group-policies.md`)
+- P1.1 — manual testing tracking (moved to `manual-tests.md`)
+- P1.6 — group policies CP UI (named-policies CRUD, see `../user/features/per-group-policies.md`)
 - P1.9 — save-time conflict notice (`PolicyController::actionSave()` → `setNotice()` when `policy.minLength > globalSettings.maxLength`)
 - P1.10 — edit-screen conflict banner (`PolicyController::actionEdit()` → `noticeHtml()` warning blockquote, combined with read-only notice when both apply)
 
@@ -115,7 +115,7 @@ T4.1–T4.6 (audit logging) gated on Phase 10–12.
 | ID | Title | Notes |
 |---|---|---|
 | Phase 10 | Device tracking + login anomaly | DeviceTrackingService, KnownDeviceRecord, ua-parser/uap-php dependency (needs approval), login event listener, alerts, DeviceController CLI. |
-| Phase 11 | Compliance dashboard + audit-trail integrity | ComplianceDashboardUtility (aggregates), ReportController (HTML/PDF/CSV export), compliance mapping, PCI-DSS tension. **Includes:** CP-wide policy conflict alert via `Cp::EVENT_REGISTER_ALERTS` — surfaces conflicts on every CP page (Pro/Lite get P1.9 + P1.10 only, Enterprise adds this). **Compliance-grade audit-trail enhancements** (added 2026-05-01 from Trails competitive analysis — see `docs/04-audit-logging.md` "Compliance-grade enhancements" section for design detail): (a) **Hash-chained audit rows** — append-only `previousHash` column, `sha256(canonicalRowJson + previousHash)`, no Merkle batching needed at password-event volume. Turns "we have a log table" into "we have a tamper-evident audit trail." (b) **Independent verifier CLI** — `password-policy/audit/verify` walks the chain, reports the first break, exits non-zero. Open-source, auditor-runnable — credibility multiplier on (a). (c) **Field-level before/after diffs on policy changes** — when an admin edits a named policy, the audit row captures the structured diff (e.g. `{minLength: {old: 8, new: 12}}`), maps to ISO 27002 A.5.37 + SOC 2 CC8.1 change-management evidence. (d) **Explicit PII allowlist registered per event type** — codify the existing implicit allowlist as inspectable per-event-class config that fails closed; makes the privacy-by-design story documentable for auditors. |
+| Phase 11 | Compliance dashboard + audit-trail integrity | ComplianceDashboardUtility (aggregates), ReportController (HTML/PDF/CSV export), compliance mapping, PCI-DSS tension. **Includes:** CP-wide policy conflict alert via `Cp::EVENT_REGISTER_ALERTS` — surfaces conflicts on every CP page (Pro/Lite get P1.9 + P1.10 only, Enterprise adds this). **Compliance-grade audit-trail enhancements** (added 2026-05-01 from Trails competitive analysis — see `../user/features/audit-logging.md` "Compliance-grade enhancements" section for design detail): (a) **Hash-chained audit rows** — append-only `previousHash` column, `sha256(canonicalRowJson + previousHash)`, no Merkle batching needed at password-event volume. Turns "we have a log table" into "we have a tamper-evident audit trail." (b) **Independent verifier CLI** — `password-policy/audit/verify` walks the chain, reports the first break, exits non-zero. Open-source, auditor-runnable — credibility multiplier on (a). (c) **Field-level before/after diffs on policy changes** — when an admin edits a named policy, the audit row captures the structured diff (e.g. `{minLength: {old: 8, new: 12}}`), maps to ISO 27002 A.5.37 + SOC 2 CC8.1 change-management evidence. (d) **Explicit PII allowlist registered per event type** — codify the existing implicit allowlist as inspectable per-event-class config that fails closed; makes the privacy-by-design story documentable for auditors. |
 | Phase 12 | SIEM + webhooks + API tokens + audit-export streaming + alert cooldown | SiemService, WebhookService, ApiTokenService, ApiController, SiemForwardJob, circuit breaker, HMAC-SHA256 webhook signatures. **Added 2026-05-01:** (e) **`AlertCooldownService`** — generalised cooldown/dedup logic for alert emails (HIBP-on-login mass detections, group-deletion cascades, force-reset bursts). Reuses the `notificationLogRetentionDays` dedup pattern from P1.3 but per-event-class. Each new alert type registers its cooldown window rather than reinventing throttling. (f) **Streaming audit-log exports** — extend `AuditController::actionExport` to stream CSV/JSON via `BaseBatchedJob` with no PHP memory ceiling, queue-driven for large date ranges. Same pattern as P1.4's `SendPasswordExpiryRemindersJob`. |
 | (Phase G addition) | Per-policy custom blocklist | Enterprise-tier extension of P1.11. Schema: nullable `policyId` column already added in 5.2.0 install migration. Adds: per-policy editor tab on the policy edit screen (admins scope custom words to specific named policies — block customer names for sales reps, project codenames for engineering, etc.). `BlocklistService::addCustomWord()` extends to `addCustomWord(string, ?int $policyId = null)`. `CommonPasswordValidator` merges global (`policyId IS NULL`) + applicable per-policy entries based on the user's resolved policy set. Edition strip on save prevents Pro from accidentally writing per-policy entries. Cache key includes policyId set. Specops-style differentiator. |
 | (Phase G addition) | Custom email template paths | Enterprise-tier extension of P1.3. Adds a "use Twig template" override mode on each notification template — admin specifies a path (e.g. `_emails/expiry-reminder.twig`), plugin renders that instead of the DB-stored body. Whitelabeling / brand-enforcement use case for Enterprise customers who want version-controlled, dev-managed templates with full HTML support. Schema: nullable `templatePath` field added to the JSON content shape on `passwordpolicy_notification_templates`. Edition strip on save prevents Pro from writing template paths. **Rejected for 5.2.0 Pro per session 2026-04-30** — Pro stays DB-textarea-only because template-path mode reopens HTML body and contradicts the "edit on production" promise. Multi-site framing (the original motivation) is already handled in 5.2.0 by per-site rows + Twig-rendered body — `{% include %}` of site templates from within the body textarea provides the same flexibility for Pro customers without a UI mode switch. |
@@ -152,167 +152,10 @@ Gates:
 
 ---
 
-## 5. Reference: completed work
+## Reference (sections 5–7) → moved
 
-> Skippable unless investigating prior decisions or commit history.
+Sections 5 (completed work), 6 (settled architecture decisions) and 7 (source-code inventory) live in [`reference.md`](./reference.md). They don't change session-to-session — keeping them out of `plan.md` keeps the active plan focused on what still needs to land.
 
-### 5.1 Phases shipped
-
-| Phase | Branch | Summary |
-|---|---|---|
-| 0 | alpha.1 | Edition infrastructure, settings model, HIBP TLS fix, log key stripping |
-| 1 | alpha.2 | Install + upgrade migrations, 4 records, 4 tables, history seeding |
-| 2 | alpha.3 | PasswordHistoryService, PasswordHistoryValidator, event handlers, recursion guard |
-| 3 | alpha.4 | 5 validators, BlocklistService, BlocklistController (console), common-passwords data |
-| 4 | alpha.5 | AuditLogService, AuditController (console), Craft security listeners, HIBP fail-mode |
-| 5 | beta.1 | GroupPolicyModel, PolicyPreset enum, PolicyResolverService |
-| 6 | beta.2 | 3 condition rules, ForcePasswordReset action, password-security.twig |
-| 7 | beta.5 | Settings UI, blocklist dedup fix, info tooltips, BlocklistUtility, SeedBlocklist job |
-| 8 | beta.3 | PasswordChangedEvent, session invalidation, group force reset |
-| 9 | beta.4 | NotificationService, GC hook, ValidationController (AJAX), Twig variables |
-| - | 5.x (this session) | Named policies CRUD, tabbed edit screen, tri-state UI, divergence indicators, resolver bool refactor (Option A), per-user UserRules resolution |
-
-### 5.2 Bug fixes (this session, uncommitted)
-
-- Orphan `expiryPeriod` strip when no `expiryAmount`
-- Preset JS↔PHP value sync (NIST/OWASP/PCI presets had spurious explicit-Off in JS)
-- Tri-state preset auto-fill via Craft's Lightswitch API
-- Override warnings only render when value differs from global
-- `[hidden]` CSS override (Craft's `.warning.has-icon` flex)
-- `setSettingsFromArray` resets fields to null first
-- `forms.checkboxSelectField` empty-string coercion in `actionSave`
-- Model-level minLength ≤ maxLength validation (self-collision caught at save)
-- `UserRules::defineRules()` now consults `PolicyResolverService::resolveForUser($user)` instead of global settings
-- `ValidationController` AJAX endpoint also resolves per-user
-- `maxLength > minLength` rule guard widened to `> 0` after auto-correction redesign
-- Auto-correction redesign: `maxLength = minLength` (exact-length-only) replaced with `maxLength = 0` (cap dropped) on conflict
-
-### 5.3 Bug fixes (earlier session, committed)
-
-- `getIsLite()` hardcoded to `true` (`43c6f6c`)
-- Validation order: content rules before HIBP/history (`43c6f6c`)
-- "1 of 4" useless dropdown option (`43c6f6c`)
-- Number-input width on retention page (`43c6f6c`)
-- Edition gate upgrade-link icon (`43c6f6c`)
-- PCI compliance link (`43c6f6c`)
-- History instructions mdash (`43c6f6c`)
-- Blocklist auto-seed via queue (`fb3e9b3`)
-- `lastPasswordChangeDate` direct query (`bc6196d`)
-
-### 5.4 Features built (this session, uncommitted)
-
-1. Named policies CRUD (PolicyController, PolicyService, PolicyModel, PolicyRecord, PolicyGroupRecord, edit/index templates, migration `m260426_000000_AddPoliciesTables`)
-2. Tabbed edit screen via `asCpScreen()->tabs()` (General / Rules / Lifecycle)
-3. Tri-state rule overrides (Off / Global / On) — webhook plugin pattern
-4. Override warnings via `forms.field` `warning:` parameter (Blitz pattern with `_macros.twig`)
-5. Divergence indicators (blue dot in index, blue left border on edit fields, "Changes" column with count)
-6. "Restore preset defaults" button (re-applies preset values via JS)
-7. "Reset all to global" button in toolbar (`additionalButtonsHtml`)
-8. PolicyResolverService two-phase bool merge (any-true wins, then any-false wins, then global)
-9. PolicyModel `getDivergentFields()` and `getOverrideFields()` helpers
-10. Per-user policy resolution at validation time (UserRules + ValidationController)
-
-### 5.5 Features built (earlier session, committed)
-
-- Custom CP icons for password policy nav
-- Info icon tooltips on settings pages (NIST/PCI-DSS/GDPR references)
-- BlocklistUtility (CP utility, stats, "Update Common Passwords" button, `pp:blocklist-manage` permission)
-- SeedBlocklist queue job + auto-seed trigger when toggle enabled with empty blocklist
-- Fail-closed JS warning on HIBP fail-mode dropdown
-
----
-
-## 6. Reference: architecture decisions
-
-> Skippable unless ambiguity arises about a previously-decided approach.
-
-### 6.1 Compliance view (Phase 11) — hybrid
-
-Extend Users index for day-to-day work + ComplianceDashboardUtility for reporting.
-
-- Users index: table attributes (P2.1), condition rules (built — 3 rules), bulk actions (built — ForcePasswordReset)
-- ComplianceDashboardUtility: aggregate metrics, framework mapping (NIST/OWASP/PCI-DSS green/amber/red), CSV/PDF export, drill-down to Users index
-- Rejected: custom CP section (duplicates Users index)
-
-### 6.2 P2.2 admin password change — `changedByUserId` storage (Option A)
-
-Tension: `changedByUserId` exists on audit log table, audit logging is Enterprise-gated.
-
-- A (chosen): store on password history table (all editions). Not exposed via UI/API on non-Enterprise. Enterprise audit log JOINs to it.
-- B (rejected): always write audit log entry on Pro, gate UI/export. Risk: data leakage via direct DB query.
-- C (subset of A): never write audit log entry on non-Enterprise. Cleanest separation.
-
-### 6.3 Tri-state override semantics — Option A (built)
-
-For boolean overrides per-policy:
-
-- Single group's explicit `false` is honored against global `true` (single-group exemption)
-- Multi-group resolution: any explicit `true` wins over any explicit `false` (most-restrictive wins)
-- Implementation: PolicyResolverService two-phase merge (bool pre-pass + non-bool sequential)
-
-### 6.4 maxLength vs minLength conflict (built)
-
-When merge produces `maxLength < minLength`, drop the maxLength cap (set to 0 / no limit).
-
-- Reasoning: minLength is security-critical (never weaken), maxLength is defensive only
-- Logged as `WARNING`. Surfaced via P1.9 (save-time notice) and P1.10 (edit-screen banner)
-- Rejected alternative: `maxLength = minLength` (creates bizarre exact-length-only behavior)
-
-### 6.5 Edition switching
-
-`project.yaml` (`plugins.password-policy.edition: pro`) + update `dateModified` + `ddev craft up`. Do NOT use `app.php` `pluginConfigs` hacks.
-
-### 6.6 Multi-site
-
-Craft users live at install level, not per-site. No multi-site edge cases for password policies.
-
-### 6.7 Sequential validator case-insensitivity
-
-Lowercase before scanning. `pqR`/`Pqr`/`PQR` all trigger on `pqr` sequence. Matches zxcvbn / hashcat-rules thinking — case-mixed variants of a sequence provide no meaningful additional strength against real attackers.
-
----
-
-## 7. Reference: source code inventory
-
-> Skippable unless unsure what already exists.
-
-### 7.1 Counts
-
-- Services: 9
-- Web controllers: 5
-- Console controllers: 3
-- Validators: 7
-- Utilities: 2
-- Jobs: 2
-- Condition rules: 3
-- Element actions: 1
-- Events: 1
-- Permissions: 3 + 1 planned
-
-### 7.2 By component
-
-| Type | Names |
-|---|---|
-| Services | AuditLogService, BlocklistService, NotificationService, PasswordHistoryService, PasswordService, PolicyResolverService, PolicyService, RetentionService, SecurityService |
-| Web controllers | SettingsController, ValidationController, BlocklistController, RetentionController, PolicyController |
-| Console controllers | BlocklistController, AuditController, GcController |
-| Models | PolicyModel, GroupPolicyModel, SettingsModel |
-| Records | PolicyRecord, PolicyGroupRecord |
-| Validators | HibpValidator, SequentialCharsValidator, RepeatedCharsValidator, ContextualValidator, CommonPasswordValidator, MinimumCharacterTypesValidator, PasswordHistoryValidator |
-| Utilities | RetentionUtility (Lite), BlocklistUtility (Pro) |
-| Jobs | PasswordResetJob, SeedBlocklist |
-| Condition rules | PasswordExpiredConditionRule, PasswordResetRequiredConditionRule, PasswordNeverChangedConditionRule |
-| Element actions | ForcePasswordReset (Pro) |
-| Events | PasswordChangedEvent (Lite — free for ecosystem) |
-| Permissions | `pp:settings`, `pp:force-reset-passwords`, `pp:blocklist-manage`, `pp:change-user-passwords` (planned for P2.2) |
-
-### 7.3 Settings without UI
-
-`adminAlertEvents`, all SIEM settings, all webhook settings, `enableNewDeviceAlerts`, `deviceRetentionDays`, `notificationLogRetentionDays`. Wired into model + validation, not yet rendered. P1.7 covers `notificationLogRetentionDays`. Others wait for Phase 10–12.
-
-### 7.4 Edge cases for P2.5 integration tests
-
-1. Queue worker site context for GC and SeedBlocklist jobs
-2. Concurrent password changes (race condition in history save)
-3. GraphQL mutation password changes — confirm plugin events fire
-4. `passwordHistoryCount` validator class instantiation on Lite if setting > 0 (validator gates internally; confirm class isn't loaded unnecessarily)
+- §5.1–5.5 — phases shipped + bug fixes + features built per session → [`reference.md` §5](./reference.md#5-reference-completed-work)
+- §6.1–6.7 — settled architecture decisions (compliance view, tri-state semantics, edition switching, etc.) → [`reference.md` §6](./reference.md#6-reference-architecture-decisions)
+- §7.1–7.4 — current source-code inventory + integration-test edge cases → [`reference.md` §7](./reference.md#7-reference-source-code-inventory)
