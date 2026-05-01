@@ -179,6 +179,18 @@ class SettingsModel extends Model
      */
     public int $notificationLogRetentionDays = 30;
 
+    /**
+     * @var bool whether to check the user's plaintext password against the HIBP
+     *     breach database during login (Pro). Hashes the password to SHA-1 in
+     *     memory and submits only the 5-char k-anonymity prefix; never logs
+     *     the plaintext, full hash, or full bucket. Detection forces a
+     *     `passwordResetRequired = true` and sends the `breach-detected`
+     *     notification — the login itself is never blocked.
+     *
+     * @since 5.2.0
+     */
+    public bool $enableHibpOnLogin = true;
+
     // Public Properties — Enterprise
     // =========================================================================
 
@@ -387,6 +399,7 @@ class SettingsModel extends Model
                     'checkContextual',
                     'checkCommonPasswords',
                     'enablePerGroupPolicies',
+                    'enableHibpOnLogin',
                     'enableAuditLog',
                     'enableNewDeviceAlerts',
                     'siemEnabled',

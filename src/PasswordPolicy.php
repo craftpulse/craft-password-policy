@@ -20,6 +20,7 @@ use craft\events\ModelEvent;
 use craft\events\RegisterComponentTypesEvent;
 use craft\events\RegisterConditionRulesEvent;
 use craft\events\RegisterElementActionsEvent;
+use craft\events\AuthenticateUserEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
 use craft\events\SiteEvent;
@@ -44,6 +45,7 @@ use craftpulse\passwordpolicy\elements\actions\ForcePasswordReset;
 use craftpulse\passwordpolicy\elements\conditions\PasswordExpiredConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\PasswordNeverChangedConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\PasswordResetRequiredConditionRule;
+use craftpulse\passwordpolicy\events\BreachDetectedEvent;
 use craftpulse\passwordpolicy\events\PasswordChangedEvent;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
@@ -102,6 +104,18 @@ class PasswordPolicy extends Plugin
      * @since 5.2.0
      */
     public const EVENT_PASSWORD_CHANGED = 'passwordChanged';
+
+    /**
+     * Fired by the HIBP-on-login Pro listener when a user's plaintext password
+     * matches a SHA-1 prefix bucket on the HIBP API. The plaintext, full hash,
+     * and bucket suffix are intentionally NOT in the event payload — see
+     * BreachDetectedEvent class docblock.
+     *
+     * @event BreachDetectedEvent
+     *
+     * @since 5.2.0
+     */
+    public const EVENT_BREACH_DETECTED = 'breachDetected';
 
     /**
      * Sensitive keys that must never appear in log output.
@@ -495,6 +509,11 @@ class PasswordPolicy extends Plugin
         // Notification template propagation when a new site is added
         $this->_registerSiteListeners();
 
+        // HIBP-on-login (Pro) — re-checks the plaintext during BEFORE_AUTHENTICATE
+        if ($this->getIsPro()) {
+            $this->_registerHibpOnLoginListener();
+        }
+
         // Safety net: clear any remaining cached passwords at end of request
         $this->_registerRequestCleanup();
 
@@ -870,6 +889,190 @@ class PasswordPolicy extends Plugin
                     );
                 }
             },
+        );
+    }
+
+    /**
+     * Registers the HIBP-on-login Pro listener.
+     *
+     * Subscribes to `User::EVENT_BEFORE_AUTHENTICATE` (the only Craft 5
+     * event that fires synchronously inside the login flow with the
+     * plaintext password in scope). Hashes the plaintext to SHA-1, sends
+     * only the 5-char k-anonymity prefix to the HIBP API, and on a match:
+     *  1. Sets `$user->passwordResetRequired = true` (saved with `muteEvents`
+     *     so the password-history listeners don't fire spuriously).
+     *  2. Sends the `breach-detected` notification email (Pro pipeline).
+     *  3. Writes an Enterprise audit-log entry (gated inside the listener
+     *     because Lite/Pro installs don't have the audit log enabled).
+     *  4. Fires `EVENT_BREACH_DETECTED` for consumer hooks.
+     *
+     * Privacy invariant: never log the plaintext, full SHA-1 hash, or full
+     * prefix-and-suffix bucket. Only the 5-char prefix and a "match found"
+     * boolean ever leave the listener.
+     *
+     * Defensive: HIBP API failures (timeout, 429, 5xx, TLS issue) are caught
+     * and logged at WARNING level — login is never blocked.
+     *
+     * Dedup cache: 24h on `(userId, sha1Prefix)`. Same user + same password
+     * within a day produces a single notification; lets daily-active users
+     * sign in repeatedly without spamming HIBP or themselves.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerHibpOnLoginListener(): void
+    {
+        Event::on(
+            User::class,
+            User::EVENT_BEFORE_AUTHENTICATE,
+            function(AuthenticateUserEvent $event): void {
+                if (!$this->getSettings()->enableHibpOnLogin) {
+                    return;
+                }
+
+                // Passkey-driven authentication leaves $event->password null —
+                // nothing to check.
+                $plaintext = $event->password;
+
+                if ($plaintext === null || $plaintext === '') {
+                    return;
+                }
+
+                /** @var User $user */
+                $user = $event->sender;
+
+                if (!$user->id) {
+                    return;
+                }
+
+                try {
+                    $this->_runHibpOnLoginCheck($user, $plaintext);
+                } catch (Throwable $e) {
+                    // Login must never break because of an HIBP path issue.
+                    // Log opaque summary only — never include $plaintext or
+                    // any derived hash material.
+                    Craft::warning(
+                        'HIBP-on-login check failed for user ' . $user->id . ': ' . $e->getMessage(),
+                        'password-policy',
+                    );
+                }
+            },
+        );
+    }
+
+    /**
+     * Performs the HIBP-on-login check against a plaintext password and runs
+     * the breach-detected side effects when the password matches the breach
+     * database.
+     *
+     * Intentionally separated from the listener registration so the
+     * defensive try/catch in the listener can wrap one call site. The
+     * `$plaintext` parameter is `#[\SensitiveParameter]` so PHP omits it
+     * from stack traces if anything throws downstream.
+     *
+     * @param User $user the authenticating user
+     * @param string $plaintext the plaintext password from the login form
+     * @return void
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _runHibpOnLoginCheck(User $user, #[\SensitiveParameter] string $plaintext): void
+    {
+        $sha1Prefix = strtoupper(substr(sha1($plaintext), 0, 5));
+        $cacheKey = "pp:hibp-login:{$user->id}:{$sha1Prefix}";
+
+        // 24h dedup window. Yii's cache `get()` returns `false` for missing
+        // keys, so we encode the cached state as a string ("breached" /
+        // "clean") to disambiguate "no cache" from a cached clean result.
+        $cached = Craft::$app->getCache()->get($cacheKey);
+
+        if ($cached !== false) {
+            // Cached run — no second API call, no second notification.
+            return;
+        }
+
+        // hibp() does the prefix lookup + suffix scan and never logs the
+        // plaintext (verified in PasswordService::hibp() — only the prefix
+        // appears on the wire and in API logs).
+        $result = $this->getPasswords()->hibp($plaintext);
+
+        if ($result === null) {
+            // API failure — don't cache (we want next login to retry),
+            // don't notify, don't block. PasswordService already logged the
+            // exception at ERROR level.
+            return;
+        }
+
+        // Cache the outcome for 24h. String values to avoid the false/missing
+        // ambiguity in Yii's cache contract. Daily-active users with the same
+        // password generate one HIBP call and (at most) one notification per
+        // day until they change their password.
+        Craft::$app->getCache()->set($cacheKey, $result === true ? 'breached' : 'clean', 86400);
+
+        if ($result !== true) {
+            return;
+        }
+
+        // Breach detected — run side effects.
+        $detectedAt = new \DateTime('now');
+
+        // 1. Force a password reset on next login. Save with muteEvents to
+        //    keep the password-history listeners from firing spurious
+        //    PasswordChangedEvent — the password isn't actually changing.
+        $projectConfig = Craft::$app->getProjectConfig();
+        $previousMute = $projectConfig->muteEvents;
+        $projectConfig->muteEvents = true;
+        try {
+            $user->passwordResetRequired = true;
+            Craft::$app->getElements()->saveElement($user, false);
+        } catch (Throwable $e) {
+            Craft::warning(
+                'Failed to set passwordResetRequired on breached user ' . $user->id . ': ' . $e->getMessage(),
+                'password-policy',
+            );
+        } finally {
+            $projectConfig->muteEvents = $previousMute;
+        }
+
+        // 2. Send the breach-detected notification.
+        try {
+            $this->getNotification()->sendBreachDetected($user, $detectedAt);
+        } catch (Throwable $e) {
+            Craft::warning(
+                'Failed to send breach-detected email for user ' . $user->id . ': ' . $e->getMessage(),
+                'password-policy',
+            );
+        }
+
+        // 3. Audit-log entry — gated to Enterprise installs that have audit
+        //    logging enabled. Lite/Pro skip this branch.
+        if ($this->getIsEnterprise() && $this->getSettings()->enableAuditLog) {
+            $this->getAuditLog()->logEvent(
+                userId: $user->id,
+                event: 'breach_detected',
+                outcome: 'warning',
+            );
+        }
+
+        // 4. Fire the public event.
+        if ($this->hasEventHandlers(self::EVENT_BREACH_DETECTED)) {
+            $this->trigger(self::EVENT_BREACH_DETECTED, new BreachDetectedEvent([
+                'user' => $user,
+                'sha1Prefix' => $sha1Prefix,
+                'detectedAt' => $detectedAt,
+            ]));
+        }
+
+        // Privacy: log only that a match was found and the user notified.
+        // Never include $plaintext or any derived material.
+        $this->log(
+            'HIBP-on-login match: user {userId} notified, passwordResetRequired set',
+            ['userId' => $user->id],
         );
     }
 

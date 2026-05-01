@@ -101,6 +101,72 @@ class NotificationService extends Component
     }
 
     /**
+     * Sends a `breach-detected` notification to a user whose password was
+     * just found in the HIBP breach database during login.
+     *
+     * Pro-only — the listener that drives this method only registers on Pro,
+     * but the guard is duplicated here as defense-in-depth in case a future
+     * caller invokes the method directly.
+     *
+     * @param User $user the user whose password matched
+     * @param \DateTime $detectedAt when the match was detected
+     * @return void
+     *
+     * @throws RuntimeException when the plugin is running the Lite edition
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function sendBreachDetected(User $user, \DateTime $detectedAt): void
+    {
+        if (!PasswordPolicy::$plugin->getIsPro()) {
+            throw new RuntimeException('HIBP-on-login notifications require the Pro edition.');
+        }
+
+        if ($user->email === null) {
+            return;
+        }
+
+        // Dedup is handled by the listener (cache-based, 24h) — by the time
+        // we reach here, the same (user, prefix) hasn't notified within the
+        // last day. We still write a notification_log row so admins have a
+        // historical trail in the same place expiry-reminder logs land.
+        $siteId = $this->_resolveSiteIdForUser($user);
+        $template = PasswordPolicy::$plugin->getNotificationTemplates()
+            ->getTemplate('breach-detected', $siteId);
+
+        if ($template === null) {
+            Craft::warning(
+                "No breach-detected template found for user {$user->id} (siteId {$siteId})",
+                'password-policy',
+            );
+            return;
+        }
+
+        try {
+            $message = $this->composeFromTemplate($template, $user, [
+                'user' => $user,
+                'detectedAt' => $detectedAt,
+                'siteName' => Craft::$app->getSites()->getSiteById($siteId)?->getName()
+                    ?? Craft::$app->getSystemName(),
+            ]);
+
+            $message->setTo($user->email)->send();
+
+            $this->_logNotification($user->id, 'breach_detected');
+        } catch (Throwable $e) {
+            // Privacy invariant: never include the plaintext / hash / bucket
+            // suffix in logs. The exception message can only originate from
+            // template rendering or mailer transport — neither carries
+            // password material — but we log only an opaque summary anyway.
+            Craft::error(
+                "Failed to send breach-detected notification to user {$user->id}: " . $e->getMessage(),
+                'password-policy',
+            );
+        }
+    }
+
+    /**
      * Sends a new device login alert to a user.
      *
      * @param User $user
