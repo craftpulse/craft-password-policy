@@ -13,6 +13,7 @@ namespace craftpulse\passwordpolicy\controllers\front;
 use Craft;
 use craft\elements\User;
 use craft\web\Controller;
+use craftpulse\passwordpolicy\PasswordPolicy;
 use Throwable;
 use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
@@ -104,6 +105,13 @@ class PasswordChangeController extends Controller
         if (!Craft::$app->getElements()->saveElement($user)) {
             return $this->_failure($user, $user->getErrors());
         }
+
+        // Invalidate every other active session for this user. Craft's own
+        // `User::afterSave` already runs this delete when `newPassword` is
+        // set; we call it explicitly so the contract is visible at the call
+        // site and survives any future Craft refactor. Current request's
+        // session token is preserved — the user stays signed in here.
+        PasswordPolicy::$plugin->getPasswords()->destroyOtherSessions($user);
 
         Craft::$app->getSession()->setNotice(
             Craft::t('password-policy', 'Your password has been updated.'),

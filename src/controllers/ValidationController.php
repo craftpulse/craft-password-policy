@@ -190,10 +190,7 @@ class ValidationController extends Controller
         $strength = $plugin->getStrength()->compute(
             $password,
             $settings,
-            [
-                'username' => (string)($request->getBodyParam('username') ?? ''),
-                'email' => (string)($request->getBodyParam('email') ?? ''),
-            ],
+            $this->_resolveStrengthContext($request),
             $blocklistHit,
         );
 
@@ -279,5 +276,41 @@ class ValidationController extends Controller
             'common' => 'blocklist',
             default => $key,
         };
+    }
+
+    /**
+     * Resolves the username + email context forwarded to the zxcvbn-php
+     * strength engine.
+     *
+     * Authenticated requests pull username/email from the session identity
+     * — never from POST — so an attacker can't influence the strength signal
+     * by submitting a known username alongside a guessed password. Anonymous
+     * requests get an empty context: the alternative (trusting POST values)
+     * lets unauthenticated callers prime the user-input dictionary with
+     * arbitrary strings and observe how that changes the strength score
+     * for a known account.
+     *
+     * Values are length-clamped at 254 chars (RFC 5321 mailbox length cap)
+     * defensively so a pathological username can't blow up zxcvbn's matchers.
+     *
+     * @param \craft\web\Request $request
+     * @return array{username: string, email: string}
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _resolveStrengthContext(\craft\web\Request $request): array
+    {
+        /** @var User|null $currentUser */
+        $currentUser = Craft::$app->getUser()->getIdentity();
+
+        if ($currentUser === null) {
+            return ['username' => '', 'email' => ''];
+        }
+
+        return [
+            'username' => substr((string)$currentUser->username, 0, 254),
+            'email' => substr((string)$currentUser->email, 0, 254),
+        ];
     }
 }
