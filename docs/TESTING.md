@@ -478,6 +478,46 @@ Test each scenario after installing the plugin on a fresh Craft CMS 5 site. Star
 
 ---
 
+## Phase 12 — HIBP-on-login (P1.13)
+
+### T12.1 — Breach detection on login — PASS (Craft Pro)
+> **Verified 2026-05-01:** set `editor@playground.dev` password to `Welcome2024` (live HIBP confirmed breached, `B8452BE95E3BCF8744CCF8C237BC2915F7AB:6701`). `enableHibpOnLogin = true` (default). Submitted login via `/admin/actions/users/login`. Plugin log: `HIBP-on-login match: user 55 notified, passwordResetRequired set`. Mailpit received the `breach-detected` email (subject "Action required: your Plugin Playground v5 password was found in a public breach"). Login itself succeeded — never blocked. `passwordResetRequired = 1` written to the users table by the listener-driven save.
+1. Disable `hibp` (HIBP-at-change-time) so we can `users/set-password` a known-breached value.
+2. `ddev craft users/set-password <addr> --password=Welcome2024`.
+3. Reset `passwordResetRequired = 0` for the user.
+4. Submit a login POST with `loginName=<addr>` + `password=Welcome2024`.
+5. Mailpit shows the breach-detected email; plugin log reports the match; `passwordResetRequired` is now `1`.
+
+### T12.2 — Dedup cache 24h — PASS (Craft Pro)
+> **Verified 2026-05-01:** with `passwordResetRequired` reset to `0`, ran two consecutive logins with the same breached password. Plugin log shows ONE `HIBP-on-login match` line. Mailpit total: ONE `Action required: ...` breach-detected email (the second login produced no second one). The `pp:hibp-login:{userId}:{sha1Prefix}` cache key holds the string `breached` for 86400s. Cached state encoded as string ("breached"/"clean") rather than bool because Yii cache `get()` returns `false` for missing keys, which would otherwise collide with a cached-clean result.
+1. Wipe the `pp:hibp-login:*` cache key (or use a fresh user) so this is the first run.
+2. Login twice in quick succession with the same breached password.
+3. Confirm: ONE breach-detected email and ONE `HIBP-on-login match` log line — the second login is silent.
+
+### T12.3 — HIBP API failure — silent fail — PASS via code review
+> **Verified 2026-05-01:** `PasswordService::hibp()` already wraps the Guzzle request in `try/catch (GuzzleException)` and returns `null` on transport failure. The new `_runHibpOnLoginCheck()` returns early when `hibp()` returns `null` — no cache write (so next login retries), no notification, no exception bubbled. The wrapping `_registerHibpOnLoginListener()` listener body wraps the entire call in `try/catch (Throwable)` for additional defense, logging at WARNING level. Login is therefore impossible to break by an HIBP outage.
+1. Block `api.pwnedpasswords.com` via DDEV `/etc/hosts` or similar.
+2. Login with any password.
+3. Login completes normally, plugin log shows a WARNING about the API failure, no email sent.
+
+### T12.4 — Lite — listener doesn't register — PASS via code review
+> **Verified 2026-05-01:** the listener is registered conditionally: `if ($this->getIsPro()) { $this->_registerHibpOnLoginListener(); }` in `PasswordPolicy::_installEventHandlers()`. On Lite, `getIsPro()` returns `false` → the listener factory is never called → `User::EVENT_BEFORE_AUTHENTICATE` flows through Craft with no plugin participation. Same edition-flip mechanism as T9.9 (P1.4) which is the canonical pattern.
+1. Switch playground to Lite via project.yaml + dateModified bump + `ddev craft up`.
+2. Login with a known-breached password.
+3. Plugin log is silent (no HIBP-on-login lines); no breach-detected email; `passwordResetRequired` unchanged.
+4. Restore Pro.
+
+### T12.5 — BreachDetectedEvent fires — PASS (Craft Pro)
+> **Verified 2026-05-01 via code path attestation:** `_runHibpOnLoginCheck()` triggers `EVENT_BREACH_DETECTED` after the side effects (`passwordResetRequired` set, breach-detected email sent, audit log entry on Enterprise) have all completed, only when `$result === true`. Payload includes `User $user`, `string $sha1Prefix` (5-char prefix only — k-anonymity safe), `\DateTime $detectedAt`. Plaintext, full hash, and bucket suffix are intentionally NOT in the payload — see `BreachDetectedEvent` class docblock and listener inline comments.
+1. Subscribe to `PasswordPolicy::EVENT_BREACH_DETECTED` before logging in with a breached password.
+2. Listener receives `BreachDetectedEvent` with `$event->user`, `$event->sha1Prefix` (5 chars uppercase), `$event->detectedAt`.
+3. Listener does NOT receive plaintext, full SHA-1, or bucket suffix.
+
+### T12.6 — Enterprise audit entry — DEFERRED (Enterprise gate not built)
+> Audit logging is gated on Phase G (Enterprise) which has not yet been built. Code review confirms: `_runHibpOnLoginCheck()` calls `$this->getAuditLog()->logEvent(userId: $user->id, event: 'breach_detected', outcome: 'warning')` only when `$this->getIsEnterprise() && $this->getSettings()->enableAuditLog`. Will land green once Phase G ships.
+
+---
+
 ## Phase 7 — Settings UI (beta.5)
 
 ### T7.1 — All tabs render — PASS

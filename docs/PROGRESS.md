@@ -310,6 +310,28 @@ Memory entry added earlier in the day (`feedback_craft5_json_content_pattern.md`
 
 ---
 
+## Session: 2026-05-01 (Phase C2 — Pro front-end surface bundle)
+
+### P1.14 — RegistrationService (shipped)
+
+Smallest of the four Phase C2 features. Wired a programmatic registration helper that's edition-aware: callers pass group **handles** (not IDs — more dev-friendly), and the service resolves them up front, populates `$user->setGroups()` before `$user->validate()` so `UserRules::defineRules($user)` calls `PolicyResolverService::resolveForUser()` with the assigned-group context. Lite degrades to global validation; Pro applies per-group merged policy. New `UserRegisteredEvent` exposes `User`, `string[] $groups` (the input handle array), and `bool $viaService = true`. Plaintext is intentionally NOT in the event payload — the password is already validated and persisted by event time. Validation failures throw `\InvalidArgumentException` with attribute-prefixed messages flattened into one string for clean surfacing in consumer forms.
+
+Verification ran via a temporary `DevController` (deleted before commit): basic registration, group resolution by handle, validation-failure surfacing, unknown-handle clear-error path, `EVENT_USER_REGISTERED` listener firing on success path only. T11.1–T11.5 added to TESTING.md.
+
+### P1.13 — HIBP-on-login Pro — research before code
+
+The plan called for synchronous-on-login HIBP detection. This requires the plaintext password to be in scope momentarily during the login flow. Findings:
+
+- **`User::EVENT_BEFORE_AUTHENTICATE`** (vendor/craftcms/cms/src/elements/User.php:105 + line 1378-1387) fires inside `User::authenticate(string $password)` BEFORE the security check runs. The event is `craft\events\AuthenticateUserEvent` with public properties: `?string $password` (plaintext, in scope), `bool $performAuthentication`. `$event->sender` is the User. The signature is stable since Craft 3.0.0.
+- **`User::EVENT_AFTER_VALIDATE_PASSWORD` does not exist on Craft 5.** Searched `vendor/craftcms/cms/src` for any "ValidatePassword" event constant and none was found. So `BEFORE_AUTHENTICATE` is the only synchronous in-flow hook with plaintext access.
+- The plaintext is gone after `authenticate()` returns. There is no post-login event with plaintext access.
+
+Decision: register the listener on `User::EVENT_BEFORE_AUTHENTICATE`, only when `getIsPro() === true`. The plaintext is hashed to SHA-1 inside the listener; only the 5-char k-anonymity prefix is sent to HIBP. Privacy invariant: never log the plaintext, full hash, or full prefix-and-suffix bucket. `passwordResetRequired` is set after the breach-confirmed branch fires (separate save with `muteEvents` to avoid recursion against the password-history listeners).
+
+The event fires regardless of whether authentication succeeds, so we narrow our work to the success branch by hashing inside the listener and only acting if the password validates. We can't gate on success cleanly within `BEFORE_AUTHENTICATE` (it fires before validation), so we hash the plaintext, look it up in HIBP, and if breached, schedule the side-effects via `EVENT_AFTER_REQUEST` so they only run if Craft considered the auth successful (the request reaches its end with the user logged in). Alternatively: act inside the listener without success-gating — even if the password is wrong, an attacker has already proven they have the plaintext, so we still want to alert. Choice: act immediately. The privacy invariant is preserved — we never log the plaintext, only "match found, user X notified" booleans.
+
+---
+
 ## Next Session
 
 Phase A (audit fix-ups), Phase B (pre-release security tests), and **Phase C (P1 backlog)** all closed. Next is Phase D — user index integration.
