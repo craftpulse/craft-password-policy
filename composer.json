@@ -28,6 +28,7 @@
     "prefer-stable": true,
     "require": {
         "php": "^8.2.0",
+        "bjeavons/zxcvbn-php": "^1.4",
         "craftcms/cms": "^5.0.0",
         "nesbot/carbon": "^2.0.0",
         "nystudio107/craft-plugin-vite": "^5.0.0"

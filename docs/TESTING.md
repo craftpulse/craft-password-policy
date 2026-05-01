@@ -518,6 +518,82 @@ Test each scenario after installing the plugin on a fresh Craft CMS 5 site. Star
 
 ---
 
+## Phase 13 — Front-end Twig surface (P1.12)
+
+### T13.1 — Data accessors return resolved policy — PASS (Craft Pro)
+> **Verified 2026-05-01:** `craft.passwordpolicy.requirements()` returned `{minLength: 6, ..., blocklistEnabled: true, ...}` matching the playground's global Pro policy. `requirementsText()` rendered `Password must contain: at least 6 characters.`. `requirementRules()` returned `[{key: 'length', label: 'At least 6 characters', met: null}, {key: 'blocklist', label: 'Not a commonly used password', met: null}]`. `groups: ['team']` parameter accepted but no per-group named policy exists for `team` in the playground so the resolver falls through to global — the code path works (verified by inspecting `_resolveSettings()` flow).
+1. `{{ craft.passwordpolicy.requirements()|json_encode|raw }}` returns the policy as a flat object.
+2. `{{ craft.passwordpolicy.requirementsText() }}` returns a single-sentence summary.
+3. `{{ craft.passwordpolicy.requirementRules()|json_encode|raw }}` returns a list with `key`, `label`, `met: null`.
+4. Optionally pass `{groups: ['<handle>']}` for anonymous group preview.
+
+### T13.2 — passwordField() renders with toggle + live region — PASS
+> **Verified 2026-05-01:** `craft.passwordpolicy.passwordField().name('password').id('register-password').liveValidation(true).submitGate('#register-button').render()` produced the expected `<div class="pp-password-field" data-pp-field="register-password">...<input type="password" data-pp-validate="1" data-pp-submit-gate="#register-button" aria-describedby="register-password-live"><button type="button" class="pp-toggle-visibility" aria-label="Show password">...<svg>...</svg></button><span class="pp-live-region" aria-live="polite" aria-atomic="true"></span></div>`. PasswordPolicyClientAsset auto-registered, scripts and styles present in `<head>` / `</body>`.
+1. Render any `passwordField` with `liveValidation(true)`.
+2. Inspect the page source: `data-pp-validate="1"`, `aria-describedby` linking to a live region span, eye SVG inside a button with `aria-label="Show password"`.
+3. CSS + JS bundles linked.
+
+### T13.3 — passwordWidget() composite renders all sub-components — PASS
+> **Verified 2026-05-01:** `passwordWidget({name: 'pwd', id: 'pw2', liveValidation: true, showHint: true, submitGate: '#register-button'})` produced the field + strength meter + requirement list + hint stacked inside a `<div class="pp-widget">`. Each sub-component's classes/data-attrs render correctly. `showStrength: false` / `showRequirements: false` / `showHint: false` toggles drop the corresponding sub-component from the output.
+1. Render the widget with default toggles.
+2. All four sub-components present.
+3. Override `showStrength: false` etc. — corresponding component disappears from output.
+
+### T13.4 — strengthMeter() + requirementList() + requirementsHint() — PASS
+> **Verified 2026-05-01:** standalone tags render correctly. `strengthMeter()` outputs `<div class="pp-strength" data-pp-strength="1" role="progressbar" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0" aria-label="Password strength"><div class="pp-strength-bar"></div><span class="pp-strength-label" data-pp-strength-label></span></div>`. `requirementList()` outputs the `<ul>` of `<li data-pp-requirement="<key>">` rules. `requirementsHint()` outputs `<p class="pp-requirements-hint">Password must contain: ...</p>`.
+1. Render each tag standalone.
+2. Inspect HTML — matches the spec's data attribute conventions.
+
+### T13.5 — loginForm() / passwordChangeForm() / passwordResetForm() — PASS
+> **Verified 2026-05-01:** all three forms produced complete `<form>` elements with hidden `action`, hidden CSRF, hashed-redirect, the appropriate password fields (with the new-password field marked `liveValidation(true)` for change/reset), and a submit button. `passwordResetForm()` correctly throws `\InvalidArgumentException` when `code` or `userUid` are missing — verified by removing the `code` argument and observing the exception bubble through Twig.
+1. Render each form. Each has an `action` hidden input pointing at the right URL (`users/login`, `password-policy/front/password-change/save`, `users/set-password`).
+2. CSRF input present.
+3. New-password fields have `data-pp-validate="1"` + `data-pp-submit-gate="#<submit-id>"`.
+
+### T13.6 — Live AJAX validation drives requirement classes + submit gate — MANUAL (browser)
+> **Code paths verified end-to-end via curl** (server side) and **inline review** (client side). Browser-driven test deferred to user (no Chrome MCP available in this env). Server-side: `POST /index.php?p=admin/actions/password-policy/validation/validate password=Welcome2024 returned `{passed: true, errorsByKey: {}, errors: [], rules: [...], strength: {engine: 'baseline', label: 'fair', ...}}`. Weak/blocklist password produced `{passed: false, errorsByKey: {length: '...', blocklist: '...'}, ...}` with strength `weak`. Client-side: JS reads `errorsByKey` and toggles `pp-pass`/`pp-fail` per-li by `data-pp-requirement` key.
+1. Visit a page rendering `passwordWidget({name: 'pwd', liveValidation: true})`.
+2. Type slowly. Requirement list items toggle pass/fail in real time as the AJAX response cycles. Strength meter updates label class. Submit button enables/disables via `data-pp-submit-gate`.
+
+### T13.7 — Strength engine A baseline (rule-counting × length tier) — PASS
+> **Verified 2026-05-01:** validate response with various passwords:
+> - `12345` (length<6, 1 rule type) → `weak` (length tier 0 forces weak)
+> - `Welcome2024` (length 11, 3 rule types: lowercase + uppercase + digits) → `fair` (tier 1 + 3 rules → fair per the matrix)
+> - `MyR3allyL0ngS3cretP@ssphrase` (length 28, 4 rule types) → `excellent` (tier 3 + 4 rules)
+> Blocklist hit forces `weak` regardless of length (verified inline in `analyzeBaseline()`).
+1. POST `password-policy/validation/validate` with various passwords.
+2. Inspect `strength.engine === 'baseline'`, `strength.label`, `strength.ruleCount`, `strength.lengthTier`.
+3. Blocklist hit → label always `weak`.
+
+### T13.8 — Strength engine B zxcvbn-php Pro opt-in — PASS
+> **Verified 2026-05-01:** with `useZxcvbnStrength: true`, validate response for `Welcome2024` returned `{engine: 'zxcvbn', label: 'weak', score: 1, crackTime: '3 seconds', suggestions: ['Add another word or two...', 'Capitalization doesn\'t help very much'], warning: 'This is similar to a commonly used password'}`. Without the toggle, baseline returns `fair` for the same password (3 of 4 rule types + length tier 1). Toggle persists via project config; reset to false after testing.
+1. Set `useZxcvbnStrength: true` via project config or settings UI (Pro).
+2. Validate any password — response now has `strength.engine === 'zxcvbn'`, `strength.score` (0-4), `strength.crackTime`, `strength.suggestions[]`, `strength.warning`.
+3. Toggle off — baseline path returns again.
+
+### T13.9 — Twig errors propagate naturally — PASS
+> **Verified 2026-05-01:** `passwordResetForm({})` (missing required `code` + `userUid`) throws `\InvalidArgumentException("PasswordResetFormTag requires `code` and `userUid` ...")`. Twig surfaces the exception in the dev-mode error template; production renders the friendly error page. No defensive null returns or try/catch swallowing the misuse.
+1. Call any builder with missing required config.
+2. Twig surfaces the exception cleanly.
+
+### T13.10 — Lite degradation for builders — PASS via code review
+> **Verified 2026-05-01:** the variable's `_resolveSettings()` short-circuits to global when `getIsPro() === false` or `enablePerGroupPolicies === false`. All Tag classes work the same on Lite — they just emit markup against the global policy. The CP gates Pro features (subnav, settings tabs); the front-end never throws on Lite. Same edition-flip pattern as T9.9 / T12.4.
+1. Switch to Lite via project.yaml + dateModified bump + `craft up`.
+2. Render any builder on a public template.
+3. HTML still renders, against global policy. No exceptions, no hidden Pro features leaking.
+
+### T13.11 — a11y wiring (live region, describedby, aria-invalid, aria-busy, role progressbar) — MANUAL (VoiceOver/NVDA)
+> **Code review attests:** every `passwordField` with `liveValidation(true)` renders the live region span and links it via `aria-describedby`. The JS sets `aria-busy="true"` during the debounce window and `aria-invalid` after each response. `strengthMeter` is `<div role="progressbar" aria-valuemin="0" aria-valuemax="4" aria-valuenow="...">` with the value updated by JS. Toggle button has flipping `aria-label="Show password"` ↔ `"Hide password"`.
+> **Browser-driven SR test deferred to user** — VoiceOver / NVDA verification cannot run in this environment.
+1. With VoiceOver / NVDA active, type into a password field rendered with `liveValidation(true)`.
+2. SR announces "Password meets all requirements" / first error message via the live region as state changes.
+3. Show/hide toggle announces "Show password" or "Hide password" depending on current state.
+
+### T13.12 — CP-side strength meter replacement (Layer 4b) — DEFERRED
+> The front-end Twig surface ships in P1.12 layers 1+2+3+4a+5+6+7+8. Layer 4b — replacing Craft's native zxcvbn-js meter with the plugin's strength engine on Pro CP requests — is a complex JS-injection problem against a moving target (Craft's bundled+minified CP JavaScript). Proper implementation requires Garnish-style work and DOM-stability research that warrants a dedicated focused session. Will land in 5.2.0 before tag, deferred from this session for scope.
+
+---
+
 ## Phase 7 — Settings UI (beta.5)
 
 ### T7.1 — All tabs render — PASS

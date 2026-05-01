@@ -330,6 +330,49 @@ Decision: register the listener on `User::EVENT_BEFORE_AUTHENTICATE`, only when 
 
 The event fires regardless of whether authentication succeeds, so we narrow our work to the success branch by hashing inside the listener and only acting if the password validates. We can't gate on success cleanly within `BEFORE_AUTHENTICATE` (it fires before validation), so we hash the plaintext, look it up in HIBP, and if breached, schedule the side-effects via `EVENT_AFTER_REQUEST` so they only run if Craft considered the auth successful (the request reaches its end with the user logged in). Alternatively: act inside the listener without success-gating — even if the password is wrong, an attacker has already proven they have the plaintext, so we still want to alert. Choice: act immediately. The privacy invariant is preserved — we never log the plaintext, only "match found, user X notified" booleans.
 
+### P1.13 — built and verified
+
+Listener landed at `PasswordPolicy::_registerHibpOnLoginListener()` (gated by `getIsPro()`) and `PasswordPolicy::_runHibpOnLoginCheck()`. Migration generated via `ddev craft migrate/create AddBreachDetectedNotificationDefaults --plugin=password-policy` seeds the `breach-detected` notification template per enabled site; `Install::_seedNotificationTemplateDefaults()` already iterates `EmailDefaults::all()` so fresh installs get the row automatically. New `enableHibpOnLogin` setting (default `true`, Pro) added with UI on Settings → Configuration. Verified end-to-end by setting editor user's password to `Welcome2024` (live HIBP confirmed breached), submitting a login POST, observing the breach-detected email + Craft's auto password-reset email in Mailpit, plugin log line (`HIBP-on-login match: user 55 notified, passwordResetRequired set`), and `passwordResetRequired = 1` written by the listener. Caught a cache-encoding bug during dedup verification — initial `bool` values collide with Yii's "missing key returns false" contract; switched to `'breached'`/`'clean'` string values. T12.1–T12.5 in TESTING.md.
+
+### P1.12 — Front-end Twig surface
+
+Built layers 1, 2, 3, 4a, 5, 6, 7, 8 in one focused session. Layer 4b (CP-side strength meter replacement on Pro CP requests) deferred — see "Layer 4b deferral" below.
+
+Architecture decisions made along the way:
+- **`render()` returns `\Twig\Markup`, not raw `string`.** First version of the BaseTag had `render(): string` — Twig auto-escaped the markup so the rendered page showed `&lt;div&gt;` everywhere. Fixed by making `render()` wrap an internal `_renderHtml(): string` in a `Markup` instance keyed to the view's charset. Concrete tags also implement `__toString()` so the composite tags can `.= (string)$field` without explicit `render()` calls.
+- **No new front-end action URL rules.** `password-policy/front/password-change/save` works through Craft's standard plugin action URL routing — namespace `craftpulse\passwordpolicy\controllers\front\PasswordChangeController` resolves automatically. No manual URL rule required. Lowercased the directory from `Front` to `front` to match the namespace casing on case-sensitive filesystems.
+- **`PasswordResetFormTag` uses Craft's existing `users/set-password` action**, not a new plugin controller. Craft's path validates the token + UID from the reset email; the plugin's `User::EVENT_DEFINE_RULES` listener handles the policy validation. No need for a parallel `Front\PasswordResetController` — fewer surfaces to keep tested.
+- **Strength engine A vs B share a service.** `StrengthService::compute()` picks the engine based on `(getIsPro() && useZxcvbnStrength && class_exists(Zxcvbn::class))` and falls through to baseline if zxcvbn ever throws. Same response shape (`label` always present); engine-specific keys (`score`, `crackTime`, `suggestions`) only on B.
+- **`requirementsHint()` and `requirementList()` re-instantiate `PasswordPolicyVariable` internally** to get the resolved settings. That's a small allocation cost per render but keeps the Tag classes side-effect-free.
+- **`_resolveSettings()` for anonymous group preview** builds a fake `User` with the right `setGroups()` and hands it to `PolicyResolverService::resolveForUser()`. Reuses the existing per-group merge algorithm without duplicating the merge logic; resolver doesn't care about user.id when groups are present.
+
+Bugs caught during verification:
+- Twig auto-escape on raw HTML strings — fixed via `\Twig\Markup` wrap.
+- Yii cache `bool false` collides with "missing key" — surfaced earlier in P1.13 dedup, mentioned here because the same pattern would have bit any cache-key-driven feature.
+
+### Layer 4b deferral
+
+Layer 4b (replacing Craft's native zxcvbn-js meter on Pro CP password inputs) was deferred from this session. The work requires:
+1. Reading `vendor/craftcms/cms/src/web/assets/cp/dist/cp.js` to confirm the DOM signature of CP password inputs (`input[type="password"][autocomplete="new-password"]` and the surrounding `.password-input` wrapper).
+2. Identifying every CP screen that uses it (admin's account, new-user creation, plugin password fields).
+3. Documenting how `Craft.PasswordInput` exposes its evaluator and whether the score gates form submission anywhere.
+4. Writing a separate `cp-strength.js` asset bundle that hides Craft's native meter via CSS and re-renders the plugin's requirement-list + strength-meter markup in the same slot, preserving Craft's submit-gating.
+5. Auto-registering the bundle on every CP request only when `getIsPro()` is true.
+
+The Craft CP JS is bundled and minified, the DOM signature drifts across versions, and the work warrants Garnish-style focus that the rest of P1.12 didn't need. Deferred as a separate session before 5.2.0 tag — see `TESTING.md` T13.12 for the marker. Front-end Twig surface ships clean without it; the asymmetry (Lite keeps Craft's meter on the CP, Pro replaces it) is purely an upgrade-incentive nicety.
+
+### P1.15 — Events catalog
+
+`docs/events.md` synthesizes all event classes added across Phase A through Phase C2: `PasswordChangedEvent` (Lite), `UserRegisteredEvent` (Lite, P1.14), `BreachDetectedEvent` (Pro, P1.13), `PasswordValidationEvent` (Lite, pre-existing). Each entry has the FQ class, when it fires, payload table, edition tier, and an example listener with imports. Future events placeholder section (`PolicyValidatedEvent`, `PasswordExpiredEvent`, `LockoutThresholdReachedEvent`) flagged for 5.3+ / Phase G. Cross-linked from `README.md` "Events" section.
+
+### Process notes
+
+- 4 commits across the four features.
+- Composer dep `bjeavons/zxcvbn-php` (^1.4) added — was pre-approved 2026-05-01.
+- ECS still blocked by host PHP 8.4 vs DDEV PHP 8.3 vendor mismatch (unchanged from prior sessions). PHPStan ran clean throughout.
+- All migrations generated via `ddev craft migrate/create <Name> --plugin=password-policy` per the durable rule.
+- Per-layer playground verification cleared each gate before the next layer started, except Layer 4b which was scoped out before any code was written.
+
 ---
 
 ## Next Session
