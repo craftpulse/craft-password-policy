@@ -1,6 +1,6 @@
 # Release Notes for Password Policy
 
-## 5.1.1 - 2026-04-17
+## 5.1.1 - 2026-05-02
 ### Changed
 - Symbols regex now accepts any non-alphanumeric character (hyphens, underscores, etc.) instead of a limited set [#46](https://github.com/craftpulse/craft-password-policy/issues/46)
 - Console `force-reset-passwords` command now runs synchronously by default; use `--queue` to push to the queue instead
