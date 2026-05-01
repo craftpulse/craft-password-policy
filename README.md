@@ -131,4 +131,25 @@ Front-end and CP templates can read password status via the `craft.passwordpolic
 
 `POST /admin/password-policy/validate` with `{ password: '...' }` returns per-rule pass/fail JSON for live feedback. CSRF is required for CP requests; use `Craft.csrfTokenValue` in the request body.
 
+## Front-End Templates (Pro)
+
+The plugin ships fluent render builders on `craft.passwordpolicy.*` for building user-facing login, registration, password-change, and password-reset pages. Each builder is policy-aware (Pro resolves per-group; Lite applies global), comes with full a11y wiring (live region, `aria-describedby`, `aria-invalid`, `aria-busy`, `role="progressbar"`, flipping `aria-label` on the show/hide toggle), and auto-registers a vanilla-JS client asset that drives debounced AJAX validation, requirement-list state classes, strength-meter labels, and submit-button gating.
+
+```twig
+{{ craft.passwordpolicy.passwordWidget({
+    name: 'password',
+    liveValidation: true,
+    submitGate: '#submit',
+    showHint: true,
+}).render() }}
+```
+
+See [`docs/10-frontend-twig-surface.md`](./docs/10-frontend-twig-surface.md) for the complete API reference.
+
+## Events
+
+Hook into password-policy events for analytics, audit-trail mirroring, SIEM forwarding, or custom side effects. The plugin fires events for password changes, registrations (via `RegistrationService`), and HIBP-on-login breach detection (Pro). Every event near password handling guarantees no plaintext or hash material in its payload — listeners can forward them anywhere without leaking secrets.
+
+See [`docs/events.md`](./docs/events.md) for the catalog and example listeners.
+
 Brought to you by [CraftPulse](https://craft-pulse.com/)

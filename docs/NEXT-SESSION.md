@@ -1,4 +1,4 @@
-# Next Session — Handover (2026-04-30, end of P1.3 + P1.4)
+# Next Session — Handover (2026-05-01, end of Phase C2)
 
 Building **v5.2.0** of `craft-password-policy`. Single release covers Lite + Pro + Enterprise. Nothing tags until Enterprise (Phase G) is built and tested. **No "v5.2.x" or "v5.3" deferral framing for features** — features either land in 5.2.0 (at the right edition tier) or are dropped to IDEAS.md. 5.2.x is reserved for security patches only.
 
@@ -17,28 +17,26 @@ Memory store: `~/.claude/projects/-Users-michtio-dev-craft-plugins-v5-craft-pass
 
 ## State at handover
 
-**Branch:** `5.x`, **21 commits ahead of `origin/5.x` and unpushed**. Working tree clean.
+**Branch:** `5.x`, ~7 commits ahead of `origin/5.x` and unpushed. Working tree clean.
 
 **Latest commits (top → bottom = newest → oldest):**
 ```
-<latest> docs: update TESTING/PLAN/CHANGELOG/PROGRESS for P1.3 + P1.4
-04178bf feat(notifications): batched job + console command for expiry reminders (P1.4)
-868d995 feat(notifications): CP templates for index + edit (token picker + test-send)
-f4f759b feat(notifications): add NotificationTemplateController + permission + subnav + URL rules
-2ef03d5 feat(notifications): NotificationTemplateService + Pro-only send pipeline + site listener
-bc2f785 feat(notifications): add NotificationTemplateRecord and NotificationTemplateModel
-c3f6ffc feat(notifications): add notification_templates table + per-site default seed (P1.3)
-864578c docs: refresh NEXT-SESSION + PROGRESS for end of P1.7/P1.11 session
-ecccc63 refactor(policies): use native blockquote.note.warning for conflict banner
-e7a911f feat(blocklist): top-level Blocklist page with custom dictionary editor and word-check tool
+<latest> docs(events): catalog of plugin events with example listeners (P1.15)
+<...>    feat(frontend): Pro front-end Twig surface — fluent builders, JS asset, strength engine A+B (P1.12)
+<...>    feat(hibp): HIBP-on-login Pro listener + breach-detected notification + BreachDetectedEvent (P1.13)
+<...>    feat(registration): RegistrationService + UserRegisteredEvent + Pro per-group validation (P1.14)
+607d69c docs: pull CP-side strength meter into P1.12 scope
+10c6e13 docs: scope Phase C2 — Pro front-end surface bundle (P1.12-P1.15)
+76ddfc8 docs: refresh PLAN.md status block — Phase C closed, P1 empty, front-end Twig gap surfaced
 ```
 
-**Manual tests:** 54/57 PASS. Deferred: T1.2 + TX.2 (P2.5 Pest), T9.7 (site propagation listener — single-site playground can't exercise FK cascade or `isNew = true` event; will land in P2.5).
+**Manual tests:** core suite still 54/57 PASS for the legacy phases. Phase C2 added T11.1–T11.5 (RegistrationService PASS), T12.1–T12.5 PASS + T12.6 deferred (Enterprise gate), T13.1–T13.5 + T13.7 + T13.8 + T13.9 + T13.10 PASS, T13.6 + T13.11 require browser/SR verification, T13.12 deferred (Layer 4b CP-side strength meter replacement).
 
 **Phase status (PLAN.md §4):**
 - A — audit fix-ups: **done 2026-04-29**
 - B — pre-release security tests: **done 2026-04-30**
 - C — P1 backlog: **done 2026-04-30**. P1.8 (deployment docs) deferred to Phase H since Enterprise must exist first.
+- C2 — Pro front-end surface bundle (P1.12 + P1.13 + P1.14 + P1.15): **done 2026-05-01**. P1.12 Layer 4b (CP-side strength meter replacement) deferred to a separate session before tag.
 - D, E, F, G, H — pending.
 
 ---
@@ -52,10 +50,12 @@ e7a911f feat(blocklist): top-level Blocklist page with custom dictionary editor 
 - Mailpit: `https://plugin-playground-v5.ddev.site:8026` (or `ddev mailpit`).
 
 **Plugin DB state at end of session:**
-- All 7 tables now (added `passwordpolicy_notification_templates` this session). One row in templates: `(notificationKey='expiry-reminder', siteId=1)` with default content.
-- Notification log was cleared post-test (no stale dedup rows).
-- `expiryAmount` reset to `null` in project config (was set to `5` during T9.8 testing, restored at end).
-- 3 named policies in `passwordpolicy_policies` (NIST → Team, OWASP → Editors+Managers, "Enterprise With Changes" → Managers — created in earlier session for testing, harmless).
+- 7 tables. `passwordpolicy_notification_templates` now has 2 rows on the playground: `expiry-reminder` (siteId=1) + `breach-detected` (siteId=1) — both with default content from `EmailDefaults`.
+- Notification log has 1 `breach_detected` entry from T12.1 verification (editor user 55) — clear it via `DELETE FROM passwordpolicy_notification_log WHERE notificationType = 'breach_detected'` if you need a fresh fixture.
+- `useZxcvbnStrength` toggled true during T13.8 verification, then back to false. Now `false` in project config.
+- `editor@playground.dev` password was set to `Welcome2024` (live HIBP-breached) for T12.1; `passwordResetRequired` flipped on/off during testing. Reset via `ddev craft users/set-password editor@playground.dev --password='<new>'` if you need a known starting value.
+- 3 named policies in `passwordpolicy_policies` (NIST → Team, OWASP → Editors+Managers, "Enterprise With Changes" → Managers — harmless test fixtures).
+- `bjeavons/zxcvbn-php ^1.4` added to plugin's composer.json (require, not require-dev). Installed at playground level.
 
 **Test users (Craft, persist across plugin uninstall):**
 - `editor` / `editor@playground.dev` / **password unknown** — was changed during T5.18 manual testing. Reset via `ddev craft users/set-password editor@playground.dev --password='<value>'` if you need a known starting value.
@@ -66,7 +66,17 @@ e7a911f feat(blocklist): top-level Blocklist page with custom dictionary editor 
 
 ## What to build first
 
-### Phase D — User index integration
+### P1.12 Layer 4b — CP-side strength meter replacement (Pro)
+
+Deferred from Phase C2 — the only remaining piece of P1.12 before Phase C2 is fully closed. Replaces Craft's native zxcvbn-js meter on Pro CP password inputs with the plugin's strength engine (so per-group policy + blocklist hits + zxcvbn-php-when-enabled surface consistently across every place a user enters a password). The plan section in `docs/C2-BUILD-PLAN.md` Layer 4b has the spec; PROGRESS.md "Layer 4b deferral" section captures the research checklist.
+
+Implementation requires:
+1. Reading bundled CP JS (`vendor/craftcms/cms/src/web/assets/cp/dist/cp.js`) to confirm the DOM signature and any submit-gating semantics.
+2. New `cp-strength.js` asset bundle that hides Craft's native meter (CSS or DOM remove) and re-renders the plugin's requirement-list + strength-meter markup in the same slot.
+3. Auto-register the bundle on every CP request, gated to `getIsPro()`.
+4. Preserve Craft's submit-gating (never weaker than Craft).
+
+### Then Phase D — User index integration
 
 **P2.1 — User index table attributes.** `EVENT_REGISTER_TABLE_ATTRIBUTES` + `EVENT_SET_TABLE_ATTRIBUTE_HTML`. Columns: password status (badge), last change, expired, reset required. **Lite edition** (this is the headline Lite-tier feature — no edition gating beyond what Craft already provides).
 
