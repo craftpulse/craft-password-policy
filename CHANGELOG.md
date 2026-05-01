@@ -73,6 +73,18 @@
 - Validation order — content rules run before HIBP/history checks (avoids unnecessary API calls on weak passwords)
 - Common password blocklist auto-seeds via queue when the toggle is enabled with an empty blocklist (previously failed silently)
 - `expiryPeriod` no longer persisted on policy settings without an `expiryAmount`
+- `craft.passwordpolicy.passwordWidget()` no longer fatals when called without `submitGate` — composite tag now gates the optional value before forwarding to the strict-typed child setter
+- Front-end `passwordChangeForm()` controller now explicitly invalidates other sessions for the user via `PasswordService::destroyOtherSessions()` after a successful change — belt-and-braces against any future Craft refactor of `User::afterSave`'s built-in cleanup
+- Front-end client JS bundle now auto-registers when **any** interactivity flag is on (`liveValidation`, `toggleVisibility`, or `submitGate`) — previously, builders with `toggleVisibility: true, liveValidation: false` shipped a non-functional show/hide eye button
+- Strength engine B (`useZxcvbnStrength: true`, Pro) now respects `blocklistHit` — a blocklisted word reads as "weak" / score 0 across both engines (previously zxcvbn-php returned its own score, leaving the meter green while the rule list correctly rejected the password)
+- Site-wide HIBP API rate-limit guard — `PasswordService::hibp()` and the HIBP-on-login listener short-circuit when a 429 response has placed a backoff sentinel in the cache. TTL parsed from `Retry-After`; defaults to 60s if absent. Privacy guard: sentinel value is the literal `'1'`, never user-derived
+- HIBP-on-login dedup cache: ambiguity between Yii's `false` cache miss and a `false`-valued hit resolved by string-encoding the cached state (`'breached'`/`'clean'`)
+- Hardcoded `admin` cpTrigger removed from JS fallback URLs — both the front-end consumer asset and the rebuilt CP strength bundle now fall back to Craft 5's native `/actions/...` route, which works regardless of installed `cpTrigger`
+- `ValidationController::actionValidate` no longer trusts attacker-controlled `username`/`email` POST params for zxcvbn user-input dictionary — anonymous requests pass empty context; authenticated requests pull username/email from the session identity
+- `BaseTag::__toString()` docblock corrected — Twig auto-escapes the `__toString()` return because PHP's contract requires a plain `string` (not `\Twig\Markup`). Always use `{{ tag.render() }}` from Twig templates; `__toString()` is for PHP-context concatenation only
+- `PasswordResetFormTag` adds an `id()` setter alias matching Craft's reset-email URL `?id=` param name (the legacy `userUid()` setter is preserved for backward compatibility)
+- `craft.passwordPolicy` (camelCase) variable handle registered alongside the existing `craft.passwordpolicy` (lowercase) handle. Both forms work permanently; new code should prefer the camelCase form to match modern Craft variable conventions
+- `SettingsModel` accepts the legacy 5.1.1 `pwned` / `pwnedFailMode` keys from file-based config and aliases them to `hibp` / `hibpFailMode` with a deprecation warning logged at WARNING level. Project-config migration already handled `project.yaml` rows; this closes the gap for `config/password-policy.php` consumers
 
 ## 5.1.1 - 2026-04-17
 ### Changed
