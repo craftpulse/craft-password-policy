@@ -12,12 +12,16 @@ namespace craftpulse\passwordpolicy\services;
 
 use Craft;
 use craft\base\Component;
+use craft\db\Table;
+use craft\elements\User;
+use craft\helpers\Db;
 
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
 
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Support\Collection;
+use Throwable;
 use yii\log\Logger;
 
 /**
@@ -156,6 +160,57 @@ class PasswordService extends Component
     public function pwned(#[\SensitiveParameter] string $password): ?bool
     {
         return $this->hibp($password);
+    }
+
+    /**
+     * Destroys all session rows for the given user except the current request's
+     * session token (when one is in scope).
+     *
+     * Called explicitly from the front-end password-change flow so the
+     * just-changed-password user keeps their current session but every other
+     * device/browser is logged out. Belt-and-braces: Craft's `User::afterSave`
+     * already runs this same delete when `newPassword` is set, but having an
+     * explicit service method makes the contract visible at the call site and
+     * survives any future Craft refactor of that internal hook.
+     *
+     * Defensive: failures here never throw — the password change has already
+     * succeeded, and a transient DB issue on the sessions table shouldn't
+     * surface as a generic "couldn't update password" to the user.
+     *
+     * @param User $user the user whose other sessions should be invalidated
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function destroyOtherSessions(User $user): void
+    {
+        if (!$user->id) {
+            return;
+        }
+
+        try {
+            $condition = ['userId' => $user->id];
+
+            // `getToken()` only exists on the web `User` component — the
+            // console `User` doesn't carry session tokens. Only ask for the
+            // current token on web requests, otherwise fall through to the
+            // bare userId condition (deletes every session for the user).
+            if (!Craft::$app->getRequest()->getIsConsoleRequest()) {
+                $token = Craft::$app->getUser()->getToken();
+
+                if ($user->getIsCurrent() && $token !== null) {
+                    $condition = ['and', $condition, ['not', ['token' => $token]]];
+                }
+            }
+
+            Db::delete(Table::SESSIONS, $condition);
+        } catch (Throwable $e) {
+            Craft::warning(
+                'Failed to destroy other sessions for user ' . $user->id . ': ' . $e->getMessage(),
+                'password-policy',
+            );
+        }
     }
 
     // Private Methods
