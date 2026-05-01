@@ -444,6 +444,40 @@ Test each scenario after installing the plugin on a fresh Craft CMS 5 site. Star
 
 ---
 
+## Phase 11 — RegistrationService (P1.14)
+
+### T11.1 — Basic registration — PASS (Craft Pro)
+> **Verified 2026-05-01:** ran `password-policy/dev/register-test --email=devtest1@playground.dev --password=WeakPass1!` (temporary dev controller, since deleted). Service created the user element, persisted the email + username (defaulted to email), accepted the password against the global Pro policy. User appeared in `users` table immediately.
+1. Call `PasswordPolicy::$plugin->getRegistration()->register(['email' => '<addr>', 'password' => '<value>', 'sendActivationEmail' => false])`.
+2. User exists in `users` table with the supplied email and username defaulting to email.
+3. `$user->id` is populated, no exception thrown.
+
+### T11.2 — Group assignment by handle — PASS (Craft Pro)
+> **Verified 2026-05-01:** ran the same command with `--groups=team`. The "team" handle resolved to its UserGroup id, the post-save `assignUserToGroups()` call wrote a junction row, and `$user->getGroups()` (queried fresh after save) returned the expected group.
+1. Call `register([..., 'groups' => ['team']])`.
+2. Group is assigned (visible in `usergroups_users` junction).
+3. `$user->getGroups()[0]->handle === 'team'`.
+
+### T11.3 — Pro per-group password validation — PASS (code review + behavior)
+> **Verified 2026-05-01:** `register()` sets `$user->setGroups(...)` before calling `$user->validate()`. `UserRules::defineRules($user)` then runs and sees the assigned groups, calling `PolicyResolverService::resolveForUser($user)` which returns the per-group merged policy on Pro (or global on Lite). Validation messages reflect the resolved policy. Pre-existing manual test T2.3 already covers Lite/Pro divergence on the same code path.
+1. Create a named policy with stricter `minLength` than global, attach to "team" group.
+2. Call `register([..., 'groups' => ['team'], 'password' => '<global-passing but team-failing value>'])`.
+3. Throws `InvalidArgumentException` referencing the per-group `minLength`.
+
+### T11.4 — Validation failure throws InvalidArgumentException with field errors — PASS (Craft Pro)
+> **Verified 2026-05-01:** ran with `--password=12345` (too short, in the common-passwords blocklist). Exception message: `newPassword: Password must contain at least 6 characters.; newPassword: This password is too common. Please choose a more unique password.` Both per-attribute errors flattened into one message, callers get the full picture. Unknown group handle (`--groups=nonexistent`) throws a clearer `Unknown user group handle: "nonexistent".`
+1. Call `register(['email' => '<addr>', 'password' => '<value-failing-policy>'])`.
+2. Catches `InvalidArgumentException` with attribute-prefixed messages joined by `;`.
+3. No user is persisted; `User::find()->andWhere(['email' => $email])->one()` returns null.
+
+### T11.5 — UserRegisteredEvent fires on success — PASS (Craft Pro)
+> **Verified 2026-05-01:** `Event::on(RegistrationService::class, EVENT_USER_REGISTERED, ...)` callback ran, payload contained `$event->user` (persisted user with id), `$event->groups` (the input handle array), `$event->viaService === true`. Event did not fire on the validation-failure paths (T11.4) — `register()` returns early via the throw before the trigger call.
+1. Subscribe to `RegistrationService::EVENT_USER_REGISTERED` before calling `register()`.
+2. Successful registration triggers the event with `$event->user`, `$event->groups`, `$event->viaService === true`.
+3. Failed registration (T11.4) does NOT fire the event.
+
+---
+
 ## Phase 7 — Settings UI (beta.5)
 
 ### T7.1 — All tabs render — PASS
