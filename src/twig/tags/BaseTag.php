@@ -149,6 +149,42 @@ abstract class BaseTag
     }
 
     /**
+     * Returns whether the given config dict requests any feature that needs
+     * the client JS bundle (live AJAX validation, show/hide toggle, submit
+     * gating). Centralized here so each concrete tag declares which keys it
+     * cares about and the gating logic stays consistent.
+     *
+     * Each flag corresponds to a code path in `password-policy.js`:
+     *  - `liveValidation` → `bindValidate()` (debounced AJAX validate calls)
+     *  - `toggleVisibility` → `bindToggle()` (eye/eye-slash button)
+     *  - `submitGate` → submit-button enable/disable based on validation
+     *    state (only meaningful with `liveValidation` on, but harmless to
+     *    register the bundle when only a gate is set)
+     *
+     * @param array<string, mixed> $config
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    protected function _needsClientAsset(array $config): bool
+    {
+        if (!empty($config['liveValidation'])) {
+            return true;
+        }
+
+        if (!empty($config['toggleVisibility'])) {
+            return true;
+        }
+
+        if (!empty($config['submitGate'])) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Renders an HTML attribute string from an array. Used to merge
      * caller-supplied `*Attrs` arrays into the rendered markup.
      *

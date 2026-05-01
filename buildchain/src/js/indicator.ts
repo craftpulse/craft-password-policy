@@ -122,9 +122,12 @@ function postValidate(password: string, cb: (response: ValidateResponse) => void
     const formData = new FormData();
     formData.append('password', password);
 
+    // Fallback path uses Craft 5's native `/actions/...` route, which works
+    // regardless of the installed `cpTrigger` (the previous `admin/actions/...`
+    // fallback broke on installs that customized cpTrigger).
     const url = window.Craft?.actionUrl
         ? `${window.Craft.actionUrl}/password-policy/validation/validate`
-        : '/index.php?p=admin/actions/password-policy/validation/validate';
+        : '/actions/password-policy/validation/validate';
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url, true);

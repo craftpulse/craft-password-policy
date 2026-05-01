@@ -62,10 +62,13 @@
         }
 
         // Use the standard Craft action URL — same endpoint that the CP
-        // password meter would use on Pro.
+        // password meter would use on Pro. Fallback path uses Craft 5's
+        // native `/actions/...` route, which works regardless of the
+        // installed `cpTrigger` (the previous `admin/actions/...` fallback
+        // broke on installs that customized cpTrigger).
         var url = (window.Craft && window.Craft.actionUrl)
             ? window.Craft.actionUrl + '/password-policy/validation/validate'
-            : '/index.php?p=admin/actions/password-policy/validation/validate';
+            : '/actions/password-policy/validation/validate';
 
         var xhr = new XMLHttpRequest();
         xhr.open('POST', url, true);

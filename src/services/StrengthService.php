@@ -74,7 +74,7 @@ class StrengthService extends Component
 
         if ($useZxcvbn) {
             try {
-                return $this->analyzeZxcvbn($password, $settings, $context);
+                return $this->analyzeZxcvbn($password, $settings, $context, $blocklistHit);
             } catch (Throwable) {
                 // Fall through to baseline if zxcvbn blows up for any reason
                 // (corrupted dictionary, version mismatch, etc.). Better to
@@ -167,6 +167,10 @@ class StrengthService extends Component
      * @param SettingsModel $settings (unused but kept for symmetry with
      *     baseline so callers can swap engines without changing args)
      * @param array<string, string> $context
+     * @param bool $blocklistHit whether the password matched the blocklist —
+     *     forces "weak" label + score 0 regardless of zxcvbn's reading so
+     *     the meter stays consistent with the rule list (which correctly
+     *     rejects the password)
      * @return array<string, mixed>
      *
      * @author CraftPulse
@@ -176,6 +180,7 @@ class StrengthService extends Component
         #[\SensitiveParameter] string $password,
         SettingsModel $settings,
         array $context = [],
+        bool $blocklistHit = false,
     ): array {
         $zxcvbn = new Zxcvbn();
         $userInputs = array_values(array_filter([
@@ -187,7 +192,8 @@ class StrengthService extends Component
 
         // zxcvbn returns score 0-4. Map onto our label vocabulary so the
         // CSS classes are stable across engines.
-        $label = match ((int)($result['score'] ?? 0)) {
+        $score = (int)($result['score'] ?? 0);
+        $label = match ($score) {
             0, 1 => 'weak',
             2 => 'fair',
             3 => 'strong',
@@ -195,10 +201,20 @@ class StrengthService extends Component
             default => 'weak',
         };
 
+        // Blocklist hit — force the meter to "weak" so the engine-B meter
+        // matches what the rule list already shows. zxcvbn doesn't know
+        // about the plugin's custom dictionary; without this override a
+        // blocklisted long+complex password reads as "excellent" while
+        // the back-end rejects it for being on the list.
+        if ($blocklistHit) {
+            $label = 'weak';
+            $score = 0;
+        }
+
         return [
             'engine' => 'zxcvbn',
             'label' => $label,
-            'score' => (int)($result['score'] ?? 0),
+            'score' => $score,
             'crackTime' => (string)($result['crack_times_display']['offline_slow_hashing_1e4_per_second'] ?? ''),
             'suggestions' => (array)($result['feedback']['suggestions'] ?? []),
             'warning' => (string)($result['feedback']['warning'] ?? ''),
