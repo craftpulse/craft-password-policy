@@ -16,7 +16,7 @@ use craftpulse\passwordpolicy\batchers\PasswordResetBatcher;
 use craftpulse\passwordpolicy\helpers\PasswordResetHelper;
 use craftpulse\passwordpolicy\PasswordPolicy;
 
-use yii\queue\Queue;
+use Throwable;
 use yii\queue\RetryableJobInterface;
 
 /**
@@ -26,17 +26,17 @@ use yii\queue\RetryableJobInterface;
  * @package     PasswordPolicy
  * @since       5.0.0
  *
- * @property Queue $queue
+ * @property \yii\queue\Queue $queue
  */
 class PasswordResetJob extends BaseBatchedJob implements RetryableJobInterface
 {
-    /**
-     * @var array
-     */
-    public array $users;
+    // Public Methods
+    // =========================================================================
 
     /**
      * @inheritdoc
+     *
+     * @author CraftPulse
      */
     public function init(): void
     {
@@ -48,6 +48,8 @@ class PasswordResetJob extends BaseBatchedJob implements RetryableJobInterface
 
     /**
      * @inheritdoc
+     *
+     * @author CraftPulse
      */
     public function getTtr(): int
     {
@@ -56,6 +58,8 @@ class PasswordResetJob extends BaseBatchedJob implements RetryableJobInterface
 
     /**
      * @inheritdoc
+     *
+     * @author CraftPulse
      */
     public function canRetry($attempt, $error): bool
     {
@@ -64,7 +68,14 @@ class PasswordResetJob extends BaseBatchedJob implements RetryableJobInterface
     }
 
     /**
-     * Handles setting the progress.
+     * Sets the progress for the current job.
+     *
+     * @param int $count
+     * @param int $total
+     * @param string|null $label
+     * @return void
+     *
+     * @author CraftPulse
      */
     public function setProgressHandler(int $count, int $total, string $label = null): void
     {
@@ -72,6 +83,16 @@ class PasswordResetJob extends BaseBatchedJob implements RetryableJobInterface
         $this->setProgress($this->queue, $progress, $label);
     }
 
+    // Protected Methods
+    // =========================================================================
+
+    /**
+     * Loads the batch data for processing.
+     *
+     * @return PasswordResetBatcher
+     *
+     * @author CraftPulse
+     */
     protected function loadData(): PasswordResetBatcher
     {
         $users = PasswordResetHelper::getAllUsersToExpire();
@@ -83,7 +104,14 @@ class PasswordResetJob extends BaseBatchedJob implements RetryableJobInterface
     }
 
     /**
-     * @inheritdoc
+     * Processes a single user item.
+     *
+     * @param mixed $item
+     * @return void
+     *
+     * @throws Throwable
+     *
+     * @author CraftPulse
      */
     protected function processItem(mixed $item): void
     {

@@ -1,5 +1,31 @@
 # Release Notes for Password Policy
 
+## 5.1.1 - 2026-05-02
+### Changed
+- Symbols regex now accepts any non-alphanumeric character (hyphens, underscores, etc.) instead of a limited set [#46](https://github.com/craftpulse/craft-password-policy/issues/46)
+- Console `force-reset-passwords` command now runs synchronously by default; use `--queue` to push to the queue instead
+- Password expiry query now filters at the database level instead of hydrating all users into memory, significantly improving performance on large user bases
+- Replaced `switch` with `match` expression in `PasswordResetHelper`
+- Applied coding conventions: section headers, `@author` on methods, `@throws` annotations, underscore-prefixed private members
+
+### Fixed
+- Fixed a critical security issue where `RetentionController` had CSRF disabled and allowed anonymous access, enabling unauthenticated mass password resets
+- Fixed `RetentionController::afterAction()` blocking web requests by synchronously draining the entire queue
+- Fixed admin account exclusion being hardcoded to user ID 1 instead of using the `admin` property
+- Fixed `getCpNavItem()` null dereference when no user is authenticated
+- Fixed static `$settings` property never being populated
+- Fixed `SettingsController::actionSave()` running permission checks before `requirePostRequest()`
+- Fixed `SettingsModel::defineRules()` not calling `parent::defineRules()`
+- Fixed console `force-reset-passwords` returning `ExitCode::OK` when retention features are disabled
+- Fixed double `Craft::t()` nesting in `UserRules` that broke non-English translations
+- Fixed `SecurityService` class docblock saying "RetentionService"
+- Removed dead `$users` property from `PasswordResetJob`
+- Removed dead `$vacancyId` parameter from `RetentionController::getFailureResponse()`
+- Removed no-op `EVENT_AFTER_SAVE_PLUGIN_SETTINGS` handler
+- Replaced redundant ternary with `isNotEmpty()` in `PasswordService::pwned()`
+- Fixed `PasswordPolicyAsset` using property access instead of getter for view
+- Fixed `$queue` property type from `mixed|object|null` to `?object`
+
 ## 5.1.0 - 2025-10-28
 ### Added
 - Added optional CSP (Content Security Policy) nonce support for the password indicator script [#39](https://github.com/craftpulse/craft-password-policy/issues/39)

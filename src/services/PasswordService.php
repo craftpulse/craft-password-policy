@@ -29,28 +29,44 @@ use yii\log\Logger;
  */
 class PasswordService extends Component
 {
+    // Constants
+    // =========================================================================
+
     public const PWNED_ENDPOINT = 'https://api.pwnedpasswords.com/range/';
+
+    // Private Properties
+    // =========================================================================
 
     /**
      * @var SettingsModel
      */
-    private SettingsModel $settings;
+    private SettingsModel $_settings;
 
+    // Public Methods
+    // =========================================================================
+
+    /**
+     * @inheritdoc
+     *
+     * @author CraftPulse
+     */
     public function init(): void
     {
-        $this->settings = PasswordPolicy::$plugin->settings;
+        $this->_settings = PasswordPolicy::$plugin->getSettings();
     }
 
     /**
-     * Method the generate the password pattern.
+     * Generates a regex pattern for password validation based on the current settings.
+     *
      * @return string
+     *
+     * @author CraftPulse
      */
     public function generatePattern(): string
     {
-        // build the regexp dynamically
-        $pattern = $this->patterns()
+        $pattern = $this->_patterns()
             ->reject(function(string $value, string $key) {
-                return $this->settings->{$key} === false;
+                return $this->_settings->{$key} === false;
             })
             ->implode('');
 
@@ -58,15 +74,17 @@ class PasswordService extends Component
     }
 
     /**
-     * Method to generate the validation message.
+     * Generates a human-readable validation message based on the current settings.
+     *
      * @return string
+     *
+     * @author CraftPulse
      */
     public function generateMessage(): string
     {
-        // build the regexp dynamically
-        $message = $this->messages()
+        $message = $this->_messages()
             ->reject(function(string $value, string $key) {
-                return $this->settings->{$key} === false;
+                return $this->_settings->{$key} === false;
             })
             ->implode(', ');
 
@@ -74,8 +92,12 @@ class PasswordService extends Component
     }
 
     /**
-     * Method to validate password against the "have I been pwned" database
-     * @return bool
+     * Validates a password against the "Have I Been Pwned" database.
+     *
+     * @param string $password
+     * @return bool|null
+     *
+     * @author CraftPulse
      */
     public function pwned(string $password): ?bool
     {
@@ -101,18 +123,24 @@ class PasswordService extends Component
                     }
                 });
 
-            return $passwords->count() > 0 ? true : false;
+            return $passwords->isNotEmpty();
         } catch (GuzzleException $exception) {
             PasswordPolicy::$plugin->log($exception->getMessage(), [], Logger::LEVEL_ERROR);
             return false;
         }
     }
 
+    // Private Methods
+    // =========================================================================
+
     /**
-     * Collection of messages.
+     * Returns the collection of human-readable requirement messages.
+     *
      * @return Collection
+     *
+     * @author CraftPulse
      */
-    private function messages(): Collection
+    private function _messages(): Collection
     {
         return Collection::make([
             'cases' => Craft::t('password-policy', 'a lowercase character, an uppercase character'),
@@ -122,15 +150,18 @@ class PasswordService extends Component
     }
 
     /**
-     * Collection of regexp patterns.
+     * Returns the collection of regex patterns for password requirements.
+     *
      * @return Collection
+     *
+     * @author CraftPulse
      */
-    private function patterns(): Collection
+    private function _patterns(): Collection
     {
         return Collection::make([
             'cases' => '(?=.*[a-z])(?=.*[A-Z])',
             'numbers' => '(?=.*[0-9])',
-            'symbols' => '(?=.*[!@#\$%\^&\*])',
+            'symbols' => '(?=.*[^a-zA-Z0-9])',
         ]);
     }
 }

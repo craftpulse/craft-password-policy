@@ -23,13 +23,18 @@ use yii\validators\Validator;
  */
 class PwnedValidator extends Validator
 {
+    // Public Methods
+    // =========================================================================
+
     /**
      * @inheritdoc
+     *
+     * @author CraftPulse
      */
     public function validateValue($value): ?array
     {
         if (PasswordPolicy::$plugin->passwords->pwned($value)) {
-            return [Craft::t('password-policy','This password has been compromised in a data breach. Please choose another password.'), []];
+            return [Craft::t('password-policy', 'This password has been compromised in a data breach. Please choose another password.'), []];
         }
 
         return null;

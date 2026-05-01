@@ -15,7 +15,6 @@ use craft\base\Model;
 use craft\base\Plugin;
 use craft\elements\User;
 use craft\events\DefineRulesEvent;
-use craft\events\PluginEvent;
 use craft\events\RegisterComponentTypesEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
@@ -23,7 +22,6 @@ use craft\events\TemplateEvent;
 use craft\helpers\ArrayHelper;
 use craft\helpers\Json;
 use craft\log\MonologTarget;
-use craft\services\Plugins;
 use craft\services\UserPermissions;
 use craft\services\Utilities;
 use craft\web\twig\variables\CraftVariable;
@@ -39,6 +37,7 @@ use Monolog\Formatter\LineFormatter;
 use Psr\Log\LogLevel;
 use Throwable;
 use yii\base\Event;
+use yii\base\InvalidConfigException;
 use yii\base\InvalidRouteException;
 use yii\log\Dispatcher;
 use yii\log\Logger;
@@ -61,6 +60,7 @@ class PasswordPolicy extends Plugin
 
     // Static Properties
     // =========================================================================
+
     /**
      * @var ?PasswordPolicy
      */
@@ -68,37 +68,44 @@ class PasswordPolicy extends Plugin
 
     // Public Properties
     // =========================================================================
-    /**
-     * @var null|SettingsModel
-     */
-    public static ?SettingsModel $settings = null;
+
     /**
      * @var string
      */
     public string $schemaVersion = '1.0.0';
+
     /**
      * @var bool
      */
     public bool $hasCpSection = true;
+
     /**
      * @var bool
      */
     public bool $hasCpSettings = true;
-    /**
-     * @var mixed|object|null
-     */
-    public mixed $queue = null;
 
-    // Private Properties
+    /**
+     * @var ?object
+     */
+    public ?object $queue = null;
+
+    // Public Methods
     // =========================================================================
 
+    /**
+     * @inheritdoc
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     */
     public function init(): void
     {
         parent::init();
         self::$plugin = $this;
 
         // Register custom log target
-        $this->registerLogTarget();
+        $this->_registerLogTarget();
 
         $request = Craft::$app->getRequest();
         if ($request->getIsConsoleRequest()) {
@@ -106,12 +113,12 @@ class PasswordPolicy extends Plugin
         }
 
         // Install our global event handlers
-        $this->installEventHandlers();
+        $this->_installEventHandlers();
 
         // Register control panel events
         if (Craft::$app->getRequest()->getIsCpRequest()) {
-            $this->registerCpUrlRules();
-            $this->installCpEventHandlers();
+            $this->_registerCpUrlRules();
+            $this->_installCpEventHandlers();
         }
 
         // Log that the plugin has loaded
@@ -125,8 +132,16 @@ class PasswordPolicy extends Plugin
     }
 
     /**
-     * Logs a message
+     * Logs a message.
+     *
+     * @param string $message
+     * @param array $params
+     * @param int $type
+     * @return void
+     *
      * @throws Throwable
+     *
+     * @author CraftPulse
      */
     public function log(string $message, array $params = [], int $type = Logger::LEVEL_INFO): void
     {
@@ -146,7 +161,10 @@ class PasswordPolicy extends Plugin
 
     /**
      * @inheritdoc
+     *
      * @throws InvalidRouteException
+     *
+     * @author CraftPulse
      */
     public function getSettingsResponse(): mixed
     {
@@ -155,13 +173,20 @@ class PasswordPolicy extends Plugin
 
     /**
      * @inheritdoc
+     *
      * @throws Throwable
+     *
+     * @author CraftPulse
      */
     public function getCpNavItem(): ?array
     {
         $subNavs = [];
         $navItem = parent::getCpNavItem();
         $currentUser = Craft::$app->getUser()->getIdentity();
+
+        if ($currentUser === null) {
+            return null;
+        }
 
         $editableSettings = true;
         $general = Craft::$app->getConfig()->getGeneral();
@@ -191,8 +216,13 @@ class PasswordPolicy extends Plugin
         ]);
     }
 
+    // Protected Methods
+    // =========================================================================
+
     /**
      * @inheritdoc
+     *
+     * @author CraftPulse
      */
     protected function settingsHtml(): ?string
     {
@@ -202,35 +232,28 @@ class PasswordPolicy extends Plugin
         );
     }
 
-    // Protected Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
+     *
+     * @author CraftPulse
      */
     protected function createSettingsModel(): ?Model
     {
         return new SettingsModel();
     }
 
-    /**
-     * @return void
-     */
-    protected function installEventHandlers(): void
-    {
-        Event::on(
-            Plugins::class,
-            Plugins::EVENT_AFTER_SAVE_PLUGIN_SETTINGS,
-            function(PluginEvent $event) {
-                if ($event->plugin === $this) {
-                    Craft::debug(
-                        'Plugins::EVENT_AFTER_SAVE_PLUGIN_SETTINGS',
-                        __METHOD__
-                    );
-                }
-            }
-        );
+    // Private Methods
+    // =========================================================================
 
+    /**
+     * Installs global event handlers.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     */
+    private function _installEventHandlers(): void
+    {
         Event::on(
             CraftVariable::class,
             CraftVariable::EVENT_INIT,
@@ -259,14 +282,20 @@ class PasswordPolicy extends Plugin
             }
         );
 
-        $this->registerUserPermissions();
-        $this->registerUtilities();
+        $this->_registerUserPermissions();
+        $this->_registerUtilities();
     }
 
     /**
+     * Installs control panel event handlers.
+     *
      * @return void
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
      */
-    protected function installCpEventHandlers(): void
+    private function _installCpEventHandlers(): void
     {
         // Load asset before page template is rendered
         Event::on(
@@ -278,20 +307,21 @@ class PasswordPolicy extends Plugin
 
                 // Register Asset Bundle
                 $view->registerAssetBundle(PasswordPolicyAsset::class);
-                $options = $this->settings->cspNonce ? ['nonce' => $this->getSecurity()->getNonce()] : [];
+                $options = $this->getSettings()->cspNonce ? ['nonce' => $this->getSecurity()->getNonce()] : [];
 
                 $this->vite->register('src/js/indicator.ts', false, $options);
             }
         );
     }
 
-    // Private Methods
-    // =========================================================================
-
     /**
-     * Registers CP URL rules event
+     * Registers CP URL rules.
+     *
+     * @return void
+     *
+     * @author CraftPulse
      */
-    private function registerCpUrlRules(): void
+    private function _registerCpUrlRules(): void
     {
         Event::on(UrlManager::class, UrlManager::EVENT_REGISTER_CP_URL_RULES,
             function(RegisterUrlRulesEvent $event) {
@@ -309,9 +339,13 @@ class PasswordPolicy extends Plugin
     }
 
     /**
-     * Registers user permissions
+     * Registers user permissions.
+     *
+     * @return void
+     *
+     * @author CraftPulse
      */
-    private function registerUserPermissions(): void
+    private function _registerUserPermissions(): void
     {
         Event::on(UserPermissions::class, UserPermissions::EVENT_REGISTER_PERMISSIONS,
             function(RegisterUserPermissionsEvent $event) {
@@ -330,9 +364,16 @@ class PasswordPolicy extends Plugin
         );
     }
 
-    private function registerUtilities(): void
+    /**
+     * Registers plugin utilities.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     */
+    private function _registerUtilities(): void
     {
-        if ($this->settings->retentionUtilities) {
+        if ($this->getSettings()->retentionUtilities) {
             Event::on(Utilities::class, Utilities::EVENT_REGISTER_UTILITIES,
                 function(RegisterComponentTypesEvent $event) {
                     $event->types[] = RetentionUtility::class;
@@ -342,11 +383,15 @@ class PasswordPolicy extends Plugin
     }
 
     /**
-     * Registers a custom log target
+     * Registers a custom log target.
+     *
+     * @return void
      *
      * @see LineFormatter::SIMPLE_FORMAT
+     *
+     * @author CraftPulse
      */
-    private function registerLogTarget(): void
+    private function _registerLogTarget(): void
     {
         if (Craft::getLogger()->dispatcher instanceof Dispatcher) {
             Craft::getLogger()->dispatcher->targets[] = new MonologTarget([

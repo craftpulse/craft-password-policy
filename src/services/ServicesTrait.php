@@ -1,4 +1,12 @@
 <?php
+/**
+ * Password policy plugin for Craft CMS
+ *
+ * Enforce a password policy on your users. This plugin is aimed to make sure users use a password that is secure.
+ *
+ * @link      https://craftpulse.com
+ * @copyright Copyright (c) 2024 CraftPulse
+ */
 
 namespace craftpulse\passwordpolicy\services;
 
@@ -7,16 +15,27 @@ use nystudio107\pluginvite\services\VitePluginService;
 use yii\base\InvalidConfigException;
 
 /**
- * @author    craftpulse
+ * @author    CraftPulse
  * @package   Password Policy
  * @since     5.0.3
  *
  * @property PasswordService $passwords
  * @property RetentionService $retention
+ * @property SecurityService $security
  * @property VitePluginService $vite
  */
 trait ServicesTrait
 {
+    // Static Methods
+    // =========================================================================
+
+    /**
+     * Returns the component configuration for this plugin.
+     *
+     * @return array
+     *
+     * @author CraftPulse
+     */
     public static function config(): array
     {
         return [
@@ -44,10 +63,13 @@ trait ServicesTrait
     // =========================================================================
 
     /**
-     * Returns the passwords service
+     * Returns the passwords service.
      *
-     * @return PasswordService The passwords service
+     * @return PasswordService
+     *
      * @throws InvalidConfigException
+     *
+     * @author CraftPulse
      */
     public function getPasswords(): PasswordService
     {
@@ -55,10 +77,13 @@ trait ServicesTrait
     }
 
     /**
-     * Returns the retention service
+     * Returns the retention service.
      *
-     * @return RetentionService The retention service
+     * @return RetentionService
+     *
      * @throws InvalidConfigException
+     *
+     * @author CraftPulse
      */
     public function getRetention(): RetentionService
     {
@@ -66,10 +91,13 @@ trait ServicesTrait
     }
 
     /**
-     * Returns the security service
+     * Returns the security service.
      *
-     * @return SecurityService The security service
+     * @return SecurityService
+     *
      * @throws InvalidConfigException
+     *
+     * @author CraftPulse
      */
     public function getSecurity(): SecurityService
     {
@@ -77,10 +105,13 @@ trait ServicesTrait
     }
 
     /**
-     * Returns the vite service
+     * Returns the vite service.
      *
-     * @return VitePluginService The vite service
+     * @return VitePluginService
+     *
      * @throws InvalidConfigException
+     *
+     * @author CraftPulse
      */
     public function getVite(): VitePluginService
     {
