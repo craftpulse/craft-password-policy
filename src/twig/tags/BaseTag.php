@@ -85,10 +85,19 @@ abstract class BaseTag
     }
 
     /**
-     * Stringifies the rendered HTML — convenience for callers using
-     * `{{ tag }}` directly without `.render()`.
+     * Stringifies the rendered HTML for PHP-context concatenation. Used by
+     * composite tags that assemble children into a single output string
+     * (e.g. `PasswordWidgetTag` calling `(string)$field`).
      *
-     * @return string
+     * IMPORTANT: do NOT use `{{ tag }}` in Twig templates — Twig's auto-escape
+     * filter HTML-encodes the rendered markup because PHP's `__toString()`
+     * contract requires a plain `string` return (not `\Twig\Markup`). Always
+     * call `{{ tag.render() }}` from Twig, which returns a `Markup` instance
+     * that bypasses auto-escape.
+     *
+     * @return string raw HTML; the consumer is responsible for not re-escaping
+     *
+     * @see render() for the Twig-safe rendering path
      *
      * @author CraftPulse
      * @since 5.2.0

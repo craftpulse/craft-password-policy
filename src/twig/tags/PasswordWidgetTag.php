@@ -159,14 +159,20 @@ class PasswordWidgetTag extends BaseTag
             'inputAttrs' => $this->config['inputAttrs'] ?? [],
             'toggleVisibility' => $this->config['toggleVisibility'] ?? true,
             'liveValidation' => $this->config['liveValidation'] ?? true,
-            'submitGate' => $this->config['submitGate'] ?? null,
             'groups' => $groups,
         ];
 
-        // Only pass id when the caller explicitly set one — passing null
-        // would short-circuit the auto-id helper.
+        // Only forward optional values when the caller explicitly set them —
+        // `id` and `submitGate` are strict-typed `string` on the child setter,
+        // so forwarding `null` here would TypeError at construct time. The
+        // `groups` array is fine to forward unconditionally (`array` accepts
+        // empty arrays).
         if (!empty($this->config['id'])) {
             $fieldConfig['id'] = $this->config['id'];
+        }
+
+        if (!empty($this->config['submitGate'])) {
+            $fieldConfig['submitGate'] = $this->config['submitGate'];
         }
 
         $field = new PasswordFieldTag($fieldConfig);
