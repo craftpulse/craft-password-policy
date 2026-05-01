@@ -144,12 +144,12 @@ The plugin ships fluent render builders on `craft.passwordpolicy.*` for building
 }).render() }}
 ```
 
-See [`docs/10-frontend-twig-surface.md`](./docs/10-frontend-twig-surface.md) for the complete API reference.
+See [`docs/user/features/frontend-twig.md`](./docs/user/features/frontend-twig.md) for the complete API reference.
 
 ## Events
 
 Hook into password-policy events for analytics, audit-trail mirroring, SIEM forwarding, or custom side effects. The plugin fires events for password changes, registrations (via `RegistrationService`), and HIBP-on-login breach detection (Pro). Every event near password handling guarantees no plaintext or hash material in its payload — listeners can forward them anywhere without leaking secrets.
 
-See [`docs/events.md`](./docs/events.md) for the catalog and example listeners.
+See [`docs/user/reference/events.md`](./docs/user/reference/events.md) for the catalog and example listeners.
 
 Brought to you by [CraftPulse](https://craft-pulse.com/)
