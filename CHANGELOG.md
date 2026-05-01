@@ -52,6 +52,7 @@
 - `ValidationController::actionValidate` extended with `errorsByKey` map, full `errors[]` list, and a `strength` block. Now accepts `groups[]` body params for anonymous group-preview validation (rendering a "Sign up as Editor" form gets the Editors-group resolved policy criteria).
 - New `StrengthService` — registered in `ServicesTrait` as `strength`. Two engines: `analyzeBaseline()` and `analyzeZxcvbn()`. Service contract makes adding future engines straightforward.
 - New plugin setting `useZxcvbnStrength: bool` (default `false`, Pro).
+- `docs/events.md` — events catalog with FQ class names, payload tables, edition tier, when each event fires, and example listener code for `PasswordChangedEvent` (Lite), `UserRegisteredEvent` (Lite), `BreachDetectedEvent` (Pro), and `PasswordValidationEvent` (Lite). Cross-linked from README under a new "Events" section.
 
 ### Changed
 
