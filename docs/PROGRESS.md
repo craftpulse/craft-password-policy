@@ -423,6 +423,53 @@ PROGRESS-PROGRESS link from C2-BUILD-PLAN.md crossed-out at the top of the Layer
 
 ---
 
+## Session: 2026-05-02 (Bug fix sweep — C2 code review + 5.1.1 file-config compat)
+
+C2 followup. Foreground code-review on the four C2 commits + a deep look at the 5.1.1 → 5.2.0 file-based config compatibility surface produced 11 bugs ranging from "render-time fatal" to "subtle privacy guard." All fixed in 6 commits.
+
+### What changed and why
+
+**Twig-tag layer (1 commit) — `fix(twig-tags): defensive null gating + render docblock correction`.** `PasswordWidgetTag` was forwarding `submitGate => null` into the strict-typed `PasswordFieldTag::submitGate(string $selector)` setter, which TypeError'd at construct time when a consumer called `passwordWidget()` without `submitGate`. The same author had already gated `id` for this exact reason; same pattern applied here. Also added an `id()` canonical setter alias on `PasswordResetFormTag` matching Craft's reset-email URL `?code=…&id=…` param name. The legacy `userUid()` setter is preserved as an alias that calls `id()` internally — both forms write to the same config slot. Last: `BaseTag::__toString()` docblock corrected to spell out that `{{ tag }}` in Twig double-escapes the rendered HTML (Twig auto-escapes `__toString()` returns because PHP's contract requires a plain `string`, not `\Twig\Markup`). Always use `{{ tag.render() }}` from Twig.
+
+**Controllers (1 commit) — `fix(controllers): session invalidation on password change + ValidationController context input hardening`.** `Front\PasswordChangeController` now calls a new `PasswordService::destroyOtherSessions(User $user)` helper after a successful password change. Belt-and-braces: Craft's `User::afterSave` already runs the same delete when `newPassword` is set, but the C2 spec called for the wiring to be visible at the controller layer. Helper handles the console-path branch — `getToken()` only exists on the web `User` component; calling it on the console `User` throws `UnknownMethodException`. Helper now gates on `getRequest()->getIsConsoleRequest()` before asking for the token. Failure modes are caught and logged at WARNING — never thrown back to the caller; the password change has already succeeded by the time we get here. `ValidationController::_resolveStrengthContext()` now pulls `username`/`email` from the session identity for authenticated requests and returns empty strings for anonymous requests; never trusts POST. Closes a small but real signal-leak surface (an unauthenticated attacker could submit a known username and observe how the strength score changed for guessed passwords).
+
+**Client asset (1 commit) — `fix(client-asset): auto-register on toggleVisibility, fix cpTrigger fallback, blocklist hit propagation in zxcvbn-php`.** Three things bundled because they all touch the front-end interactivity surface:
+
+ 1. `BaseTag::_needsClientAsset(array $config)` centralizes the gating logic. Any of `liveValidation`, `toggleVisibility`, or `submitGate` set to truthy registers the bundle. `PasswordFieldTag` now calls `_needsClientAsset($this->config)` instead of bare `if ($liveValidation)`. Builders with `toggleVisibility: true, liveValidation: false` no longer ship a non-functional eye button.
+ 2. `StrengthService::analyzeZxcvbn()` accepts a `bool $blocklistHit = false` param symmetric with `analyzeBaseline()`. When set, the engine forces label to `weak` and clamps `score` to `0`. `compute()` forwards the param to both engines. Previously, a blocklisted long+complex password read as "excellent" from zxcvbn-php while the rule list correctly rejected it.
+ 3. Both `password-policy.js` and `buildchain/src/js/indicator.ts` had `'/index.php?p=admin/actions/password-policy/...'` as the fallback URL when `window.Craft.actionUrl` is unavailable. The hardcoded `admin` cpTrigger broke on installs with custom `cpTrigger`. Fix: switch to Craft 5's native `/actions/password-policy/validation/validate` route. Rebuilt the CP strength bundle via `ddev exec --dir /var/www/html/cms/vendor/craftpulse/craft-password-policy/buildchain npm run build` — new hash `strengthIndicator-D8sW1YRB.js` (was `C9hr7Ix1`). Bundle size held at 2.20 KB.
+
+**HIBP 429 backoff (1 commit) — `fix(security): site-wide HIBP 429 backoff cache`.** The HIBP-on-login dedup cache only keyed on `(userId, sha1Prefix)`, so every login from a different user with a different prefix burned a fresh API request even when HIBP was already 429-rate-limiting the site. New `PasswordService::HIBP_BACKOFF_CACHE_KEY` sentinel cached at the cache layer with a TTL parsed from `Retry-After` (defaults to 60s if absent or non-numeric). Two layers of short-circuit: `PasswordService::hibp()` checks at the top before any network call; `PasswordPolicy::_runHibpOnLoginCheck()` also checks before its existing per-user dedup cache. Privacy guard: sentinel value is the literal string `'1'`, never user-derived. New public method `isHibpBackoffActive()` exposes the state for future Enterprise diagnostics.
+
+**Variable handle (1 commit) — `fix(variables): register both passwordpolicy and passwordPolicy handles + update C2 docs to camelCase`.** 5.1.1 shipped `craft.passwordpolicy` (lowercase). C2 docs use `craft.passwordPolicy` (camelCase). Renaming would break 5.1.1 consumers; instead, register under both handles. The lowercase form ships permanently for backward compat — never `@deprecated`. The camelCase form is canonical going forward. Updated `docs/10-frontend-twig-surface.md` and three CHANGELOG entries to use the canonical form. PHP namespace `craftpulse\passwordpolicy\...` is unchanged (PHP namespaces are always lowercase here).
+
+**Settings model (1 commit) — `fix(settings): alias deprecated pwned/pwnedFailMode on SettingsModel for 5.1.1 file-config compat`.** Pre-tag blocker. The 5.1.1 → 5.2.0 rename of `pwned` → `hibp` and `pwnedFailMode` → `hibpFailMode` was covered by a project-config migration, but file-based config (`config/password-policy.php`) bypasses project config entirely. A 5.1.1 consumer with `pwned: true` in their file config would fail loud at boot with "Setting unknown property: pwned" on the first request after `composer update`. Fix: override four hooks on `SettingsModel`:
+
+ 1. `attributes()` — extended to include `pwned` + `pwnedFailMode` so Yii's `setAttributes()` doesn't skip them as unknown.
+ 2. `canGetProperty()` / `canSetProperty()` — return true for the legacy keys.
+ 3. `__get()` — reads of legacy keys resolve to the new properties.
+ 4. `__set()` — writes route to the new properties AND log a `Craft::warning` per assignment so site operators see the deprecation message during `craft up` or any cache warm.
+
+The `@deprecated` annotation here IS appropriate despite the rule against deprecating same-version code. The rule is about not deprecating NEW code; `pwned`/`pwnedFailMode` are 5.1.1-shipped public API being renamed.
+
+### Process notes
+
+- 6 commits, all green through PHPStan after each.
+- ECS still blocked by host PHP 8.4 vs DDEV PHP 8.3 vendor mismatch (unchanged).
+- PHPStan baseline holding at 0 errors throughout (the prior 3 errors mentioned in the previous session's notes appear to have been resolved before this session — current run is clean).
+- Each bug verified individually via a short PHP script run inside DDEV before moving to the next bug. The `Bug 11` verification went one step further with an actual `config/password-policy.php` fixture in the playground that loaded cleanly through `getSettings()` with deprecation warnings flowing into the `password-policy` log channel.
+- No new skill gaps surfaced beyond the existing memory-store entries.
+
+### Bugs left out of scope
+
+The Bug 11 conversation surfaced a related concern: there's no migration that runs against existing 5.1.1 file-based configs to suggest the rename. The deprecation warning fires on every cache warm, which is good observability but doesn't actively prompt the operator to migrate. Documenting the rename in the 5.2.0 migration guide (Phase H) is the right home for the prompt — the file-based config alias keeps things working until the operator gets to that doc.
+
+### Phase status
+
+Phase C2 closed-closed. Next is Phase D (P2.1 + P2.2 user index integration).
+
+---
+
 ## Next Session
 
 Phase A (audit fix-ups), Phase B (pre-release security tests), and **Phase C (P1 backlog)** all closed. Phase C2 (Pro front-end surface bundle) closed in full as of 2026-05-01. Next is Phase D — user index integration.

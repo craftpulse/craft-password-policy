@@ -2,7 +2,7 @@
 title: Password Policy v5.2.0 — Master Plan
 version: 5.2.0
 branch: 5.x
-last_updated: 2026-05-01
+last_updated: 2026-05-02
 status:
   pro_ui: feature_complete
   manual_tests: 78/79 PASS (T1.2 + TX.2 + T9.7 deferred; T12.6 + T13.6 + T13.11 + T13.12 require browser/SR/Enterprise gates)
@@ -39,13 +39,14 @@ State legend: `active` = read now, `pending` = scheduled, `done` = built, `block
 
 - 10 alpha/beta branches merged into `5.x`, plus end-of-Phase-C work (P1.3 + P1.4 paired Email Notifications, P1.7 retention UI, P1.11 blocklist editor, P1.5 group-deletion listener) shipped on 5.x directly.
 - Pro CP UI feature-complete: named-policy CRUD with presets + tri-state + divergence indicators + conflict UX, env-var inputs, blocklist subnav with custom dictionary editor + word-check tool, retention page with `notificationLogRetentionDays`, **Email Notifications subnav with token picker + per-(key, siteId) editing + sender overrides + AJAX test-send**, group-deletion observability listener, force-reset action.
-- **Pro front-end Twig surface — partial today, full build specced for Phase C2.** `PasswordPolicyVariable` exposes status helpers (`daysUntilExpiry`, `isExpired`, `isExpiring`, `passwordStatus`, `lastPasswordChange`, `activeSessionCount`) and `ValidationController::actionValidate` is `$allowAnonymous` for AJAX use. **P1.12** (locked 2026-05-01) ships the full surface: image-optimize-style fluent render builders for fields (`passwordField`, `requirementList`, `strengthMeter`, `requirementsHint`, `passwordWidget`) + forms (`loginForm`, `passwordChangeForm`, `passwordResetForm`), data accessors (`requirements`, `requirementsText`, `requirementRules`), JS asset bundle (no Vite dep on consumer side), strength engine A baseline + B Pro opt-in (`bjeavons/zxcvbn-php`, approved 2026-05-01), a11y baseline, show/hide toggle. P2.4 is absorbed.
+- **Pro front-end Twig surface — closed 2026-05-01, polished 2026-05-02 via the C2 code-review bug-fix sweep.** `PasswordPolicyVariable` exposes status helpers (`daysUntilExpiry`, `isExpired`, `isExpiring`, `passwordStatus`, `lastPasswordChange`, `activeSessionCount`) and the full P1.12 builder surface: fluent render builders for fields (`passwordField`, `requirementList`, `strengthMeter`, `requirementsHint`, `passwordWidget`) + forms (`loginForm`, `passwordChangeForm`, `passwordResetForm`), data accessors (`requirements`, `requirementsText`, `requirementRules`), JS asset bundle (no Vite dep on consumer side), strength engine A baseline + B Pro opt-in (`bjeavons/zxcvbn-php`, approved 2026-05-01), a11y baseline, show/hide toggle. **Both `craft.passwordPolicy` (camelCase) and `craft.passwordpolicy` (legacy lowercase) handles work.** P2.4 absorbed.
+- **Bug fix sweep — done 2026-05-02 (6 commits, all PHPStan clean).** C2 code-review followups + a 5.1.1 file-based config compatibility blocker. Twig tag layer (composite null-gating, `id()` setter alias on `PasswordResetFormTag`, `__toString()` docblock correction); controllers (explicit session invalidation via new `PasswordService::destroyOtherSessions()`, ValidationController context-input hardening); client asset (auto-register on any interactivity flag, blocklist-hit propagation in zxcvbn-php engine, cpTrigger-safe fallback URL with rebuilt CP strength bundle); HIBP 429 site-wide backoff cache; dual variable handle registration; SettingsModel alias for legacy `pwned` / `pwnedFailMode` keys. P1.12 fully closed (Layer 4b + bug fixes). Phase C2 closed-closed. See PROGRESS.md "Session: 2026-05-02" for per-bug details.
 - Manual tests: **56/57 PASS** (Phases A + B + C closed 2026-04-30; T1.2 + TX.2 + T9.7 deferred to P2.5 Pest fixtures).
-- **P1 backlog: 4 items remaining (Phase C2)** — P1.12 (Pro front-end Twig surface), P1.13 (HIBP-on-login Pro), P1.14 (RegistrationService Lite + Pro per-group validation), P1.15 (events catalog + `docs/events.md`).
+- **P1 backlog: 0 items remaining (Phase C2 closed-closed).**
 - P1.8 (deployment docs) moved to Phase H — Enterprise must exist before authoritative deployment docs can be written.
 - P2/P3/P4: not started.
 - **Release strategy:** 5.2.0 ships as a single release covering Lite + Pro + Enterprise. Nothing tags / publishes until Enterprise (Phase 10–12) is complete and tested.
-- Hard gate: all Pro manual tests + all P1 items (incl. P1.12 once approved) + Enterprise build (G) must pass before release prep (F).
+- Hard gate: all Pro manual tests + all P1 items + Enterprise build (G) must pass before release prep (F).
 
 ---
 
