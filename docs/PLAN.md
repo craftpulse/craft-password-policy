@@ -2,7 +2,7 @@
 title: Password Policy v5.2.0 — Master Plan
 version: 5.2.0
 branch: 5.x
-last_updated: 2026-04-30
+last_updated: 2026-05-01
 status:
   pro_ui: feature_complete
   manual_tests: 56/57 PASS (T1.2 + TX.2 + T9.7 deferred)
@@ -24,7 +24,7 @@ Master plan for the v5.2.0 Pro/Enterprise expansion. Sections 1–4 cover active
 | # | Section | State |
 |---|---|---|
 | 1 | [Status](#1-status) | active |
-| 2 | [Manual testing remaining](#2-manual-testing-remaining) | done — 49/50 PASS, 2 deferred to P2.5 |
+| 2 | [Manual testing remaining](#2-manual-testing-remaining) | done — 56/57 PASS, 3 deferred to P2.5 (T1.2 + TX.2 + T9.7) |
 | 3 | [Backlog](#3-backlog) | active |
 | 4 | [Build order](#4-build-order) | active |
 | 5 | [Reference: completed work](#5-reference-completed-work) | done, skippable |
@@ -37,12 +37,15 @@ State legend: `active` = read now, `pending` = scheduled, `done` = built, `block
 
 ## 1. Status
 
-- 10 alpha/beta branches merged into `5.x`. Pro UI feature-complete (CRUD, presets, tri-state, env-var inputs, conflict UX).
-- Manual tests: 49/50 PASS (T7.3 + T1.3 + T1.4 + TX.3 verified 2026-04-30; T1.2 + TX.2 deferred to P2.5 Pest fixtures).
-- P1 backlog: 4 items remaining (P1.2 / P1.5 / P1.6 / P1.7 / P1.9 / P1.10 / P1.11 built, P1.1 moved to TESTING.md).
+- 10 alpha/beta branches merged into `5.x`, plus end-of-Phase-C work (P1.3 + P1.4 paired Email Notifications, P1.7 retention UI, P1.11 blocklist editor, P1.5 group-deletion listener) shipped on 5.x directly.
+- Pro CP UI feature-complete: named-policy CRUD with presets + tri-state + divergence indicators + conflict UX, env-var inputs, blocklist subnav with custom dictionary editor + word-check tool, retention page with `notificationLogRetentionDays`, **Email Notifications subnav with token picker + per-(key, siteId) editing + sender overrides + AJAX test-send**, group-deletion observability listener, force-reset action.
+- **Pro front-end Twig surface — partial:** `PasswordPolicyVariable` exposes status helpers (`daysUntilExpiry`, `isExpired`, `isExpiring`, `passwordStatus`, `lastPasswordChange`, `activeSessionCount`) and `ValidationController::actionValidate` is `$allowAnonymous` for AJAX use. **Missing:** resolved-policy accessor, human-readable requirements text, `passwordField()` Twig function with strength UI. Tracked under P1.12 (new); P2.4 is the legacy entry that becomes part of P1.12.
+- Manual tests: **56/57 PASS** (Phases A + B + C closed 2026-04-30; T1.2 + TX.2 + T9.7 deferred to P2.5 Pest fixtures).
+- P1 backlog: **0 items remaining** for already-listed work. **One new addition pending sign-off:** P1.12 — Pro front-end Twig surface for user-facing login/registration.
+- P1.8 (deployment docs) moved to Phase H — Enterprise must exist before authoritative deployment docs can be written.
 - P2/P3/P4: not started.
 - **Release strategy:** 5.2.0 ships as a single release covering Lite + Pro + Enterprise. Nothing tags / publishes until Enterprise (Phase 10–12) is complete and tested.
-- Hard gate: all Pro manual tests + all P1 items + Enterprise build (G) must pass before release prep (F).
+- Hard gate: all Pro manual tests + all P1 items (incl. P1.12 once approved) + Enterprise build (G) must pass before release prep (F).
 
 ---
 
