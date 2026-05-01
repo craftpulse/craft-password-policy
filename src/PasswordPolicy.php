@@ -472,10 +472,19 @@ class PasswordPolicy extends Plugin
             function(Event $event) {
                 /** @var CraftVariable $variable */
                 $variable = $event->sender;
-                $variable->set('passwordpolicy', [
+
+                $config = [
                     'class' => PasswordPolicyVariable::class,
                     'viteService' => $this->vite,
-                ]);
+                ];
+
+                // Register under both handles. `passwordpolicy` (lowercase)
+                // shipped in 5.1.1 and stays valid permanently for backward
+                // compatibility — never @deprecated. `passwordPolicy`
+                // (camelCase) is the canonical form going forward, matches
+                // modern Craft convention, and is what the C2 docs use.
+                $variable->set('passwordpolicy', $config);
+                $variable->set('passwordPolicy', $config);
             }
         );
 

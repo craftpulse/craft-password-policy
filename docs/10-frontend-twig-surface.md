@@ -1,8 +1,10 @@
 # Front-End Twig Surface (Pro)
 
-Reference for the `craft.passwordpolicy.*` render builders that ship with v5.2.0. Use these to build login, registration, password-change, and password-reset pages on consumer-facing site templates without re-implementing the policy criteria, AJAX validation, strength meter, show/hide toggle, or a11y wiring yourself.
+Reference for the `craft.passwordPolicy.*` render builders that ship with v5.2.0. Use these to build login, registration, password-change, and password-reset pages on consumer-facing site templates without re-implementing the policy criteria, AJAX validation, strength meter, show/hide toggle, or a11y wiring yourself.
 
 The builders work on every edition. On Lite, they emit markup against the global policy. On Pro, the resolved per-group policy applies automatically when the user (or anonymous group-preview hint) has groups assigned.
+
+> **Both `craft.passwordPolicy` (camelCase, canonical) and `craft.passwordpolicy` (all-lowercase, legacy 5.1.1 form) work.** The lowercase form ships permanently for backward compatibility with 5.1.1 consumers; new code should prefer the camelCase form to match modern Craft variable conventions. This page uses camelCase throughout.
 
 > **Twig errors propagate naturally.** Builders throw `\InvalidArgumentException` on misuse — missing required fields, unknown options, contradictory config. Twig surfaces the exception in dev mode; production renders the friendly error template. Don't wrap calls in `try/catch`.
 
@@ -13,7 +15,7 @@ The builders work on every edition. On Lite, they emit markup against the global
 A complete password-change form for a logged-in user, with live AJAX validation, strength meter, requirement checklist, and submit gating:
 
 ```twig
-{{ craft.passwordpolicy.passwordChangeForm()
+{{ craft.passwordPolicy.passwordChangeForm()
     .submitLabel('Update password'|t)
     .successRedirect('/account')
     .render() }}
@@ -29,7 +31,7 @@ A custom registration form composed of the field-renderer primitives:
     <label>Email <input type="email" name="email" required></label>
 
     <label>Password</label>
-    {{ craft.passwordpolicy.passwordWidget({
+    {{ craft.passwordPolicy.passwordWidget({
         name: 'password',
         liveValidation: true,
         submitGate: '#submit',
@@ -49,7 +51,7 @@ A custom registration form composed of the field-renderer primitives:
 Returns the resolved policy as a flat associative array.
 
 ```twig
-{% set rules = craft.passwordpolicy.requirements() %}
+{% set rules = craft.passwordPolicy.requirements() %}
 <p>Your password must be at least {{ rules.minLength }} characters.</p>
 {% if rules.requireSymbols %}
     <p>It must include a special character.</p>
@@ -61,7 +63,7 @@ Keys: `minLength`, `maxLength`, `requireUppercase`, `requireLowercase`, `require
 Optional `params.groups`: array of group **handles** for anonymous group preview. Use this on a "Sign up as Editor" form so the resolved criteria reflect the Editors-group policy:
 
 ```twig
-{% set rules = craft.passwordpolicy.requirements({groups: ['editors']}) %}
+{% set rules = craft.passwordPolicy.requirements({groups: ['editors']}) %}
 ```
 
 ### `requirementsText(params = [])`
@@ -69,7 +71,7 @@ Optional `params.groups`: array of group **handles** for anonymous group preview
 Returns a single human-readable sentence summarizing the resolved policy. Useful as static helper text under a password input.
 
 ```twig
-<p class="hint">{{ craft.passwordpolicy.requirementsText() }}</p>
+<p class="hint">{{ craft.passwordPolicy.requirementsText() }}</p>
 {# → "Password must contain: at least 12 characters, mixed case, a number." #}
 ```
 
@@ -79,7 +81,7 @@ Returns a list of `{key, label, met}` rows. `met` is always `null` server-side; 
 
 ```twig
 <ul>
-    {% for rule in craft.passwordpolicy.requirementRules() %}
+    {% for rule in craft.passwordPolicy.requirementRules() %}
         <li data-pp-requirement="{{ rule.key }}">{{ rule.label }}</li>
     {% endfor %}
 </ul>
@@ -110,7 +112,7 @@ A single `<input type="password">` with optional show/hide toggle, AJAX live val
 | `groups(array)` | optional | `[]` | Group handles for anonymous group-preview validation |
 
 ```twig
-{{ craft.passwordpolicy.passwordField()
+{{ craft.passwordPolicy.passwordField()
     .name('password')
     .id('register-password')
     .liveValidation(true)
@@ -170,7 +172,7 @@ Complete `<form>` elements including hidden CSRF, hashed redirect, and the appro
 POSTs to Craft's `users/login` action.
 
 ```twig
-{{ craft.passwordpolicy.loginForm()
+{{ craft.passwordPolicy.loginForm()
     .successRedirect('/account')
     .submitLabel('Sign in'|t)
     .render() }}
@@ -202,7 +204,7 @@ POSTs to `password-policy/front/password-change/save` (the plugin's own `Front\P
 POSTs to Craft's `users/set-password` action. Token-based reset flow — Craft validates the `code` + `userUid` from the reset email link, the plugin's `User::EVENT_DEFINE_RULES` listener validates the new password against the policy.
 
 ```twig
-{{ craft.passwordpolicy.passwordResetForm({
+{{ craft.passwordPolicy.passwordResetForm({
     code: craft.app.request.queryParam('code'),
     userUid: craft.app.request.queryParam('id'),
 }).render() }}
