@@ -228,7 +228,11 @@ class PasswordFieldTag extends BaseTag
         $wrapperAttrs = (array)($this->config['wrapperAttrs'] ?? []);
         $toggleAttrs = (array)($this->config['toggleAttrs'] ?? []);
 
-        if ($liveValidation) {
+        // Register the client JS bundle for ANY interactivity flag — toggle
+        // alone needs the JS too. The earlier `liveValidation`-only gate
+        // shipped a non-functional eye button when consumers built a field
+        // with `toggleVisibility: true, liveValidation: false`.
+        if ($this->_needsClientAsset($this->config)) {
             $this->_registerClientAsset();
         }
 
