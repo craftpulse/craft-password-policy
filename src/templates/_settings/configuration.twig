@@ -77,7 +77,7 @@
 
         {{ forms.lightswitchField({
             label: 'Show password strength indicator'|t('password-policy'),
-            instructions: "Display a password strength meter powered by zxcvbn in the control panel."|t('password-policy'),
+            instructions: "Display a password strength meter on control panel password fields. Powered by the same zxcvbn engine used by the front-end builders, so the blocklist, per-group policy resolution, and the Pro `useZxcvbnStrength` toggle all surface here too."|t('password-policy'),
             name: 'settings[showStrengthIndicator]',
             on: settings.showStrengthIndicator,
             disabled: readOnly,

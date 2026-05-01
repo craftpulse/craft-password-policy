@@ -56,6 +56,7 @@
 
 ### Changed
 
+- CP password strength indicator now consumes the same AJAX `password-policy/validation/validate` endpoint as the front-end builders — single strength engine across CP and consumer surfaces. Blocklist hits, per-group policy resolution, and the Pro `useZxcvbnStrength` toggle all surface in the CP indicator without the previously-required client-side duplication. Selector generalized from `#newPassword` to `input[type="password"][autocomplete="new-password"]:not([data-pp-no-strength])` so the indicator now also attaches on the installer + set-password screens. Dropped `@zxcvbn-ts/core`, `@zxcvbn-ts/language-common`, and `@zxcvbn-ts/language-en` from the buildchain — the JS bundle dropped from ~1.65 MB to ~2.2 KB.
 - Settings UI redesigned — sidebar grouped under Policy / Validation / Monitoring with edition badges
 - `pwned` setting renamed to `hibp` (project config + DB) — migration handles the rename
 - Subnav lists Policies before Settings (when per-group policies enabled)
