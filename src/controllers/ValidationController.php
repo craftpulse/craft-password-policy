@@ -66,8 +66,11 @@ class ValidationController extends Controller
         $user = $this->_buildTempUser($request);
 
         // Resolve effective policy — uses per-group policies if the user
-        // belongs to groups, otherwise returns global settings.
-        $settings = $user->id !== null
+        // belongs to groups, otherwise returns global settings. Anonymous
+        // group preview (caller passes `groups[]` body param) sets a
+        // groups array on the temp user without an id; the resolver
+        // honors `getGroups()` regardless of id.
+        $settings = ($user->id !== null || !empty($user->getGroups()))
             ? $plugin->getPolicyResolver()->resolveForUser($user)
             : $plugin->getSettings();
 
@@ -162,16 +165,45 @@ class ValidationController extends Controller
         }
 
         $isValid = true;
+        $errorsByKey = [];
+
         foreach ($rules as $rule) {
             if ($rule['pass'] === false) {
                 $isValid = false;
-                break;
+                $errorsByKey[$rule['key']] = $rule['message'];
             }
         }
 
+        // Map response key aliases for the front-end JS — the JS toggles
+        // `data-pp-requirement="<key>"` items, and those use the keys
+        // emitted by `requirementRules()` (`length`, `cases`, `numbers`,
+        // `symbols`, `character-types`, `blocklist`, `hibp`).
+        $clientErrorsByKey = [];
+
+        foreach ($errorsByKey as $key => $message) {
+            $clientErrorsByKey[$this->_clientKey($key)] = $message;
+        }
+
+        // Strength block — Engine A baseline always; Engine B (zxcvbn-php)
+        // when Pro + setting + library installed (StrengthService picks).
+        $blocklistHit = isset($errorsByKey['common']);
+        $strength = $plugin->getStrength()->compute(
+            $password,
+            $settings,
+            [
+                'username' => (string)($request->getBodyParam('username') ?? ''),
+                'email' => (string)($request->getBodyParam('email') ?? ''),
+            ],
+            $blocklistHit,
+        );
+
         return $this->asJson([
             'isValid' => $isValid,
+            'passed' => $isValid,
+            'errorsByKey' => $clientErrorsByKey,
+            'errors' => array_values($clientErrorsByKey),
             'rules' => $rules,
+            'strength' => $strength,
         ]);
     }
 
@@ -201,6 +233,51 @@ class ValidationController extends Controller
         $user->username = $request->getBodyParam('username');
         $user->email = $request->getBodyParam('email');
 
+        // Group-preview path: caller passed `groups[]` (handles) — resolve
+        // and assign to the temp user so the policy resolver returns the
+        // per-group merged policy.
+        $groupHandles = (array)$request->getBodyParam('groups', []);
+
+        if (!empty($groupHandles)) {
+            $groups = [];
+
+            foreach ($groupHandles as $handle) {
+                $group = Craft::$app->getUserGroups()->getGroupByHandle((string)$handle);
+
+                if ($group !== null) {
+                    $groups[] = $group;
+                }
+            }
+
+            if (!empty($groups)) {
+                $user->setGroups($groups);
+                // Set a dummy id so PolicyResolverService::resolveForUser
+                // takes the per-group code path (it returns global when
+                // user has no groups, but our setGroups call is sufficient
+                // — id only matters if downstream code queries the DB).
+            }
+        }
+
         return $user;
+    }
+
+    /**
+     * Maps an internal validate-rule key to the front-end requirement key
+     * used in `data-pp-requirement="<key>"` markup.
+     *
+     * @param string $key the internal key
+     * @return string the client-facing key
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _clientKey(string $key): string
+    {
+        return match ($key) {
+            'minLength', 'maxLength' => 'length',
+            'characterTypes' => 'character-types',
+            'common' => 'blocklist',
+            default => $key,
+        };
     }
 }

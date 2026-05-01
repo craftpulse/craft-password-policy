@@ -191,6 +191,18 @@ class SettingsModel extends Model
      */
     public bool $enableHibpOnLogin = true;
 
+    /**
+     * @var bool whether the AJAX validate response should compute the
+     *     strength block via `bjeavons/zxcvbn-php` (Pro opt-in). Off by
+     *     default — the baseline rule-counting engine ships with the
+     *     plugin and runs without dependencies. Enabling this adds ~200KB
+     *     of bundled dictionaries but produces materially better strength
+     *     UX and per-password suggestions.
+     *
+     * @since 5.2.0
+     */
+    public bool $useZxcvbnStrength = false;
+
     // Public Properties — Enterprise
     // =========================================================================
 
@@ -400,6 +412,7 @@ class SettingsModel extends Model
                     'checkCommonPasswords',
                     'enablePerGroupPolicies',
                     'enableHibpOnLogin',
+                    'useZxcvbnStrength',
                     'enableAuditLog',
                     'enableNewDeviceAlerts',
                     'siemEnabled',
