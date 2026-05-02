@@ -51,6 +51,28 @@ class WebRequestStub extends Request
      */
     public bool $stubAcceptsJson = true;
 
+    /**
+     * Stub IP returned from `getUserIP()`. Lets `AuditContext::fromRequest()`
+     * round-trip a known value into the password-history row without
+     * standing up a real `$_SERVER['REMOTE_ADDR']` pin.
+     *
+     * @var string|null
+     *
+     * @since 5.2.0
+     */
+    public ?string $stubUserIp = '203.0.113.7';
+
+    /**
+     * Stub user-agent returned from `getUserAgent()`. Same rationale as
+     * `$stubUserIp` — lets audit-context tests assert without manipulating
+     * `$_SERVER['HTTP_USER_AGENT']`.
+     *
+     * @var string|null
+     *
+     * @since 5.2.0
+     */
+    public ?string $stubUserAgent = 'Pest/Test (audit-context)';
+
     // Public Methods
     // =========================================================================
 
@@ -188,6 +210,28 @@ class WebRequestStub extends Request
         }
 
         return $this->stubBodyParams[$name];
+    }
+
+    /**
+     * @inheritdoc
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getUserIP($ipHeaders = null): ?string
+    {
+        return $this->stubUserIp;
+    }
+
+    /**
+     * @inheritdoc
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getUserAgent(): ?string
+    {
+        return $this->stubUserAgent;
     }
 
     /**
