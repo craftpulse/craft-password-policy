@@ -11,7 +11,6 @@
 namespace craftpulse\passwordpolicy\twig\tags;
 
 use Craft;
-use craft\helpers\Html;
 use InvalidArgumentException;
 
 /**
