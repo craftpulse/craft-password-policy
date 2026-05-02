@@ -19,11 +19,8 @@ use craft\helpers\Db;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
 
-use GuzzleHttp\Exception\ClientException;
-use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Support\Collection;
 use Throwable;
-use yii\log\Logger;
 
 /**
  * Class PasswordService
@@ -34,43 +31,6 @@ use yii\log\Logger;
  */
 class PasswordService extends Component
 {
-    // Constants
-    // =========================================================================
-
-    public const HIBP_ENDPOINT = 'https://api.pwnedpasswords.com/range/';
-
-    /**
-     * Cache key used to suppress HIBP requests site-wide while the API is
-     * rate-limiting us. Set when a 429 response comes back; cleared by TTL
-     * (`Retry-After` header, or the default below if absent). Single fixed
-     * key so every caller checks the same sentinel.
-     *
-     * @var string
-     *
-     * @since 5.2.0
-     */
-    public const HIBP_BACKOFF_CACHE_KEY = 'pp:hibp-429-backoff';
-
-    /**
-     * Default backoff window when the 429 response carries no `Retry-After`
-     * header (or carries an unparseable value). Conservative — high enough
-     * to actually clear the rate-limit on HIBP's side, low enough that a
-     * transient throttle doesn't disable HIBP-on-login for an extended
-     * period.
-     *
-     * @var int seconds
-     *
-     * @since 5.2.0
-     */
-    public const HIBP_DEFAULT_BACKOFF_SECONDS = 60;
-
-    /**
-     * @var string
-     *
-     * @deprecated in 5.2.0. Use [[HIBP_ENDPOINT]] instead.
-     */
-    public const PWNED_ENDPOINT = self::HIBP_ENDPOINT;
-
     // Private Properties
     // =========================================================================
 
@@ -143,11 +103,13 @@ class PasswordService extends Component
      */
     public function hibp(#[\SensitiveParameter] string $password): ?bool
     {
+        $client = PasswordPolicy::$plugin->getHibpClient();
+
         // Site-wide backoff sentinel. If HIBP recently 429'd us, every caller
         // skips the network round-trip until the backoff expires. Without
         // this, a high-traffic install with HIBP-on-login enabled would
         // hammer the API while already rate-limited and risk an IP ban.
-        if ($this->isHibpBackoffActive()) {
+        if ($client->isBackoffActive()) {
             return null;
         }
 
@@ -155,51 +117,30 @@ class PasswordService extends Component
         $prefix = substr($hash, 0, 5);
         $suffix = substr($hash, 5);
 
-        $endpoint = self::HIBP_ENDPOINT . $prefix;
+        $body = $client->query($prefix);
 
-        try {
-            $client = Craft::createGuzzleClient([
-                'verify' => true,
-                'headers' => [
-                    'Add-Padding' => 'true',
-                ],
-            ]);
-            $response = $client->request('GET', $endpoint);
-            $passwords = Collection::make(explode("\r\n", $response->getBody()->getContents()));
-
-            $passwords = $passwords->map(fn($password) => strtok($password, ':'))
-                ->filter(function($password) use ($suffix) {
-                    if ($suffix === $password) {
-                        return true;
-                    }
-                });
-
-            return $passwords->isNotEmpty();
-        } catch (ClientException $exception) {
-            // 429 Too Many Requests — set the site-wide backoff sentinel and
-            // return null so every other caller for the next `Retry-After`
-            // window short-circuits before hitting the API.
-            $statusCode = $exception->getResponse()->getStatusCode();
-
-            if ($statusCode === 429) {
-                $this->_setHibpBackoff($exception);
-                return null;
-            }
-
-            PasswordPolicy::$plugin->log($exception->getMessage(), [], Logger::LEVEL_ERROR);
-            return null;
-        } catch (GuzzleException $exception) {
-            PasswordPolicy::$plugin->log($exception->getMessage(), [], Logger::LEVEL_ERROR);
+        if ($body === null) {
             return null;
         }
+
+        $passwords = Collection::make(explode("\r\n", $body));
+
+        $passwords = $passwords->map(fn($password) => strtok($password, ':'))
+            ->filter(function($password) use ($suffix) {
+                if ($suffix === $password) {
+                    return true;
+                }
+            });
+
+        return $passwords->isNotEmpty();
     }
 
     /**
      * Returns whether the site-wide HIBP backoff sentinel is currently set.
      *
-     * Callers can short-circuit before hitting the network when this returns
-     * true. The sentinel value is the literal string `'1'` — no user-derived
-     * material ever lands in the cache key or value.
+     * Thin proxy over [[HibpClientInterface::isBackoffActive()]] so the
+     * historical 5.2.0 public API remains stable across the client
+     * extraction. Prefer calling the client directly in new code.
      *
      * @return bool
      *
@@ -208,7 +149,7 @@ class PasswordService extends Component
      */
     public function isHibpBackoffActive(): bool
     {
-        return Craft::$app->getCache()->get(self::HIBP_BACKOFF_CACHE_KEY) !== false;
+        return PasswordPolicy::$plugin->getHibpClient()->isBackoffActive();
     }
 
     /**
@@ -279,68 +220,6 @@ class PasswordService extends Component
 
     // Private Methods
     // =========================================================================
-
-    /**
-     * Stores the HIBP 429 backoff sentinel in the cache with a TTL derived
-     * from the response's `Retry-After` header (seconds-form). Falls back to
-     * `HIBP_DEFAULT_BACKOFF_SECONDS` when the header is absent or unparseable.
-     *
-     * Logs once per backoff window at WARNING — every subsequent
-     * short-circuited caller during the window does NOT log. Privacy guard:
-     * the sentinel value is the literal `'1'` string, never user-derived
-     * material.
-     *
-     * @param ClientException $exception the 429 response
-     * @return void
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _setHibpBackoff(ClientException $exception): void
-    {
-        $retryAfter = $this->_parseRetryAfter($exception);
-
-        Craft::$app->getCache()->set(
-            self::HIBP_BACKOFF_CACHE_KEY,
-            '1',
-            $retryAfter,
-        );
-
-        Craft::warning(
-            "HIBP API returned 429; site-wide backoff active for {$retryAfter}s.",
-            'password-policy',
-        );
-    }
-
-    /**
-     * Extracts the `Retry-After` header value (seconds form) from a 429
-     * response. Returns `HIBP_DEFAULT_BACKOFF_SECONDS` when the header is
-     * absent, non-numeric, or in HTTP-date form (we don't parse dates here
-     * to keep the path simple — the default window is short enough to be
-     * safe regardless).
-     *
-     * @param ClientException $exception
-     * @return int seconds
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _parseRetryAfter(ClientException $exception): int
-    {
-        $headers = $exception->getResponse()->getHeader('Retry-After');
-
-        if (empty($headers)) {
-            return self::HIBP_DEFAULT_BACKOFF_SECONDS;
-        }
-
-        $value = trim($headers[0]);
-
-        if (!ctype_digit($value)) {
-            return self::HIBP_DEFAULT_BACKOFF_SECONDS;
-        }
-
-        return max(1, (int)$value);
-    }
 
     /**
      * Returns the collection of human-readable requirement messages.
