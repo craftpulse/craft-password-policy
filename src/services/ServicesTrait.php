@@ -32,6 +32,7 @@ use yii\base\InvalidConfigException;
  * @property RetentionService $retention
  * @property SecurityService $security
  * @property StrengthService $strength
+ * @property UserIndexService $userIndex
  * @property UserStateService $userState
  * @property VitePluginService $vite
  */
@@ -64,6 +65,7 @@ trait ServicesTrait
                 'retention' => RetentionService::class,
                 'security' => SecurityService::class,
                 'strength' => StrengthService::class,
+                'userIndex' => UserIndexService::class,
                 'userState' => UserStateService::class,
                 // Register the vite service
                 // @TODO devServerPublic / devServerInternal / serverPublic would benefit of `.env` vars for local dev
@@ -277,6 +279,21 @@ trait ServicesTrait
     public function getStrength(): StrengthService
     {
         return $this->get('strength');
+    }
+
+    /**
+     * Returns the user index service.
+     *
+     * @return UserIndexService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getUserIndex(): UserIndexService
+    {
+        return $this->get('userIndex');
     }
 
     /**
