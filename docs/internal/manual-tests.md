@@ -4,6 +4,131 @@ Test each scenario after installing the plugin on a fresh Craft CMS 5 site. Star
 
 **Legend:** PASS = verified, FAIL (fixed) = bug found and fixed, PENDING = not yet tested
 
+The "Active test pass" block below orchestrates the next manual run. Per-test status records in the per-phase sections that follow remain the source of truth for individual T-row outcomes.
+
+---
+
+## Active test pass — Phase C2 + Layer 4b + Bug Fix Sweep (2026-05-02)
+
+Coverage: P1.14 (RegistrationService), P1.13 (HIBP-on-login Pro), P1.12 (Pro front-end Twig surface), P1.12 Layer 4b (CP+front-end strength engine unification), and the 11 bug fixes from the post-review sweep (commits `322c18f` → `9691541`).
+
+Pre-flight commands and credentials live in `docs/internal/handover.md`. Demo templates live in the playground at `cms/templates/_demo/password-policy/`.
+
+### Pre-flight
+
+```bash
+ddev craft project-config/get plugins.password-policy.settings.edition  # → "pro"
+ddev describe | grep -i mailpit                                         # note URL
+git -C /Users/michtio/dev/craft-plugins/v5/craft-password-policy log --oneline -1
+```
+
+In CP settings: `showStrengthIndicator: ON`, `useZxcvbnStrength: OFF` initially, `cspNonce: OFF` initially.
+
+### Block 1 — Front-end demos (anonymous, then authenticated)
+
+Order matches the site-builder's recommended click-through (cross-references the per-feature T-rows in §11/§12/§13 below where a hit/miss should be recorded).
+
+**1.1 `/demo/password-policy`** — index renders, all 8 demo cards link cleanly.
+
+**1.2 `/demo/password-policy/anonymous-preview`** — covers T13.7-style data-accessor usage. JSON dump non-empty. `requirementsText()` summary populated. `groups: ['editors']` column diverges from "no groups" only when `enablePerGroupPolicies: true`; identical columns under the global-fallback path is also valid.
+
+**1.3 `/demo/password-policy/permutations`** — every flag combo renders. Eye toggle works on every variant with `toggleVisibility: true` regardless of `liveValidation` (Bug 3 verification — the asset bundle now auto-registers when any interactivity flag is on). Variants with `liveValidation: true` show real-time strength updates; variants without don't.
+
+**1.4 `/demo/password-policy/registration-minimal`** — no-JS baseline. Form submits to Craft's user registration POST target. `requirementList()` items are static.
+
+**1.5 `/demo/password-policy/registration`** — full widget. Type weak password → bar red, requirement items fail, submit gate disables. Type strong → bar green, items pass, submit enables. DevTools Network shows debounced ~250ms POSTs to `password-policy/validation/validate` with `{rules, strength, hibp}` response shape.
+
+- **Bug 4 verification**: type a custom-blocklisted word (set one via `/admin/password-policy/blocklist`, e.g. `acmecorp`) → bar red regardless of length/case. Toggle `useZxcvbnStrength: ON` in CP settings → retype the blocklisted word → bar STILL red (the engine-B blocklist propagation fix).
+
+**1.6 `/demo/password-policy/login` + `/login-styled`** — both POST to Craft `users/login`. Styled version applies `formAttrs`/`submitButtonAttrs`/per-field attrs (visible Tailwind classes).
+
+**1.7 `/demo/password-policy/password-reset`** — request form first. Submit `development@craftpulse.com` → Mailpit receives reset link. Click → lands on `?code=…&id=…` with set-password form. Submit new password → success.
+
+- **Bug 10 verification**: form's hidden input is `name="id"` (not `name="userUid"`). Inspect markup.
+
+**1.8 `/demo/password-policy/password-change`** — anonymous → 302 redirect to login demo. Logged in → form renders. Wrong current password → flash error. New password failing policy → flash error per failed rule. Valid → redirect to demo index.
+
+- **Bug 2 verification**: open second browser (or incognito), log in as same user before changing password from first browser. After change, refresh second browser → logged out.
+
+**1.9 Edition flip**
+
+```bash
+# Edit cms/config/project/project.yaml: set plugins.password-policy.settings.edition: lite
+# Bump dateModified at the top of project.yaml
+ddev craft up
+```
+
+Reload any demo → edition badge shows `LITE`. Builders still render (graceful global-resolution fallback). HIBP-on-login listener does not fire (silent; verify by absence of breach-detected email after a known-breached login attempt). Restore: edit project.yaml back to `pro`, bump dateModified, `ddev craft up`.
+
+### Block 2 — CP-side strength meter (Layer 4b unification, T13.12)
+
+**2.1 Admin account password change** — visit My Account → Password tab. Type passwords. DevTools Network shows POSTs to `validation/validate` (CP path). Bars update ~250ms debounce.
+
+- **Bug 4 CP-side**: type custom-blocklisted word → bars red.
+- Toggle `useZxcvbnStrength: ON` → response carries `score`, `crackTime`, `suggestions`. Bars use score for granularity.
+
+**2.2 Create new user form** — strength indicator attaches to password input. Indicator does NOT attach to email/username/current-password fields.
+
+**2.3 `showStrengthIndicator` master toggle** — OFF → indicator gone everywhere on CP. ON → indicator returns.
+
+**2.4 CSP nonce** — toggle `cspNonce: ON`. Reload password change page. View Source on `<script>` tag for `strengthIndicator-*.js` → confirm `nonce="..."` attribute. Toggle OFF when done.
+
+### Block 3 — HIBP-on-login (P1.13, Pro — T12.x)
+
+**3.1 Breach detection (T12.1)** — set editor user's password to `Password123!` via `ddev craft users/set-password editor@playground.dev --password='Password123!'` (this is in HIBP). Log in as `editor` at `/demo/password-policy/login`. After login: `passwordResetRequired = true` (verify via `ddev craft db/query "select passwordResetRequired from users where email='editor@playground.dev'"`). Mailpit receives `breach-detected` email.
+
+**3.2 Dedup cache (T12.2)** — log out, log back in within 24h with same password. No second email. `passwordResetRequired` already set, no second mutation.
+
+**3.3 Lite gate (T12.4)** — flip to Lite (Block 1.9 procedure). Log in with breached password → no detection, no email, no flag. Restore Pro.
+
+**3.4 HIBP API down (T12.3, optional)** — block `api.pwnedpasswords.com` via DDEV `/etc/hosts`. Log in → still succeeds, plugin log shows warning. Restore network.
+
+### Block 4 — Email notifications (P1.3 + P1.4 re-validation, T9.4–T9.9)
+
+**4.1 Notifications subnav** — `/admin/password-policy/notifications` lists `expiry-reminder` and `breach-detected` keys. Edit each → token picker chips work, click-to-copy fires CP notice toast. Test send → Mailpit receives.
+
+**4.2 Expiry reminder queue (T9.8)**
+
+```bash
+ddev craft project-config/set plugins.password-policy.settings.expiryAmount 5
+# Pick a user near expiry; adjust their lastPasswordChangeDate if needed
+ddev craft password-policy/notification/send-expiry-reminders --user=<id>
+ddev craft queue/run --verbose
+# Mailpit receives. Re-running deduplicates.
+ddev craft project-config/set plugins.password-policy.settings.expiryAmount '~'
+```
+
+### Block 5 — Bug-fix-specific verifications
+
+| Bug | Steps |
+|---|---|
+| **1** PasswordWidget null `submitGate` | `/demo/password-policy/permutations`. The "passwordWidget without submitGate" variant does NOT fatal. Markup renders. |
+| **5** BaseTag `__toString` doc | Open `src/twig/tags/BaseTag.php` — docblock says "always use `{{ tag.render() }}`. `{{ tag }}` will HTML-escape." (No claim it works directly.) |
+| **6** HIBP 429 backoff | Hard to test without a 429 simulator. Verification by code review of `PasswordService::isHibpBackoffActive()` short-circuit + `_setHibpBackoff()` cache-write path. Belt-and-braces test: temporarily seed `Craft::$app->getCache()->set('pp:hibp-429-backoff', '1', 60)` via a one-off route, attempt a login with a breached password — listener short-circuits (no Mailpit hit). |
+| **7** ValidationController context input | `curl -X POST 'https://plugin-playground-v5.ddev.site/actions/password-policy/validation/validate' -d 'password=foo&username=victim@example.com'` — response should NOT factor `victim@example.com` into the strength score (anonymous → context dropped). Toggle `useZxcvbnStrength: ON` and confirm score is identical with/without the username param. |
+| **9** dual variable handles | `craft.passwordPolicy.requirements()` and `craft.passwordpolicy.requirements()` both render in Twig. `dump()` each in a demo template. |
+| **10** `id()` vs `userUid()` | `/demo/password-policy/password-reset?code=...&id=...` — view source → `name="id"` not `name="userUid"`. |
+| **11** `pwned:` config-file alias | Drop `<?php return ['pwned' => true];` into `cms/config/password-policy.php`. Reload any plugin page. Plugin log (`storage/logs/password-policy-*.log`) shows deprecation warning AND `craft.app.plugins.getPlugin('password-policy').settings.hibp` evaluates `true`. Remove the file when done. |
+
+### Block 6 — Edition matrix
+
+Run **Block 1.5** (registration full widget) and **Block 2.1** (CP strength) under each:
+
+| Edition | Front-end builders | CP indicator | HIBP-on-login | Per-group |
+|---|---|---|---|---|
+| Lite | Work, global resolution | Engine A | Disabled | n/a |
+| Pro | Work, per-group | Engine A or B | Enabled | Yes |
+| Enterprise | Same as Pro | Same as Pro | Same as Pro + audit log entry | Yes |
+
+### Capturing failures
+
+For each failure: page URL, browser console error, Network tab response (if AJAX), Mailpit state if relevant, plugin log tail (`storage/logs/password-policy-*.log`), commit hash (`git rev-parse HEAD`).
+
+### Branch state for this pass
+
+- `5.x` — 23 commits ahead of `origin/5.x`. Phase C2 + Layer 4b + 7 bug fixes + 8 docs commits. Not pushed.
+- `5.1.x` — 3 commits ahead of tag `5.1.1`. TLS verify, fail-open log level, sensitive-key strip backports. Not pushed, not tagged.
+
 ---
 
 ## Phase 0 — Edition Infrastructure (alpha.1)
