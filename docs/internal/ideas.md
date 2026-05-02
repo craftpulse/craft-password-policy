@@ -89,3 +89,49 @@ Brainstorming notes from the v5.2.0 build sessions. Not committed to any of thes
 **Edition:** test infrastructure is cross-edition. Specific tests gate on edition-relevant features. Pairs with P2.5 (general test scaffold) — adversarial tests are an extension once Pest is wired up.
 
 **Status:** parked. Add to roadmap once P2.5 lands.
+
+---
+
+## Validator Unicode-awareness gaps (5.2.x cleanup candidates)
+
+**Date:** 2026-05-02
+**Context:** Phase E2 codified two validator behaviors that are technically correct against the current regex but fail the spirit of the rule for non-ASCII users. Captured here so future cleanup is intentional, not silent.
+
+**Gap 1 — `RepeatedCharsValidator` matches at the byte level, not the code-point level.**
+- Regex is `(.)\1{2,}` without the `/u` modifier — matches identical bytes, not identical Unicode characters.
+- `ααα` (three Greek alphas, U+03B1 — two-byte UTF-8 with alternating bytes) sails through. `aaa` rejects.
+- Non-ASCII repeats currently bypass the rule entirely.
+- Fix would be a single-character change: add the `/u` modifier to the regex. Verify with a passing-then-failing Pest test pair (the codified test in `RepeatedCharsValidatorTest` expects current behavior — flip the assertion when the fix lands).
+
+**Gap 2 — `MinimumCharacterTypesValidator` symbol class is `[^a-zA-Z0-9]`, not Unicode-aware.**
+- `é` matches the negated-class regex and counts as a "symbol" alongside `!@#$`.
+- A user typing `password123é` could pass a "needs at least one symbol" requirement when they typed an accented letter, not a symbol.
+- Affects every locale where users naturally type accented or non-Latin alphabets.
+- Fix would route through Unicode property escapes (`\p{L}`, `\p{N}`, `\p{P}`, `\p{S}`) instead of ASCII-locked classes. Bigger change than gap 1 — needs to define what "symbol" means when the alphabet itself is Unicode (probably "any character not in `\p{L}` ∪ `\p{N}` ∪ `\p{Z}`").
+
+**Edition / framing:** Both are 5.2.x cleanup work, not a v5.3 deferral. They're product-quality polish on Lite-tier validators that already ship — fixing them doesn't change the edition matrix, doesn't add features, just makes the existing rules behave correctly for non-ASCII users. Pairs with the broader "validator hardening" theme. Land in a 5.2.x patch release alongside related polish, not as standalone fixes.
+
+**Test impact:** Two Pest tests in `tests/Integration/Validators/` codify the current (wrong) behavior. When the fix lands, flip those assertions. The tests themselves shouldn't be deleted — they document why the behavior changed.
+
+**Status:** parked as 5.2.x candidates. Worth a single combined commit when polish window opens.
+
+---
+
+## Audit log levels against security.md (5.2.x cleanup)
+
+**Date:** 2026-05-02
+**Context:** Phase E4's `GuzzleHibpClientTest` uncovered that `GuzzleHibpClient::query()` was logging non-2xx-non-429 errors at `Logger::LEVEL_ERROR`, contradicting `security.md` which prescribes `WARNING` for fail-open transient outages ("a single HIBP CDN burp shouldn't page someone"). Fixed inline as a one-off, but the root cause is broader: nobody has audited every `->log()` / `Craft::error()` / `Craft::warning()` call site in the plugin against security.md's level guidance.
+
+**The audit:** grep every `LEVEL_ERROR`, `LEVEL_WARNING`, `Craft::error`, `Craft::warning`, `$plugin->log` in `src/`, cross-reference against `security.md`'s level prescriptions per surface (HIBP, blocklist, validators, controllers, jobs). Anywhere they diverge, decide: is the code wrong (downgrade/upgrade the log level) or is the doc wrong (update security.md)? Capture the decision in the same commit as the fix.
+
+**What it'll likely surface:**
+- More HIBP-side ERROR-vs-WARNING divergences (the cohort of `query()` errors was just one).
+- Queue job failure logging — should batch failures be ERROR (each one) or WARNING (only when retry-budget exhausted)?
+- ValidationController failures — currently logs at the framework default; security.md doesn't prescribe a level. Probably leave unprescribed but add a row to security.md confirming.
+- Any "audit log" entries (Phase G) need their own level guidance — those are different from operational logs.
+
+**Why 5.2.x and not 5.3:** log-level adjustments are observability fixes, not features. Operators relying on alert thresholds tied to ERROR-level entries will see noise drop after the fix; not breaking, but worth landing as soon as there's a polish window. Same window as the validator Unicode fixes — both are quality polish on shipped behavior.
+
+**Test impact:** any existing test that asserts on log level (currently just `GuzzleHibpClientTest::it_returns_null_on_a_500_server_error_and_logs_at_warning`) gets flipped if the corresponding fix changes the level. Tests that don't assert on level are unaffected. Add level assertions where they'd guard against silent regressions in the audited surfaces.
+
+**Status:** parked as 5.2.x candidate. Pairs with the validator Unicode fixes — single combined polish PR.
