@@ -47,9 +47,14 @@ use craft\web\UrlManager;
 use craft\web\View;
 use craftpulse\passwordpolicy\assetbundles\passwordpolicy\PasswordPolicyAsset;
 use craftpulse\passwordpolicy\elements\actions\ForcePasswordReset;
+use craftpulse\passwordpolicy\elements\conditions\BreachedRecentlyConditionRule;
+use craftpulse\passwordpolicy\elements\conditions\LastChangeReasonConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\PasswordExpiredConditionRule;
+use craftpulse\passwordpolicy\elements\conditions\PasswordExpiringWithinConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\PasswordNeverChangedConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\PasswordResetRequiredConditionRule;
+use craftpulse\passwordpolicy\elements\conditions\PasswordStatusConditionRule;
+use craftpulse\passwordpolicy\elements\conditions\PolicyDriftConditionRule;
 use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\events\BreachDetectedEvent;
 use craftpulse\passwordpolicy\events\PasswordChangedEvent;
@@ -1273,10 +1278,17 @@ class PasswordPolicy extends Plugin
      */
     private function _registerUserIndexIntegration(): void
     {
-        // Condition rules for user filtering. D2.3 extends this list
-        // with the additional rules that pair with the table-attribute
-        // columns shipped in D2.1/D2.2; the gate-aware additions
-        // (BreachedRecently, PolicyDrift) live in that step.
+        // Condition rules for user filtering. The pre-D2 trio
+        // (Expired, ResetRequired, NeverChanged) covers the boolean
+        // axes; D2.3 adds parameterised + multi-select + drift rules
+        // alongside them. PolicyDriftConditionRule is gated on Pro +
+        // Craft Team-or-better at registration so a Lite or Solo
+        // install doesn't expose a rule that always returns zero
+        // matches. PasswordExpiredConditionRule and
+        // PasswordExpiringWithinConditionRule deliberately overlap —
+        // operators want the lightswitch ergonomic for "expired
+        // yes/no" plus the parameterised rule for "expiring within N
+        // days." Both are kept.
         Event::on(
             UserCondition::class,
             UserCondition::EVENT_REGISTER_CONDITION_RULES,
@@ -1284,6 +1296,17 @@ class PasswordPolicy extends Plugin
                 $event->conditionRules[] = PasswordExpiredConditionRule::class;
                 $event->conditionRules[] = PasswordResetRequiredConditionRule::class;
                 $event->conditionRules[] = PasswordNeverChangedConditionRule::class;
+                $event->conditionRules[] = PasswordExpiringWithinConditionRule::class;
+                $event->conditionRules[] = LastChangeReasonConditionRule::class;
+                $event->conditionRules[] = PasswordStatusConditionRule::class;
+
+                if ($this->getIsPro()) {
+                    $event->conditionRules[] = BreachedRecentlyConditionRule::class;
+
+                    if ($this->isCraftTeamOrBetter()) {
+                        $event->conditionRules[] = PolicyDriftConditionRule::class;
+                    }
+                }
             },
         );
 
