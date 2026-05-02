@@ -14,6 +14,7 @@ use Craft;
 use craft\db\Query;
 use craft\db\Table;
 use craft\helpers\StringHelper;
+use craftpulse\passwordpolicy\models\AuditContext;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\records\PasswordHistoryRecord;
 use yii\base\Component;
@@ -111,8 +112,20 @@ class PasswordHistoryService extends Component
     /**
      * Stores a password hash in the history table and prunes old entries.
      *
+     * The `$context` parameter records audit-trail metadata — who made
+     * the change, over which transport, against which policy snapshot.
+     * Capture is non-negotiable across editions; gates apply to UI / API
+     * exposure of the captured rows downstream, never to the write path
+     * (memory rule `project_audit_capture_principle.md`). Defaults to a
+     * self-service context if not supplied — Phase D1 walks every call
+     * site to thread the appropriate context through; D0 only updates
+     * the migration-seed call site as the proof-of-shape.
+     *
      * @param int $userId
      * @param string $passwordHash
+     * @param AuditContext|null $context audit metadata; defaults to
+     *     `AuditContext::selfService()` for safe fallback at any unaudited
+     *     call site
      * @return void
      *
      * @throws Exception
@@ -120,13 +133,19 @@ class PasswordHistoryService extends Component
      * @author CraftPulse
      * @since 5.2.0
      */
-    public function savePasswordHash(int $userId, string $passwordHash): void
+    public function savePasswordHash(int $userId, string $passwordHash, ?AuditContext $context = null): void
     {
         $settings = PasswordPolicy::$plugin->getSettings();
+        $context ??= AuditContext::selfService();
 
         $record = new PasswordHistoryRecord();
         $record->userId = $userId;
+        $record->changedByUserId = $context->changedByUserId;
         $record->passwordHash = $passwordHash;
+        $record->changeReason = $context->reason->value;
+        $record->changeSourceIp = $context->sourceIp;
+        $record->changeUserAgent = $context->userAgent;
+        $record->policySnapshot = $context->policySnapshot;
         $record->dateCreated = \Carbon\Carbon::now('UTC');
         $record->uid = StringHelper::UUID();
         $record->save(false);

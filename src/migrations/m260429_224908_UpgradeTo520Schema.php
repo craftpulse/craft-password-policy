@@ -15,6 +15,7 @@ use craft\db\Migration;
 use craft\db\Query;
 use craft\db\Table;
 use craft\helpers\StringHelper;
+use craftpulse\passwordpolicy\enums\ChangeReason;
 use yii\db\Exception;
 
 /**
@@ -88,6 +89,10 @@ class m260429_224908_UpgradeTo520Schema extends Migration
      * Suppresses Yii query logging/profiling during the seed so bcrypt
      * hashes never appear in debug-mode logs.
      *
+     * Each seeded row gets `changeReason = ChangeReason::MigrationSeed`
+     * so Phase G audit-log queries can distinguish migration-seeded rows
+     * from real user-/admin-driven changes after upgrade.
+     *
      * @return void
      *
      * @throws Exception
@@ -123,6 +128,13 @@ class m260429_224908_UpgradeTo520Schema extends Migration
             $rows = [];
             $now = (new \DateTime())->format('Y-m-d H:i:s');
 
+            // Migration-seed rows record `ChangeReason::MigrationSeed` so
+            // Phase G audit-log queries can distinguish "the upgrade
+            // migration filled this in" from "a user/admin actively
+            // changed their password." No `changedByUserId` / IP / UA —
+            // the migration is the operator, not a human.
+            $reason = ChangeReason::MigrationSeed->value;
+
             foreach ($users as $user) {
                 if (empty($user['password'])) {
                     continue;
@@ -131,6 +143,7 @@ class m260429_224908_UpgradeTo520Schema extends Migration
                 $rows[] = [
                     $user['id'],
                     $user['password'],
+                    $reason,
                     $now,
                     StringHelper::UUID(),
                 ];
@@ -139,7 +152,7 @@ class m260429_224908_UpgradeTo520Schema extends Migration
             if (!empty($rows)) {
                 $this->batchInsert(
                     '{{%passwordpolicy_password_history}}',
-                    ['userId', 'passwordHash', 'dateCreated', 'uid'],
+                    ['userId', 'passwordHash', 'changeReason', 'dateCreated', 'uid'],
                     $rows,
                 );
             }
