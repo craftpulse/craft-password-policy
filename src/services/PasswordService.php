@@ -112,6 +112,10 @@ class PasswordService extends Component
                 'headers' => [
                     'Add-Padding' => 'true',
                 ],
+                // Force TLS verification on HIBP requests regardless of any
+                // site-level config/guzzle.php override. The Pwned Passwords
+                // API is only meaningful over a verified TLS channel.
+                'verify' => true,
             ]);
             $response = $client->request('GET', $endpoint);
             $passwords = Collection::make(explode("\r\n", $response->getBody()->getContents()));
