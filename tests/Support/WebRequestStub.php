@@ -80,6 +80,46 @@ class WebRequestStub extends Request
 
     /**
      * @inheritdoc
+     */
+    public function getIsCpRequest(): bool
+    {
+        return false;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getIsSiteRequest(): bool
+    {
+        return true;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getIsLivePreview(): bool
+    {
+        return false;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getIsPreview(): bool
+    {
+        return false;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function hasValidSiteToken(): bool
+    {
+        return false;
+    }
+
+    /**
+     * @inheritdoc
      *
      * @author CraftPulse
      * @since 5.2.0
