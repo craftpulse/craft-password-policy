@@ -34,6 +34,7 @@
 
 use craft\db\Query;
 use craft\db\Table as CraftTable;
+use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 use craftpulse\passwordpolicy\tests\Support\MigrationTestCase;
@@ -106,7 +107,7 @@ function readPluginProjectConfig(): array
 // T1.2 — upgrade migration seeds password history
 // =============================================================================
 
-it('creates all seven plugin tables when migrating from 5.1.1', function() {
+it('creates all eight plugin tables when migrating from 5.1.1', function() {
     expect(Craft::$app->getDb()->tableExists('{{%passwordpolicy_password_history}}'))->toBeFalse();
 
     runPendingPluginMigrations();
@@ -119,6 +120,7 @@ it('creates all seven plugin tables when migrating from 5.1.1', function() {
         '{{%passwordpolicy_password_history}}',
         '{{%passwordpolicy_policies}}',
         '{{%passwordpolicy_policy_groups}}',
+        '{{%passwordpolicy_user_state}}',
     ];
 
     foreach ($expected as $table) {
@@ -378,9 +380,149 @@ it('records every applied migration in the history table under the plugin track'
         'm260430_101611_AddPolicyIdToBlocklist',
         'm260430_170841_AddNotificationTemplatesTable',
         'm260501_140131_AddBreachDetectedNotificationDefaults',
+        'm260502_214932_AddAuditShapeToPasswordHistory',
     ];
 
     foreach ($expected as $name) {
         expect($history)->toContain($name);
     }
+});
+
+// =============================================================================
+// D0 — audit shape migration (m260502_214932_AddAuditShapeToPasswordHistory)
+// =============================================================================
+
+it('adds the five audit columns to password_history during upgrade', function() {
+    runPendingPluginMigrations();
+
+    $columns = Craft::$app->getDb()->getSchema()
+        ->getTableSchema('{{%passwordpolicy_password_history}}', true)
+        ->columns;
+
+    expect($columns)->toHaveKeys([
+        'changedByUserId',
+        'changeReason',
+        'changeSourceIp',
+        'changeUserAgent',
+        'policySnapshot',
+    ]);
+
+    // changedByUserId is nullable so audit attribution is optional —
+    // CLI runs and migration seeds have no acting admin.
+    expect($columns['changedByUserId']->allowNull)->toBeTrue();
+
+    // changeReason carries every enum case; the column type is the
+    // canonical place to surface the closed list.
+    expect($columns['changeReason']->dbType)
+        ->toContain('self_service')
+        ->toContain('admin_change')
+        ->toContain('admin_force_reset')
+        ->toContain('first_login_forced')
+        ->toContain('expiry_forced')
+        ->toContain('breach_forced')
+        ->toContain('cli')
+        ->toContain('migration_seed');
+
+    // The default fires on writes that don't explicitly set the column —
+    // belt-and-braces against any future call site that bypasses the
+    // service layer.
+    expect($columns['changeReason']->defaultValue)->toBe('self_service');
+});
+
+it('creates the user_state table during upgrade', function() {
+    runPendingPluginMigrations();
+
+    $schema = Craft::$app->getDb()->getSchema()->getTableSchema('{{%passwordpolicy_user_state}}', true);
+
+    expect($schema)->not->toBeNull();
+
+    $columns = $schema->columns;
+
+    expect($columns)->toHaveKeys([
+        'userId',
+        'pendingResetReason',
+        'pendingResetSetAt',
+        'lastBreachDetectedAt',
+        'lastBreachCheckAt',
+        'dateCreated',
+        'dateUpdated',
+        'uid',
+    ]);
+
+    // userId is the primary key — every user gets at most one state row.
+    expect($schema->primaryKey)->toBe(['userId']);
+
+    // pendingResetReason is nullable (null = no pending reset) and has no
+    // default — the absence of a value is meaningful, not a missing flag.
+    expect($columns['pendingResetReason']->allowNull)->toBeTrue()
+        ->and($columns['pendingResetReason']->defaultValue)->toBeNull();
+});
+
+it('seeds password history with changeReason = migration_seed during upgrade', function() {
+    runPendingPluginMigrations();
+
+    $reasons = (new Query())
+        ->select(['changeReason'])
+        ->from('{{%passwordpolicy_password_history}}')
+        ->column();
+
+    // Every seeded row carries the migration_seed marker so Phase G
+    // audit queries can distinguish migration-seeded rows from real
+    // user/admin changes after upgrade.
+    expect($reasons)->not->toBeEmpty()
+        ->and($reasons)->each->toBe(ChangeReason::MigrationSeed->value);
+});
+
+it('leaves changedByUserId null on migration-seeded password history rows', function() {
+    runPendingPluginMigrations();
+
+    $changedByValues = (new Query())
+        ->select(['changedByUserId'])
+        ->from('{{%passwordpolicy_password_history}}')
+        ->column();
+
+    // Migration is the operator, not a human — every seeded row leaves
+    // changedByUserId null. Synthesizing an admin identity here would
+    // break Phase G hash-chain audit semantics.
+    expect($changedByValues)->each->toBeNull();
+});
+
+it('configures the changedByUserId FK as SET NULL on delete', function() {
+    runPendingPluginMigrations();
+
+    $rule = (new Query())
+        ->select(['DELETE_RULE'])
+        ->from('information_schema.REFERENTIAL_CONSTRAINTS rc')
+        ->innerJoin(
+            'information_schema.KEY_COLUMN_USAGE kcu',
+            'rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME AND rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA',
+        )
+        ->where([
+            'rc.CONSTRAINT_SCHEMA' => Craft::$app->getDb()->createCommand('SELECT DATABASE()')->queryScalar(),
+            'kcu.TABLE_NAME' => Craft::$app->getDb()->getSchema()->getRawTableName('{{%passwordpolicy_password_history}}'),
+            'kcu.COLUMN_NAME' => 'changedByUserId',
+        ])
+        ->scalar();
+
+    expect($rule)->toBe('SET NULL');
+});
+
+it('configures the user_state.userId FK as CASCADE on delete', function() {
+    runPendingPluginMigrations();
+
+    $rule = (new Query())
+        ->select(['DELETE_RULE'])
+        ->from('information_schema.REFERENTIAL_CONSTRAINTS rc')
+        ->innerJoin(
+            'information_schema.KEY_COLUMN_USAGE kcu',
+            'rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME AND rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA',
+        )
+        ->where([
+            'rc.CONSTRAINT_SCHEMA' => Craft::$app->getDb()->createCommand('SELECT DATABASE()')->queryScalar(),
+            'kcu.TABLE_NAME' => Craft::$app->getDb()->getSchema()->getRawTableName('{{%passwordpolicy_user_state}}'),
+            'kcu.COLUMN_NAME' => 'userId',
+        ])
+        ->scalar();
+
+    expect($rule)->toBe('CASCADE');
 });
