@@ -89,6 +89,20 @@ class PasswordPolicy extends Plugin
      */
     public ?object $queue = null;
 
+    /**
+     * Sensitive keys that must never appear in log output. Stripped from
+     * `$params` in {@see self::log()} before encoding.
+     *
+     * @var string[]
+     */
+    private const SENSITIVE_LOG_KEYS = [
+        'password',
+        'newPassword',
+        'plaintext',
+        'hash',
+        'passwordHash',
+    ];
+
     // Public Methods
     // =========================================================================
 
@@ -145,6 +159,12 @@ class PasswordPolicy extends Plugin
      */
     public function log(string $message, array $params = [], int $type = Logger::LEVEL_INFO): void
     {
+        // Strip sensitive keys before any logging occurs. Defense-in-depth
+        // for any consumer (or future plugin code) that calls log() with
+        // password-bearing params — keys listed in SENSITIVE_LOG_KEYS never
+        // reach the log destination.
+        $params = array_diff_key($params, array_flip(self::SENSITIVE_LOG_KEYS));
+
         /** @var User|null $user */
         $user = Craft::$app->getUser()->getIdentity();
 
