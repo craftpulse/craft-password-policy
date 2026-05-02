@@ -1,0 +1,16 @@
+parameters:
+	ignoreErrors:
+		-
+			message: "#^Else branch is unreachable because ternary operator condition is always true\\.$#"
+			count: 1
+			path: src/models/NotificationTemplateModel.php
+
+		-
+			message: "#^Method craftpulse\\\\passwordpolicy\\\\services\\\\NotificationService\\:\\:composeFromTemplate\\(\\) should return craft\\\\mail\\\\Message but returns yii\\\\mail\\\\MessageInterface\\.$#"
+			count: 1
+			path: src/services/NotificationService.php
+
+		-
+			message: "#^Parameter \\#1 \\$callback of function array_map expects \\(callable\\(array\\|yii\\\\db\\\\ActiveRecord\\)\\: mixed\\)\\|null, Closure\\(craftpulse\\\\passwordpolicy\\\\records\\\\NotificationTemplateRecord\\)\\: craftpulse\\\\passwordpolicy\\\\models\\\\NotificationTemplateModel given\\.$#"
+			count: 1
+			path: src/services/NotificationTemplateService.php

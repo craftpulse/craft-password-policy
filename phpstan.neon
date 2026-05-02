@@ -1,7 +1,23 @@
 includes:
     - %currentWorkingDirectory%/vendor/craftcms/phpstan/phpstan.neon
+    - phpstan-baseline.neon
 
 parameters:
     level: 5
     paths:
         - src
+        - tests
+    excludePaths:
+        # Test fixtures: Craft project skeleton with config files that PHPStan
+        # would otherwise try to analyse against the plugin's `src/` rules.
+        # Loaded by the bootstrap, never directly executed at test time.
+        - tests/_craft/*
+    ignoreErrors:
+        # Pest's `$this->property` magic — `beforeEach()` stores fixture state
+        # on `Pest\PendingCalls\TestCall` and `it()` closures retrieve it the
+        # same way. PHPStan can't resolve the magic property since Pest doesn't
+        # ship a static-analysis extension; ignore the access pattern in
+        # tests/ where Pest owns the property lifecycle.
+        -
+            message: '#Access to an undefined property Pest\\PendingCalls\\TestCall::\$#'
+            path: tests/*

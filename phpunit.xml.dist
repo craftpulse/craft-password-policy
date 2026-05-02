@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.5/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         failOnRisky="true"
+         failOnWarning="true">
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>src</directory>
+        </include>
+    </source>
+    <php>
+        <!--
+            Test database connection. DDEV ships every project with a `db_test`
+            database alongside `db`; the test bootstrap reads these env vars to
+            isolate test state from the playground's primary DB. Override
+            CRAFT_DB_DATABASE locally if running outside DDEV.
+        -->
+        <env name="CRAFT_ENVIRONMENT" value="test" force="true"/>
+        <env name="CRAFT_APP_ID" value="CraftCMS--password-policy-test" force="true"/>
+        <env name="CRAFT_DEV_MODE" value="true" force="true"/>
+        <env name="CRAFT_ALLOW_ADMIN_CHANGES" value="true" force="true"/>
+        <env name="CRAFT_SECURITY_KEY" value="test-key-do-not-use-in-production-ever-zZ9" force="true"/>
+        <env name="CRAFT_DB_DRIVER" value="mysql" force="false"/>
+        <env name="CRAFT_DB_SERVER" value="db" force="false"/>
+        <env name="CRAFT_DB_PORT" value="3306" force="false"/>
+        <env name="CRAFT_DB_DATABASE" value="db_test" force="false"/>
+        <env name="CRAFT_DB_USER" value="db" force="false"/>
+        <env name="CRAFT_DB_PASSWORD" value="db" force="false"/>
+        <env name="CRAFT_DB_TABLE_PREFIX" value="" force="false"/>
+        <env name="CRAFT_DB_SCHEMA" value="public" force="false"/>
+        <env name="PRIMARY_SITE_URL" value="https://test.craftcms.test/" force="true"/>
+    </php>
+</phpunit>

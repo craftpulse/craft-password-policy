@@ -6,7 +6,7 @@ it('configures NIST 800-63B preset correctly', function() {
     $policy = PolicyPreset::NIST_800_63B->toGroupPolicy();
 
     expect($policy->minLength)->toBe(8)
-        ->and($policy->pwned)->toBeTrue()
+        ->and($policy->hibp)->toBeTrue()
         ->and($policy->cases)->toBeFalse()
         ->and($policy->numbers)->toBeFalse()
         ->and($policy->symbols)->toBeFalse()
@@ -18,7 +18,7 @@ it('configures OWASP ASVS preset correctly', function() {
 
     expect($policy->minLength)->toBe(12)
         ->and($policy->maxLength)->toBe(128)
-        ->and($policy->pwned)->toBeTrue()
+        ->and($policy->hibp)->toBeTrue()
         ->and($policy->cases)->toBeFalse()
         ->and($policy->expiryAmount)->toBeNull();
 });
@@ -30,7 +30,7 @@ it('configures Strict Enterprise preset correctly', function() {
         ->and($policy->cases)->toBeTrue()
         ->and($policy->numbers)->toBeTrue()
         ->and($policy->symbols)->toBeTrue()
-        ->and($policy->pwned)->toBeTrue()
+        ->and($policy->hibp)->toBeTrue()
         ->and($policy->passwordHistoryCount)->toBe(5)
         ->and($policy->checkSequentialChars)->toBeTrue()
         ->and($policy->checkRepeatedChars)->toBeTrue()
@@ -46,7 +46,7 @@ it('configures PCI-DSS v4.0 preset correctly', function() {
     expect($policy->minLength)->toBe(12)
         ->and($policy->cases)->toBeTrue()
         ->and($policy->numbers)->toBeTrue()
-        ->and($policy->pwned)->toBeTrue()
+        ->and($policy->hibp)->toBeTrue()
         ->and($policy->passwordHistoryCount)->toBe(4)
         ->and($policy->checkCommonPasswords)->toBeTrue()
         ->and($policy->expiryAmount)->toBe(90)

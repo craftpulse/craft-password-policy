@@ -64,7 +64,12 @@
         "phpstan": "phpstan --ansi --memory-limit=1G",
         "check-cs": "ecs check --ansi",
         "fix-cs": "ecs check --fix --ansi",
-        "test": "pest --colors=always"
+        "pest": "pest --colors=always",
+        "test": [
+            "@check-cs",
+            "@phpstan",
+            "@pest"
+        ]
     },
     "config": {
         "allow-plugins": {
