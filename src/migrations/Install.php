@@ -11,12 +11,14 @@
 namespace craftpulse\passwordpolicy\migrations;
 
 use Craft;
+use craft\db\Connection;
 use craft\db\Migration;
 use craft\db\Query;
 use craft\db\Table;
 use craft\helpers\Json;
 use craft\helpers\StringHelper;
 use craftpulse\passwordpolicy\data\EmailDefaults;
+use craftpulse\passwordpolicy\enums\ChangeReason;
 
 /**
  * Class Install
@@ -44,6 +46,7 @@ class Install extends Migration
         $this->_createPolicyGroupsTable();
         $this->_createBlocklistTable();
         $this->_createNotificationTemplatesTable();
+        $this->_createUserStateTable();
         $this->_seedNotificationTemplateDefaults();
 
         return true;
@@ -56,6 +59,7 @@ class Install extends Migration
      */
     public function safeDown(): bool
     {
+        $this->dropTableIfExists('{{%passwordpolicy_user_state}}');
         $this->dropTableIfExists('{{%passwordpolicy_notification_templates}}');
         $this->dropTableIfExists('{{%passwordpolicy_blocklist}}');
         $this->dropTableIfExists('{{%passwordpolicy_policy_groups}}');
@@ -87,13 +91,24 @@ class Install extends Migration
         $this->createTable('{{%passwordpolicy_password_history}}', [
             'id' => $this->primaryKey(),
             'userId' => $this->integer()->notNull(),
+            'changedByUserId' => $this->integer()->null(),
             'passwordHash' => $this->string()->notNull(),
+            'changeReason' => $this->_changeReasonColumnType(
+                columnName: 'changeReason',
+                notNull: true,
+                defaultValue: ChangeReason::SelfService->value,
+            ),
+            'changeSourceIp' => $this->string(45)->null(),
+            'changeUserAgent' => $this->text()->null(),
+            'policySnapshot' => $this->string(64)->null(),
             'dateCreated' => $this->dateTime()->notNull(),
             'uid' => $this->uid(),
         ]);
 
         $this->createIndex(null, '{{%passwordpolicy_password_history}}', ['userId', 'dateCreated'], false);
+        $this->createIndex(null, '{{%passwordpolicy_password_history}}', ['changedByUserId'], false);
         $this->addForeignKey(null, '{{%passwordpolicy_password_history}}', ['userId'], Table::USERS, ['id'], 'CASCADE', null);
+        $this->addForeignKey(null, '{{%passwordpolicy_password_history}}', ['changedByUserId'], Table::USERS, ['id'], 'SET NULL', null);
     }
 
     /**
@@ -297,6 +312,103 @@ class Install extends Migration
             'CASCADE',
             null,
         );
+    }
+
+    /**
+     * Creates the per-user state table tracking pending-reset reasons +
+     * breach-detection state. One sparsely-populated row per user; FK
+     * CASCADE on userId so the row is removed when the user is deleted.
+     *
+     * The `pendingResetReason` column uses the same cross-DB-safe column
+     * type as `passwordpolicy_password_history.changeReason` (MySQL
+     * `ENUM`, PostgreSQL `VARCHAR + CHECK`, SQLite plain `VARCHAR`) — but
+     * nullable with no default, so `NULL` means "no pending reset."
+     *
+     * Capture across editions, gate exposure (memory rule
+     * `project_audit_capture_principle.md`).
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _createUserStateTable(): void
+    {
+        if ($this->db->tableExists('{{%passwordpolicy_user_state}}')) {
+            return;
+        }
+
+        $this->createTable('{{%passwordpolicy_user_state}}', [
+            'userId' => $this->integer()->notNull(),
+            'pendingResetReason' => $this->_changeReasonColumnType(
+                columnName: 'pendingResetReason',
+                notNull: false,
+                defaultValue: null,
+            ),
+            'pendingResetSetAt' => $this->dateTime()->null(),
+            'lastBreachDetectedAt' => $this->dateTime()->null(),
+            'lastBreachCheckAt' => $this->dateTime()->null(),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid' => $this->uid(),
+            'PRIMARY KEY([[userId]])',
+        ]);
+
+        $this->addForeignKey(
+            null,
+            '{{%passwordpolicy_user_state}}',
+            ['userId'],
+            Table::USERS,
+            ['id'],
+            'CASCADE',
+            null,
+        );
+    }
+
+    /**
+     * Returns the cross-DB column-type clause for `changeReason`-shaped
+     * columns. Single source of truth = the PHP `ChangeReason` enum.
+     * Mirrors {@see m260502_214932_AddAuditShapeToPasswordHistory}'s
+     * private helper of the same name — kept in both places so fresh
+     * installs and upgrade-from-5.1.1 sites land on identical column
+     * types without depending on each other.
+     *
+     * Adding a new enum case requires a follow-up migration that runs
+     * `ALTER TABLE ... MODIFY changeReason ENUM(...)` (MySQL) or drops
+     * and recreates the CHECK constraint (PostgreSQL) with the extended
+     * value list — and a sync update to this private helper if Install
+     * is ever the only path that builds the schema.
+     *
+     * @param string $columnName used in the PostgreSQL CHECK clause; the
+     *     same function is reused for `changeReason` and
+     *     `pendingResetReason` columns
+     * @param bool $notNull when true, the clause adds `NOT NULL`
+     * @param string|null $defaultValue when set, adds `DEFAULT '...'`
+     * @return string raw column-type clause
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _changeReasonColumnType(string $columnName, bool $notNull, ?string $defaultValue): string
+    {
+        $values = ChangeReason::values();
+        $valuesQuoted = "'" . implode("','", $values) . "'";
+
+        $nullClause = $notNull ? ' NOT NULL' : ' NULL';
+        $defaultClause = $defaultValue !== null
+            ? " DEFAULT '{$defaultValue}'"
+            : '';
+
+        if ($this->db->getDriverName() === Connection::DRIVER_MYSQL) {
+            return "ENUM({$valuesQuoted}){$nullClause}{$defaultClause}";
+        }
+
+        if ($this->db->getDriverName() === Connection::DRIVER_PGSQL) {
+            return "VARCHAR(32){$nullClause}{$defaultClause} CHECK (\"{$columnName}\" IN ({$valuesQuoted}))";
+        }
+
+        // SQLite / fallback — no constraint, application layer enforces.
+        return "VARCHAR(32){$nullClause}{$defaultClause}";
     }
 
     /**
