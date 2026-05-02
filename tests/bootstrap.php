@@ -41,6 +41,38 @@ use craftpulse\passwordpolicy\PasswordPolicy;
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 // =============================================================================
+// DB env-var pinning
+//
+// DDEV exports `CRAFT_DB_DATABASE=db` (the playground's primary schema) into
+// the container shell. PHPUnit's `<env force="true"/>` calls `putenv()` and
+// sets `$_ENV` — but it does NOT overwrite `$_SERVER`, which DDEV populated
+// at process start. `craft\helpers\App::env()` checks `$_SERVER` BEFORE
+// `getenv()`, so a force-set env var still loses to the DDEV-injected
+// `$_SERVER` value. Pin the test-DB credentials here before any Craft code
+// runs, so every downstream `App::env()` call resolves against `db_test`.
+//
+// Without this, Integration tests that touch the DB hit the playground's
+// production schema — DESTRUCTIVE.
+// =============================================================================
+
+$dbEnvPins = [
+    'CRAFT_DB_DRIVER' => 'mysql',
+    'CRAFT_DB_SERVER' => 'db',
+    'CRAFT_DB_PORT' => '3306',
+    'CRAFT_DB_DATABASE' => 'db_test',
+    'CRAFT_DB_USER' => 'db',
+    'CRAFT_DB_PASSWORD' => 'db',
+    'CRAFT_DB_TABLE_PREFIX' => '',
+    'CRAFT_DB_SCHEMA' => 'public',
+];
+
+foreach ($dbEnvPins as $envKey => $envValue) {
+    $_SERVER[$envKey] = $envValue;
+    $_ENV[$envKey] = $envValue;
+    putenv("{$envKey}={$envValue}");
+}
+
+// =============================================================================
 // Path constants — mirror what TestSetup::configureCraft() expects so any
 // Craft internals that reference them keep working
 // =============================================================================
