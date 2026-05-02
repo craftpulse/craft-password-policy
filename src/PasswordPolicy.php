@@ -45,8 +45,10 @@ use craftpulse\passwordpolicy\elements\actions\ForcePasswordReset;
 use craftpulse\passwordpolicy\elements\conditions\PasswordExpiredConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\PasswordNeverChangedConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\PasswordResetRequiredConditionRule;
+use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\events\BreachDetectedEvent;
 use craftpulse\passwordpolicy\events\PasswordChangedEvent;
+use craftpulse\passwordpolicy\models\AuditContext;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
 use craftpulse\passwordpolicy\services\ServicesTrait;
@@ -720,11 +722,21 @@ class PasswordPolicy extends Plugin
                     $plaintext = $this->getPasswordHistory()->getAndClearCache($fallbackKey);
                 }
 
+                // Resolve the audit context once. Pending-reason consume is
+                // load-bearing for indirect change triggers (HIBP, force-
+                // reset, expiry, first-login) — those triggers set
+                // `passwordResetRequired = true` + a pending reason; THIS
+                // save is the user actually completing that reset, so the
+                // pending reason becomes the history row's `changeReason`.
+                // No pending reason means a normal flow — fall back to
+                // request-derived self-service (web) or CLI (console).
+                $context = $plaintext !== null ? $this->_resolveAuditContext($user) : null;
+
                 // Store password hash in history if Pro and history enabled
-                if ($plaintext !== null && $this->getIsPro() && $settings->passwordHistoryCount > 0) {
+                if ($context !== null && $this->getIsPro() && $settings->passwordHistoryCount > 0) {
                     try {
                         $hash = Craft::$app->getSecurity()->hashPassword($plaintext);
-                        $this->getPasswordHistory()->savePasswordHash($user->id, $hash);
+                        $this->getPasswordHistory()->savePasswordHash($user->id, $hash, $context);
                     } catch (Throwable $e) {
                         Craft::error(
                             'Failed to save password history: ' . $e->getMessage(),
@@ -748,9 +760,19 @@ class PasswordPolicy extends Plugin
                             'isNew' => $event->isNew,
                         ]));
                     }
+
+                    // Consume the pending reason after a successful change.
+                    // No-op when no row exists. Idempotent.
+                    $this->getUserState()->clearPendingReason($user);
                 }
 
-                // Force change on first login for new users
+                // Force change on first login for new users. The current
+                // save persisted the operator-set initial password (admin
+                // creating a user, registration form, etc.); flipping
+                // `passwordResetRequired` here means the NEXT change is
+                // the user's forced reset — so we set
+                // `pendingResetReason = FirstLoginForced` so the next
+                // history row records the right cause.
                 if (
                     $event->isNew &&
                     $settings->forceChangeOnFirstLogin &&
@@ -760,6 +782,7 @@ class PasswordPolicy extends Plugin
                     try {
                         $user->passwordResetRequired = true;
                         Craft::$app->getElements()->saveElement($user, false);
+                        $this->getUserState()->setPendingReason($user, ChangeReason::FirstLoginForced);
                     } catch (Throwable $e) {
                         Craft::error(
                             'Failed to set passwordResetRequired: ' . $e->getMessage(),
@@ -771,6 +794,52 @@ class PasswordPolicy extends Plugin
                 }
             }
         );
+    }
+
+    /**
+     * Resolves the audit context for a password-change save inside the
+     * central history-write listener. Reads the user's `passwordpolicy_user_state`
+     * row — if a pending-reset reason is set, that wins (HIBP-on-login,
+     * admin force-reset, expiry, first-login propagate via this seam) and
+     * the request IP/UA are still attached so the history row tells the
+     * full operational story. With no pending reason, falls back to a
+     * self-service-from-request context for web, or a CLI context for
+     * console runs.
+     *
+     * Stays a private helper rather than a `UserStateService` method —
+     * the listener is the only place that does the consume-and-fall-back
+     * dance; pushing it into the service would obscure the seam.
+     *
+     * @param User $user
+     * @return AuditContext
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _resolveAuditContext(User $user): AuditContext
+    {
+        $state = $this->getUserState()->getStateForUser($user);
+
+        if ($state !== null && $state->pendingResetReason !== null) {
+            $reason = ChangeReason::tryFrom($state->pendingResetReason);
+
+            if ($reason !== null) {
+                // Pending-reason path. Pull IP/UA off the active request so
+                // the history row still records HOW the user completed the
+                // forced change, even though WHY (the reason) was decided
+                // when the trigger fired.
+                return AuditContext::fromRequest(reason: $reason);
+            }
+        }
+
+        // No pending reason — normal flow. Console context maps to
+        // `ChangeReason::Cli` so `users/set-password` and friends record
+        // the right cause; web request maps to `SelfService`.
+        if (Craft::$app->getRequest()->getIsConsoleRequest()) {
+            return AuditContext::cli();
+        }
+
+        return AuditContext::selfService();
     }
 
     /**
@@ -1020,8 +1089,8 @@ class PasswordPolicy extends Plugin
 
         if ($result === null) {
             // API failure — don't cache (we want next login to retry),
-            // don't notify, don't block. PasswordService already logged the
-            // exception at ERROR level.
+            // don't notify, don't block, don't update state. PasswordService
+            // already logged the exception at WARNING level.
             return;
         }
 
@@ -1030,6 +1099,12 @@ class PasswordPolicy extends Plugin
         // password generate one HIBP call and (at most) one notification per
         // day until they change their password.
         Craft::$app->getCache()->set($cacheKey, $result === true ? 'breached' : 'clean', 86400);
+
+        // Record the check on every non-API-failure outcome — `lastBreachCheckAt`
+        // updates regardless, `lastBreachDetectedAt` only when detected.
+        // The 24h cache short-circuits at the top means we record once per
+        // user-prefix per day, which is the correct cadence.
+        $this->getUserState()->recordBreachCheck($user, $result === true);
 
         if ($result !== true) {
             return;
@@ -1041,12 +1116,16 @@ class PasswordPolicy extends Plugin
         // 1. Force a password reset on next login. Save with muteEvents to
         //    keep the password-history listeners from firing spurious
         //    PasswordChangedEvent — the password isn't actually changing.
+        //    Also pin a pending `BreachForced` reason on the user_state row
+        //    so the user's NEXT password change records the right
+        //    `changeReason` in history.
         $projectConfig = Craft::$app->getProjectConfig();
         $previousMute = $projectConfig->muteEvents;
         $projectConfig->muteEvents = true;
         try {
             $user->passwordResetRequired = true;
             Craft::$app->getElements()->saveElement($user, false);
+            $this->getUserState()->setPendingReason($user, ChangeReason::BreachForced);
         } catch (Throwable $e) {
             Craft::warning(
                 'Failed to set passwordResetRequired on breached user ' . $user->id . ': ' . $e->getMessage(),
