@@ -21,6 +21,7 @@ use yii\base\InvalidConfigException;
  *
  * @property AuditLogService $auditLog
  * @property BlocklistService $blocklist
+ * @property HibpClientInterface $hibpClient
  * @property PasswordHistoryService $passwordHistory
  * @property NotificationService $notification
  * @property NotificationTemplateService $notificationTemplates
@@ -51,6 +52,7 @@ trait ServicesTrait
             'components' => [
                 'auditLog' => AuditLogService::class,
                 'blocklist' => BlocklistService::class,
+                'hibpClient' => GuzzleHibpClient::class,
                 'passwordHistory' => PasswordHistoryService::class,
                 'notification' => NotificationService::class,
                 'notificationTemplates' => NotificationTemplateService::class,
@@ -108,6 +110,24 @@ trait ServicesTrait
     public function getBlocklist(): BlocklistService
     {
         return $this->get('blocklist');
+    }
+
+    /**
+     * Returns the HIBP range-API client.
+     *
+     * Decoupled behind an interface so tests can swap in a fake without
+     * hitting the live endpoint. Production binds `GuzzleHibpClient`.
+     *
+     * @return HibpClientInterface
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getHibpClient(): HibpClientInterface
+    {
+        return $this->get('hibpClient');
     }
 
     /**
