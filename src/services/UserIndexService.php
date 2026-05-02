@@ -496,13 +496,37 @@ class UserIndexService extends Component
      */
     private function _getExpiryThreshold(): ?DateTime
     {
+        $interval = $this->_getExpiryInterval();
+
+        if ($interval === null) {
+            return null;
+        }
+
+        return (new DateTime('now'))->sub($interval);
+    }
+
+    /**
+     * Returns the configured expiry window as a `DateInterval`, or null
+     * when expiry isn't set or the period is unrecognised. Two cell
+     * renderers + one priority lookup all derive from the same setting
+     * pair (`expiryAmount`, `expiryPeriod`); centralising the parsing
+     * here removes a duplicated `match` and keeps the period-mapping
+     * single-source.
+     *
+     * @return DateInterval|null
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _getExpiryInterval(): ?DateInterval
+    {
         $settings = PasswordPolicy::$plugin->getSettings();
 
         if ($settings->expiryAmount === null || $settings->expiryAmount <= 0) {
             return null;
         }
 
-        $interval = match ($settings->expiryPeriod) {
+        $spec = match ($settings->expiryPeriod) {
             'day' => "P{$settings->expiryAmount}D",
             'week' => "P{$settings->expiryAmount}W",
             'month' => "P{$settings->expiryAmount}M",
@@ -510,11 +534,11 @@ class UserIndexService extends Component
             default => null,
         };
 
-        if ($interval === null) {
+        if ($spec === null) {
             return null;
         }
 
-        return (new DateTime('now'))->sub(new DateInterval($interval));
+        return new DateInterval($spec);
     }
 
     /**
@@ -783,21 +807,13 @@ class UserIndexService extends Component
             return Html::tag('span', Craft::t('password-policy', 'Expired'), ['class' => 'status red']);
         }
 
-        $settings = PasswordPolicy::$plugin->getSettings();
-        $expiresAt = (clone $lastChange);
-        $expiryInterval = match ($settings->expiryPeriod) {
-            'day' => "P{$settings->expiryAmount}D",
-            'week' => "P{$settings->expiryAmount}W",
-            'month' => "P{$settings->expiryAmount}M",
-            'year' => "P{$settings->expiryAmount}Y",
-            default => null,
-        };
+        $interval = $this->_getExpiryInterval();
 
-        if ($expiryInterval === null) {
+        if ($interval === null) {
             return Html::tag('span', '—', ['class' => 'light']);
         }
 
-        $expiresAt->add(new DateInterval($expiryInterval));
+        $expiresAt = (clone $lastChange)->add($interval);
         $now = new DateTime('now');
         $diff = $now->diff($expiresAt);
         $days = (int)$diff->days * ($diff->invert ? -1 : 1);
