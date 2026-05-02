@@ -32,6 +32,7 @@ uses(MultiSiteTestCase::class)->in('Integration/MultiSite');
 uses(TestCase::class)->in(
     'Integration/Controllers',
     'Integration/Models',
+    'Integration/Records',
     'Integration/Services',
     'Integration/TwigTags',
     'Integration/Validators',

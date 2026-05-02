@@ -94,6 +94,7 @@ abstract class MigrationTestCase extends TestCase
 
         try {
             foreach ([
+                '{{%passwordpolicy_user_state}}',
                 '{{%passwordpolicy_notification_templates}}',
                 '{{%passwordpolicy_blocklist}}',
                 '{{%passwordpolicy_policy_groups}}',
@@ -154,6 +155,7 @@ abstract class MigrationTestCase extends TestCase
             'm260430_101611_AddPolicyIdToBlocklist',
             'm260430_170841_AddNotificationTemplatesTable',
             'm260501_140131_AddBreachDetectedNotificationDefaults',
+            'm260502_214932_AddAuditShapeToPasswordHistory',
         ];
 
         $existingHistory = $migrator->getMigrationHistory();
