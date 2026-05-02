@@ -37,7 +37,8 @@ This file is the reference companion to [`plan.md`](./plan.md). It carries the h
 | 7 | beta.5 | Settings UI, blocklist dedup fix, info tooltips, BlocklistUtility, SeedBlocklist job |
 | 8 | beta.3 | PasswordChangedEvent, session invalidation, group force reset |
 | 9 | beta.4 | NotificationService, GC hook, ValidationController (AJAX), Twig variables |
-| - | 5.x (this session) | Named policies CRUD, tabbed edit screen, tri-state UI, divergence indicators, resolver bool refactor (Option A), per-user UserRules resolution |
+| - | 5.x (Phase C2) | Named policies CRUD, tabbed edit screen, tri-state UI, divergence indicators, resolver bool refactor (Option A), per-user UserRules resolution; Pro front-end Twig surface (P1.12 fluent builders + Layer 4b strength engine unification); HIBP-on-login (P1.13); RegistrationService (P1.14); events catalog (P1.15); 11-bug code-review sweep |
+| E | 5.x (Phase E, 2026-05-02) | Pest test infrastructure — 18 commits + `fix(hibp)` + `docs(ideas)`. Custom Pest bootstrap (no Codeception), dedicated `db_test` MySQL DB, `MigrationTestCase` + `MultiSiteTestCase` non-transactional bases, six factories + four stubs. `HibpClientInterface` extracted from `PasswordService` for testability. Coverage: validators (5), services (5), models (2), controllers (2), Twig tags (1), migrations (T1.2 + TX.2), multi-site (T9.7). 329 passing / 0 skipped / 634 assertions. Five new skill gaps (#15–19) captured. See `history/progress-phase-e.md` for full detail. |
 
 ### 5.2 Bug fixes (this session, uncommitted)
 
@@ -177,9 +178,24 @@ Lowercase before scanning. `pqR`/`Pqr`/`PQR` all trigger on `pqr` sequence. Matc
 
 `adminAlertEvents`, all SIEM settings, all webhook settings, `enableNewDeviceAlerts`, `deviceRetentionDays`, `notificationLogRetentionDays`. Wired into model + validation, not yet rendered. P1.7 covers `notificationLogRetentionDays`. Others wait for Phase 10–12.
 
-### 7.4 Edge cases for P2.5 integration tests
+### 7.4 Edge cases for P2.5 integration tests — status post-Phase-E
 
-1. Queue worker site context for GC and SeedBlocklist jobs
-2. Concurrent password changes (race condition in history save)
-3. GraphQL mutation password changes — confirm plugin events fire
-4. `passwordHistoryCount` validator class instantiation on Lite if setting > 0 (validator gates internally; confirm class isn't loaded unnecessarily)
+P2.5 closed as Phase E (2026-05-02). The four edge cases enumerated when this section was first written:
+
+1. **Queue worker site context for GC and SeedBlocklist jobs** — NOT covered in Phase E. Worth adding when queue-job tests come online (likely Phase G or a 5.2.x follow-up).
+2. **Concurrent password changes (race condition in history save)** — NOT covered in Phase E (Pest tests are sequential per process; concurrent-write scenarios need a different harness — probably benchmark-style or a Codeception-feature equivalent). Captured for the Adversarial Test Suite in `ideas.md`.
+3. **GraphQL mutation password changes — confirm plugin events fire** — NOT covered in Phase E (no GraphQL tests in scope; P3+ follow-up).
+4. **`passwordHistoryCount` validator class instantiation on Lite if setting > 0** — NOT explicitly covered; `PasswordHistoryValidator` tests in E3 codify the validator's internal Pro-edition gate. The class-loading concern is best caught by static analysis or a future micro-benchmark.
+
+### 7.5 Pest test surface (added 2026-05-02 — Phase E close)
+
+| Type | Count | Notes |
+|---|---|---|
+| Test files | 18 | `tests/Unit/`, `tests/Integration/{Validators,Services,Models,Controllers,TwigTags,Migrations,MultiSite}/` |
+| Tests | 329 | 0 skipped |
+| Assertions | 634 | — |
+| Factories | 6 | UserFactory, GroupFactory, PolicyFactory, BlocklistFactory, PasswordHistoryFactory, SessionFactory |
+| Stubs / fakes | 4 | HibpClientFake, WebRequestStub, UserStub, TestGuzzleConfig |
+| Base test cases | 3 | TestCase (transaction wrap), MigrationTestCase (DDL teardown), MultiSiteTestCase (site cleanup) |
+
+Run via `cd /Users/michtio/dev/craft-plugin-playground/cms_v5 && ddev exec --dir /Users/Shared/dev/craft-plugins/v5/craft-password-policy composer test`. Chains ECS → PHPStan → Pest; first failure stops the chain.

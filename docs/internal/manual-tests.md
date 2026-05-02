@@ -126,8 +126,19 @@ For each failure: page URL, browser console error, Network tab response (if AJAX
 
 ### Branch state for this pass
 
-- `5.x` — 23 commits ahead of `origin/5.x`. Phase C2 + Layer 4b + 7 bug fixes + 8 docs commits. Not pushed.
+- `5.x` — 49 commits ahead of `origin/5.x`. Phase C2 + Layer 4b + bug fix sweep + docs restructure + project setup + Phase E (18 commits) + `fix(hibp)` + `docs(ideas)` + Phase E close docs. Not pushed.
 - `5.1.x` — 3 commits ahead of tag `5.1.1`. TLS verify, fail-open log level, sensitive-key strip backports. Not pushed, not tagged.
+
+### Pest suite (Phase E close, 2026-05-02)
+
+The active manual pass above covers Phase C2 + Layer 4b + the bug fix sweep — all surfaces that ship to users. Independent of that pass, Phase E built a Pest test suite covering validators, services, models, controllers, Twig tags, migrations, and multi-site behavior:
+
+- **329 passing / 0 skipped / 634 assertions** across `tests/Unit/`, `tests/Integration/`.
+- Run via `cd /Users/michtio/dev/craft-plugin-playground/cms_v5 && ddev exec --dir /Users/Shared/dev/craft-plugins/v5/craft-password-policy composer test` (chains ECS + PHPStan + Pest; first failure stops the chain).
+- The 11-bug C2 sweep (commits `322c18f` → `9691541`) is now pinned by 32 of E4 + E5's tests — refactor regressions on those surfaces fail loudly in CI before reaching manual review.
+- The three deferred manual tests (T1.2, TX.2, T9.7) are now covered by Pest fixtures — see the per-test rows below.
+
+If a manual test fails: try to reproduce in Pest first (the regression net should catch surface-level breakage). If the manual scenario can't be expressed as a Pest test (browser interaction, screen reader, real Mailpit verification), record it on the failing T-row.
 
 ---
 
@@ -170,8 +181,9 @@ For each failure: page URL, browser console error, Network tab response (if AJAX
 2. Check database: `passwordpolicy_password_history`, `passwordpolicy_audit_log`, `passwordpolicy_blocklist`, `passwordpolicy_notification_log` exist — **all 4 created**
 3. All indexes and foreign keys present
 
-### T1.2 — Upgrade migration seeds history — DEFERRED to P2.5
-> **2026-04-30:** code review confirms `_seedPasswordHistory()` correctly populates one bcrypt-hash row per user with a password. Idempotent (skips when table non-empty). Manual fixture-based test (uninstall + manually inject `pwned` keys + mark migration not-applied + craft up) is fragile; deferred to Pest test infrastructure (P2.5) where proper fixturing makes the test re-runnable on every CI build.
+### T1.2 — Upgrade migration seeds history — COVERED BY PEST
+> **2026-04-30:** code review confirms `_seedPasswordHistory()` correctly populates one bcrypt-hash row per user with a password. Idempotent (skips when table non-empty).
+> **2026-05-02 (Phase E6, commit `c164646`):** now covered by `tests/Integration/Migrations/UpgradeTo520MigrationTest.php`. `MigrationTestCase` tears `db_test` down to a 5.1.1-shaped state (drops new-in-5.2.0 tables + deletes migration tracking rows), seeds users via `UserFactory::admin()`, runs `Craft::$app->migrator->migrateUp(0)`, and asserts the post-upgrade state. Idempotency, history-row count, hash equivalence to `users.password`, and the seed-loop logging-suppression invariant all codified.
 1. Install plugin at 5.1.1 (before v5.2.0 schema)
 2. Create 3 users with passwords
 3. Upgrade to 5.2.0 (`ddev craft up`)
@@ -547,8 +559,9 @@ For each failure: page URL, browser console error, Network tab response (if AJAX
 4. Inline blockquote renders with rendered subject reflecting the unsaved edits.
 5. Mailpit (https://plugin-playground-v5.ddev.site:8026) shows the message at the admin email.
 
-### T9.7 — Site propagation listener + CASCADE — DEFERRED (single-site playground)
-> The current playground has a single site, so `Sites::EVENT_AFTER_SAVE_SITE` with `isNew = true` and the FK CASCADE on `siteId` cannot be exercised here. Code review of `PasswordPolicy::_registerSiteListeners()` and `NotificationTemplateService::propagateToSite()` confirms: (1) listener fires only when `isNew = true`, (2) defensive try/catch never blocks the site save, (3) propagator inserts one row per known notification key copying primary-site content, skipping rows that already exist. FK migration definition has `'CASCADE'` on `siteId` referencing `Table::SITES`. Unit test in P2.5 will cover both paths.
+### T9.7 — Site propagation listener + CASCADE — COVERED BY PEST
+> Code review (2026-05-01) of `PasswordPolicy::_registerSiteListeners()` and `NotificationTemplateService::propagateToSite()` confirms: (1) listener fires only when `isNew = true`, (2) defensive try/catch never blocks the site save, (3) propagator inserts one row per known notification key copying primary-site content, skipping rows that already exist.
+> **2026-05-02 (Phase E6, commit `6a69664`):** now covered by `tests/Integration/MultiSite/SitePropagationTest.php` (9 tests — propagation on new site, idempotency on `isNew=false` re-save, content copy from primary, `dateCreated` freshness, listener defensive try/catch) + `tests/Integration/MultiSite/SiteDeletionCascadeTest.php` (4 tests). **Behavior correction codified:** `Sites::deleteSiteById()` soft-deletes (sets `dateDeleted`) — FK CASCADE does NOT fire on soft delete. Per-site rows persist after `deleteSiteById()` so admins re-enabling a soft-deleted site recover their templates. Hard-delete via direct `createCommand()->delete(Table::SITES, ...)` does cascade — the FK is correctly wired for the GC sweep. Both behaviors pinned. See memory gap #19.
 
 ### T9.8 — Queue job + console command + dedup (P1.4) — PASS (Craft Pro)
 > **Verified 2026-04-30:** end-to-end on the playground. Set `expiryAmount=5` via project-config/set, configured the editor user (id=55) lastPasswordChangeDate to land 4 days from expiry. Console command `password-policy/notification/send-expiry-reminders --user=55` enqueues one job (queue/info shows waiting=1). `queue/run --verbose` processes it (~80ms) — Mailpit receives the rendered "Your … password expires in 4 days" message. Re-running the same command + queue/run produces a queued job that completes in ~1ms with no second send (dedup via `notification_log` exclusion subquery). Without `--user`, the command enqueues a job that processes all eligible users in batches of 100. Restored `expiryAmount=null` after testing.
@@ -786,8 +799,9 @@ For each failure: page URL, browser console error, Network tab response (if AJAX
 1. `composer check-cs` → **no errors**
 2. `composer phpstan` → **no errors**
 
-### TX.2 — Zero behavior change on upgrade from 5.1.1 — DEFERRED to P2.5
-> **2026-04-30:** code review of the consolidated upgrade migration confirms `pwned` → `hibp` rename preserves the boolean value, leaving HIBP enforcement unchanged. `pwnedFailMode` → `hibpFailMode` similarly preserves the configured fail-mode. No other 5.1.1 settings are touched. Manual end-to-end verification (5.1.1 install + custom settings + upgrade + confirm same passwords accepted/rejected) is fragile and deferred to P2.5 Pest fixtures.
+### TX.2 — Zero behavior change on upgrade from 5.1.1 — COVERED BY PEST
+> **2026-04-30:** code review of the consolidated upgrade migration confirms `pwned` → `hibp` rename preserves the boolean value, leaving HIBP enforcement unchanged. `pwnedFailMode` → `hibpFailMode` similarly preserves the configured fail-mode. No other 5.1.1 settings are touched.
+> **2026-05-02 (Phase E6, commit `c164646`):** now covered alongside T1.2 in `tests/Integration/Migrations/UpgradeTo520MigrationTest.php`. The four-hook legacy alias on `SettingsModel` (separately covered in `tests/Integration/Models/SettingsModelLegacyAliasTest.php` from E4.3) confirms `pwned: true` flowing to `hibp: true` semantically post-upgrade. Defensive scrub of the `groupPolicies` legacy key (an in-cycle 5.2.0-alpha precursor that never shipped to a stable release) also pinned as regression armor.
 
 ### TX.3 — Sensitive data never logged — PASS
 > **Verified 2026-04-30 (analysis-driven):** All `PasswordPolicy::$plugin->log()` calls go through the `SENSITIVE_LOG_KEYS` strip (`password`, `newPassword`, `plaintext`, `hash`, `passwordHash`). All 14 direct `Craft::error/warning/info/debug` calls reviewed: 13 carry no password material; 1 (`PasswordPolicy.php:625`) passes `$e->getMessage()` from a Yii DB exception — Yii uses `?` placeholders for bound values so the bcrypt hash never appears in `getMessage()`. All password parameters carry `#[\SensitiveParameter]`. No `print_r`/`var_dump`/`dd`/`dump` anywhere in `src/`. T0.4 already empirically confirmed `storage/logs/password-policy-*.log` contained no sensitive keys.

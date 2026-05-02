@@ -1,4 +1,4 @@
-# Next Session — Handover (2026-05-02, Phase C2 closed-closed + bug fix sweep + docs restructure + project setup)
+# Next Session — Handover (2026-05-02, Phase E closed)
 
 Building **v5.2.0** of `craft-password-policy`. Single release covers Lite + Pro + Enterprise. Nothing tags until Enterprise (Phase G) is built and tested. Features either land in 5.2.0 (at the right edition tier) or drop to `ideas.md`. **The "no v5.3 deferral" rule is no longer absolute** — once the Phase G build plan is drafted (P2.8), if Phase G grows past one comfortable build cycle, deferring its lower-priority subset to 5.3 is allowed. 5.2.x stays reserved for security patches only.
 
@@ -6,9 +6,9 @@ Building **v5.2.0** of `craft-password-policy`. Single release covers Lite + Pro
 
 ## Read in this order, no skipping
 
-1. `plan.md` — master plan; sections 1 (status), 3 (backlog), 4 (build order). **Phase E is now next, not Phase D** (build order swap signed off 2026-05-02).
-2. `progress.md` — current-phase session log; tail has the current "Next Session" priorities (older phases rotated to `history/`).
-3. `manual-tests.md` — top of file is the **active test pass plan** (Phase C2 + Layer 4b + bug fix sweep walkthrough). Per-phase T-row register below it. 78/79 PASS.
+1. `plan.md` — master plan; sections 1 (status), 3 (backlog), 4 (build order). **Phase E closed; Phase D is now next.**
+2. `progress.md` — current-phase session log; tail has the current "Next Session" priorities (older phases including E rotated to `history/`).
+3. `manual-tests.md` — top of file is the active test pass plan (Phase C2 + Layer 4b + bug fix sweep). Per-phase T-row register below it. 78/79 PASS plus the three previously-deferred tests (T1.2, TX.2, T9.7) now covered by Pest.
 4. This file (`handover.md`) — playground state + commands.
 
 Memory store: `~/.claude/projects/-Users-michtio-dev-craft-plugins-v5-craft-password-policy/memory/MEMORY.md` — durable rules across sessions. Includes: release strategy, retention/GC framing, native callout components, editableTable defaulting, **Craft 5 JSON content pattern**, and others. **Read it.**
@@ -19,47 +19,50 @@ Project guide: `CLAUDE.md` at the repo root + `.claude/rules/*.md` import target
 
 ## State at handover
 
-**Branch:** `5.x`, **25 commits ahead of `origin/5.x` and unpushed**. Working tree clean.
+**Branch:** `5.x`, **49 commits ahead of `origin/5.x` and unpushed**. Working tree clean.
 
-**Recent commits (newest first):**
+**Recent commits (newest first — Phase E + 2 follow-ups):**
 ```
-1c02bd5 chore: complete craft-project-setup scaffolding (rules + settings + attribution)
-71fb42f docs(testing): add active test pass plan for Phase C2 + Layer 4b + bug fix sweep
-cd6b21c docs: add project CLAUDE.md pointing fresh sessions at the new docs structure
-225396f docs: add docs/README.md orientation page
-db3a2bb docs: split user/features/notifications.md into notifications + ops/gc + reference/ajax-validate
-833a8fc docs: drop event-catalog duplicate from force-reset.md
-6878a4b docs: rotate completed-phase PROGRESS sessions into internal/history/
-1d2b022 docs: split internal/plan.md into active plan + completed reference
-838905d docs: fixup — apply internal cross-link updates missed in restructure commit
-c2b1e0d docs: restructure docs/ — split user-facing from internal handover docs
-aa61b8b docs: capture C2 bug fix sweep — CHANGELOG, PROGRESS, PLAN status block
-9691541 fix(settings): alias deprecated pwned/pwnedFailMode on SettingsModel for 5.1.1 file-config compat
-2388ae9 fix(variables): register both passwordpolicy and passwordPolicy handles
-2537d1a fix(security): site-wide HIBP 429 backoff cache
-b2ef8ca fix(client-asset): auto-register on toggleVisibility, fix cpTrigger fallback, blocklist hit propagation
-b5d602f fix(controllers): session invalidation on password change + ValidationController context input hardening
-322c18f fix(twig-tags): defensive null gating + render docblock correction
-c84aef3 refactor(strength): unify CP and front-end strength engines via AJAX (P1.12 layer 4b)
-3b92c8e docs(events): catalog of plugin events with example listeners (P1.15)
-ffa7aa9 feat(frontend): Pro front-end Twig surface — fluent builders, JS asset, strength engine A+B (P1.12)
-6a0ffc7 feat(hibp): HIBP-on-login Pro listener + breach-detected notification + BreachDetectedEvent (P1.13)
-262c09e feat(registration): RegistrationService + UserRegisteredEvent + Pro per-group validation (P1.14)
+6a69664 test(multisite): cover site propagation + FK CASCADE (T9.7) (E6.2)
+c164646 test(migrations): cover 5.1.1 → 5.2.0 upgrade replay (T1.2 + TX.2) (E6.1)
+503455a chore(test): add MigrationTestCase + MultiSiteTestCase non-transactional bases (E6.0)
+2efabbe docs(ideas): capture Phase E cleanup candidates (validator Unicode + log levels)
+fd8149b fix(hibp): downgrade non-2xx fail-open log to WARNING (matches security.md)
+19e557e test(controllers): cover ValidationController context hardening + response shape (E5.3)
+ca18af7 test(controllers): cover destroyOtherSessions web + console paths (E5.2)
+38914c4 test(twig-tags): cover PasswordWidgetTag composite null-gating (E5.1)
+49e0023 test(settings): cover pwned→hibp legacy alias four-hook (E4.3)
+4d512a0 test(strength): cover engine B blocklist propagation (E4.2)
+f96f890 test(hibp): cover 429 backoff cache + short-circuit (E4.1)
+cfeb14d test(resolver): cover PolicyResolverService merge + auto-correction (E3.4)
+fec8a68 test(models): cover GroupPolicyModel merge + boolean tri-state (E3.3)
+72332d5 test(history): cover PasswordHistoryValidator (E3.2)
+bb9f7d1 test(blocklist): cover BlocklistService + CommonPasswordValidator (E3.1)
+a0a2fcb chore(test): add factories for DB-touching service tests (E3.0)
+5156cdc test(validators): add Pest coverage for pure validators (E2)
+8f49223 test: add smoke + Craft bootstrap proof tests (E1.3)
+08c0702 refactor(hibp): extract HibpClientInterface + GuzzleHibpClient (E1.2)
+df26265 chore(test): scaffold Pest config + bootstrap (E1.1)
 ```
 
-**5.1.x branch (parked):** 3 commits ahead of tag `5.1.1` — TLS verify, fail-open log level, sensitive-key strip backports. NOT pushed, NOT tagged. Tag-or-park decision pending — discuss before resuming.
+(Older commits — Phase C2 + bug fix sweep + docs restructure + project setup — listed in prior handover snapshot at `history/progress-phase-c2.md`.)
 
-**Manual tests:** **78/79 PASS**. T1.2 + TX.2 + T9.7 deferred to P2.5 Pest fixtures. T12.6 (Enterprise audit) gated on Phase G. T13.6 + T13.11 (browser-driven AJAX UX + screen-reader a11y) require manual browser/SR verification — environment-gated, not code-gated.
+**5.1.x branch (parked):** 3 commits ahead of tag `5.1.1` — TLS verify, fail-open log level, sensitive-key strip backports. NOT pushed, NOT tagged. Tag-or-park decision still pending — discuss before resuming.
+
+**Pest suite:** **329 passing / 0 skipped / 634 assertions.** ECS clean, PHPStan clean (3-entry baseline unchanged from E1). Run via `cd /Users/michtio/dev/craft-plugin-playground/cms_v5 && ddev exec --dir /Users/Shared/dev/craft-plugins/v5/craft-password-policy composer test`.
+
+**Manual tests:** **78/79 PASS** for the active C2 + Layer 4b + bug fix sweep pass. **T1.2 + TX.2 + T9.7 now covered by Pest** (no longer deferred). T12.6 (Enterprise audit) gated on Phase G. T13.6 + T13.11 (browser-driven AJAX UX + screen-reader a11y) require manual browser/SR verification — environment-gated, not code-gated.
 
 **Phase status (`plan.md` §4):**
 - A — audit fix-ups: **done 2026-04-29**.
 - B — pre-release security tests: **done 2026-04-30**.
 - C — P1 backlog: **done 2026-04-30**. P1.8 (deployment docs) deferred to Phase H since Enterprise must exist first.
 - C2 — Pro front-end surface bundle (P1.12 + P1.13 + P1.14 + P1.15): **fully closed 2026-05-01** including P1.12 Layer 4b (CP-side strength engine unified with the front-end pipeline via AJAX `/validate`).
-- **Bug fix sweep — done 2026-05-02 (6 commits, all PHPStan clean).** Twig tag layer + controllers + client asset + HIBP 429 backoff + dual variable handle + SettingsModel legacy alias.
-- **Docs restructure + project setup — done 2026-05-02.** `docs/` split into `user/` + `internal/`. `CLAUDE.md` + `.claude/rules/*.md` + `.claude/settings.json` scaffolded.
-- **E** — Pest tests (P2.5, scope-expanded): **next**.
-- D, F, G, H — pending.
+- Bug fix sweep — **done 2026-05-02** (6 commits, all PHPStan clean). Twig tag layer + controllers + client asset + HIBP 429 backoff + dual variable handle + SettingsModel legacy alias.
+- Docs restructure + project setup — **done 2026-05-02.** `docs/` split into `user/` + `internal/`. `CLAUDE.md` + `.claude/rules/*.md` + `.claude/settings.json` scaffolded.
+- **E — Pest test infrastructure (P2.5 scope-expanded): done 2026-05-02.** 18 commits total (E1 bootstrap + HibpClient extraction; E2 pure validators; E3 DB-touching services + factories; E4 HIBP backoff + StrengthService + SettingsModel alias; E5 ValidationController + destroyOtherSessions + PasswordWidgetTag; E6 migration replay + multi-site propagation + FK CASCADE; plus a `fix(hibp)` log-level downgrade and a `docs(ideas)` cleanup-candidates capture). 329 tests, 0 skipped. Phase E session log: `history/progress-phase-e.md`.
+- **D — User index integration: next.**
+- F, G, H — pending.
 
 ---
 
@@ -88,38 +91,46 @@ ffa7aa9 feat(frontend): Pro front-end Twig surface — fluent builders, JS asset
 
 ## What to build first
 
-### Phase E — Pest test infrastructure (scope-expanded)
+### Phase D — User index integration
 
-Build order swap signed off 2026-05-02: **Pest before Phase D**. The C2 bug-fix sweep just demonstrated the cost of having no automated coverage — adding Phase D's new CP surfaces on top of an untested codebase compounds the testing debt. Pest covers C2 first; Phase D extends after.
-
-**P2.5 scope** (full list in `plan.md` §3):
-
-- **Original targets**: validators, GroupPolicyModel merge, PolicyResolverService (incl. tri-state Option A semantics + auto-correction).
-- **Bug-fix sweep additions** (so the next refactor doesn't regress the same fix twice):
-  - HIBP 429 site-wide backoff cache — sentinel set/cleared, per-call short-circuit, `Retry-After` parsing, `HIBP_DEFAULT_BACKOFF_SECONDS` fallback. Mock the HIBP HTTP layer; don't hit live API.
-  - `PasswordWidgetTag` null-gating — composite forwards only non-null `submitGate`/`groups` to child setters.
-  - `PasswordChangeController::destroyOtherSessions()` belt-and-braces helper — both web + console paths covered.
-  - `ValidationController` context input hardening — anonymous can't pass `username`/`email` to zxcvbn; authenticated pulls from session identity.
-  - `StrengthService::analyzeZxcvbn` `blocklistHit` propagation — engine B forces `weak` + clamps `score` to 0 mirroring engine A.
-  - `SettingsModel` four-hook legacy alias (`attributes`, `canGet/SetProperty`, `__get`, `__set`) — `pwned: true` in static `config/password-policy.php` flows to `hibp` with deprecation warning.
-- **Deferred manual tests**: T1.2 (5.1.1 → 5.2.0 upgrade migration seeds history), TX.2 (zero behavior change on 5.1.1 upgrade), T9.7 (multi-site propagation listener + FK CASCADE — single-site playground can't exercise).
-
-Pest scaffold already exists in `composer.json` (`pestphp/pest ^4.6`) — no test files yet. `composer test` is wired.
-
-### Then in order: D → F → G → H
-
-- **D** — User index integration (P2.1 table attributes, P2.2 admin password change action, P2.6 `allowAdminChanges` verification absorbed as a verification gate — when adding new CP affordances, verify they respect read-only mode).
-- **F** — Polish + draft Phase G build plan (**P2.8** new — use `internal/history/phase-c2-build-plan.md` as template; lock hash-chain row format, verifier CLI exit codes, SIEM forwarders, webhook HMAC, AlertCooldownService scope, streaming export pattern before any Phase G code lands).
-- **G** — Enterprise (Phase 10/11/12 + per-policy custom blocklist editor + Enterprise email notification types) — driven by P2.8 build plan.
-- **H** — Release prep (tag, Plugin Store listing, marketing copy, **deployment docs P1.8**).
-
-### Phase D context (when E completes)
+Phase E just landed 329 Pest tests with 0 skipped — the regression net is in place. Phase D adds new CP affordances on top of that net.
 
 **P2.1 — User index table attributes.** `EVENT_REGISTER_TABLE_ATTRIBUTES` + `EVENT_SET_TABLE_ATTRIBUTE_HTML`. Columns: password status (badge), last change, expired, reset required. **Lite edition** (this is the headline Lite-tier feature — no edition gating beyond what Craft already provides).
 
-**P2.2 — Admin password change action.** Element action with elevated session + `changedByUserId` tracking. Storage: Option A (see `reference.md` §6.2 — store `changedByUserId` on password history table for all editions; not exposed via UI/API on non-Enterprise). New permission `pp:change-user-passwords`. Needs a migration to add the nullable `changedByUserId` column to `passwordpolicy_password_history`.
+**P2.2 — Admin password change action.** Element action with elevated session + `changedByUserId` tracking. Storage: Option A (see `reference.md` §6.2 — store `changedByUserId` on password history table for all editions; not exposed via UI/API on non-Enterprise). New permission `pp:change-user-passwords`. Needs a migration to add the nullable `changedByUserId` column to `passwordpolicy_password_history`. **Author via `ddev craft migrate/create AddChangedByUserIdToPasswordHistory --plugin=password-policy`** — never hand-pick filenames or timestamps.
+
+**P2.6 absorbed — verification gate.** When adding new CP affordances, verify they respect `allowAdminChanges = false` read-only mode. Not a separate Phase F item; a Phase D quality bar.
 
 **Also in Phase D scope:** the half-built `_users/password-security.twig` user-edit tab — template exists with a working POST target (`actionForceReset`), but no event handler registers the template as a CP user-edit tab. Hooks into the same User element work as P2.1/P2.2.
+
+### Then in order: F → G → H
+
+- **F** — Polish + draft Phase G build plan (**P2.8** — use `internal/history/phase-c2-build-plan.md` as template; lock hash-chain row format, verifier CLI exit codes, SIEM forwarders, webhook HMAC, AlertCooldownService scope, streaming export pattern before any Phase G code lands).
+- **G** — Enterprise (Phase 10/11/12 + per-policy custom blocklist editor + Enterprise email notification types) — driven by P2.8 build plan.
+- **H** — Release prep (tag, Plugin Store listing, marketing copy, **deployment docs P1.8**).
+
+### Pest suite — keep it green during Phase D
+
+Phase D will touch User element behavior, the password history table (new migration adds `changedByUserId`), and CP routing. Several E3/E5 tests cover this surface:
+- `tests/Integration/Validators/PasswordHistoryValidatorTest.php` — history validation
+- `tests/Integration/Services/DestroyOtherSessionsTest.php` — session helper called from password change flows
+- `tests/Integration/Migrations/UpgradeTo520MigrationTest.php` — migration replay (extend if D adds a new migration)
+- `tests/Integration/Models/SettingsModelLegacyAliasTest.php` — settings model
+
+Run `ddev exec --dir /Users/Shared/dev/craft-plugins/v5/craft-password-policy composer test` after each commit. If a Phase D commit breaks an existing E3/E5 test, that's the regression net working — fix before the commit lands.
+
+### Test infrastructure — what's there
+
+The Pest scaffold lives at `tests/`. Key files for Phase D extension:
+- `tests/Pest.php` — `uses()` rules. **Must register most-specific paths first** (memory gap #18) — adding new `tests/Integration/Foo/` requires either explicit enumeration or a new specific rule.
+- `tests/TestCase.php` — base class with per-test transaction wrapper (rolls back DB state).
+- `tests/Support/MigrationTestCase.php` — non-transactional base for migration tests; `restorePluginSchema()` runs in `tearDown`.
+- `tests/Support/MultiSiteTestCase.php` — non-transactional base for site-creating tests; cleans up non-primary sites.
+- `tests/Support/Factories/` — UserFactory, GroupFactory, PolicyFactory, BlocklistFactory, PasswordHistoryFactory, SessionFactory.
+- `tests/Support/HibpClientFake.php` — implements `HibpClientInterface`; swap via `$plugin->set('hibpClient', $fake)`.
+- `tests/Support/WebRequestStub.php` + `tests/Support/UserStub.php` — request mocking for controller tests.
+
+Memory entry `feedback_skill_gaps.md` has 19 entries' worth of "things future Pest setups should know"; gaps #15–19 are testing-specific.
 
 ---
 
@@ -146,7 +157,8 @@ The repo now maintains state in five overlapping places: `internal/plan.md`, `in
 ## Known follow-ups (deferred, not blocking)
 
 - **Phase 6 user-edit tab is half-built.** `_users/password-security.twig` exists with a working POST target (`actionForceReset`), but no event handler registers the template as a CP user-edit tab. Belongs in P2.1/P2.2 user index work.
-- **T9.7 — Site propagation listener test deferred.** Single-site playground can't exercise the `Sites::EVENT_AFTER_SAVE_SITE` `isNew = true` path or the FK CASCADE. Will land in P2.5 Pest tests with a multi-site fixture.
+- **`db_test` setup may need recreating after a fresh `ddev start` from snapshot.** Pest tests run against a dedicated `db_test` MySQL DB. Created during Phase E1 with `GRANT ALL ON db_test.* TO 'db'@'%'`. If a snapshot restore wipes it: `cd /Users/michtio/dev/craft-plugin-playground/cms_v5 && ddev mysql -uroot -proot -e "CREATE DATABASE IF NOT EXISTS db_test; GRANT ALL ON db_test.* TO 'db'@'%'; FLUSH PRIVILEGES;"`. The Pest bootstrap will reinstall the plugin schema on first run.
+- **Soft-delete vs hard-delete on sites.** `Sites::deleteSiteById()` soft-deletes (sets `dateDeleted`); FK CASCADE on `passwordpolicy_notification_templates.siteId` only fires on physical row removal (Craft GC sweep). The current behavior is intentional — admins re-enabling a soft-deleted site recover their templates. Documented in memory gap #19. If Phase G changes this contract, update the cascade test in `tests/Integration/MultiSite/SiteDeletionCascadeTest.php`.
 - **Stale tracking rows in playground `migrations` table** for the deleted/replaced migration filenames. Cosmetic, Craft ignores them.
 - **Adversarial Test Suite** — `ideas.md`. Future P3+ work after P2.5 lands.
 - **Per-policy custom blocklist editor (Phase G, Enterprise tier).** Schema column `policyId` already shipped in P1.11. Phase G adds the editor tab on the policy edit screen + validator merge logic.
@@ -165,3 +177,4 @@ These were tested or analyzed and are clean — don't waste a session re-verifyi
 - T9.4 / T9.5 / T9.6 (notifications index, edit + persist, test-send AJAX) — verified end-to-end via curl + Mailpit
 - T9.8 (queue + console + dedup) — verified end-to-end with `expiryAmount=5` then restored to null
 - T9.9 (Lite gates) — verified by flipping playground to Lite via project.yaml + dateModified bump + craft up, then back to Pro
+- All Phase E test surfaces (validators, services, models, controllers, Twig tags, migrations, multi-site) — 329 Pest tests / 0 skipped / 634 assertions; run via `ddev exec --dir /Users/Shared/dev/craft-plugins/v5/craft-password-policy composer test`
