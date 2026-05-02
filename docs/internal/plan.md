@@ -5,11 +5,12 @@ branch: 5.x
 last_updated: 2026-05-02
 status:
   pro_ui: feature_complete
-  manual_tests: 78/79 PASS (T1.2 + TX.2 + T9.7 deferred; T12.6 + T13.6 + T13.11 + T13.12 require browser/SR/Enterprise gates)
+  manual_tests: 78/79 PASS (T1.2 + TX.2 + T9.7 deferred to P2.5; T12.6 + T13.6 + T13.11 require Enterprise/browser/SR gates)
   p1_remaining: 0
-  p2_remaining: 4 (P2.4 absorbed into P1.12)
+  p2_remaining: 4 (P2.1, P2.2, P2.5 [scope-expanded], P2.8 [new]; P2.4 absorbed into P1.12; P2.6 absorbed into Phase D verification gate)
   enterprise: not_started
-release_strategy: single_5_2_0_includes_all_editions
+  bug_fix_sweep_2026_05_02: 11_bugs_landed_zero_pest_coverage
+release_strategy: single_5_2_0_includes_all_editions (5.1.x backports parked on branch — tag-or-park decision pending)
 gate: enterprise_must_complete_before_release_prep
 read_order_active: [1, 2, 3, 4]
 companion: reference.md (sections 5–7 — completed work, architecture decisions, source-code inventory)
@@ -26,7 +27,7 @@ Reference material — completed work history, settled architecture decisions, a
 | # | Section | State |
 |---|---|---|
 | 1 | [Status](#1-status) | active |
-| 2 | [Manual testing remaining](#2-manual-testing-remaining) | done — 56/57 PASS, 3 deferred to P2.5 (T1.2 + TX.2 + T9.7) |
+| 2 | [Manual testing remaining](#2-manual-testing-remaining) | active — 78/79 PASS; T1.2 + TX.2 + T9.7 deferred to P2.5; T12.6 + T13.6 + T13.11 require Enterprise/browser/SR gates |
 | 3 | [Backlog](#3-backlog) | active |
 | 4 | [Build order](#4-build-order) | active |
 | — | [Reference (completed work, architecture, inventory)](./reference.md) | done, skippable |
@@ -37,16 +38,20 @@ State legend: `active` = read now, `pending` = scheduled, `done` = built, `block
 
 ## 1. Status
 
+- **Phase C2 closed-closed 2026-05-02.** P1.12–P1.15 shipped, plus the 11-bug code-review sweep landed (commits `322c18f` → `9691541`). Pro front-end Twig surface is now the largest single feature in the plugin and the sweep just demonstrated the cost of having no automated coverage.
+- **Next: Phase E (Pest tests, scope-expanded).** P2.5 now covers the original validators/resolver targets **plus** the C2 bug fixes (HIBP 429 backoff, PasswordWidgetTag null-gating, session invalidation helper, ValidationController context hardening, zxcvbn-php blocklistHit propagation, SettingsModel legacy alias hooks) **plus** the three deferred manual tests (T1.2, TX.2, T9.7). **Pest before Phase D, not after** — adding new code on top of an untested codebase compounds the debt. Build order swap signed off 2026-05-02.
 - 10 alpha/beta branches merged into `5.x`, plus end-of-Phase-C work (P1.3 + P1.4 paired Email Notifications, P1.7 retention UI, P1.11 blocklist editor, P1.5 group-deletion listener) shipped on 5.x directly.
 - Pro CP UI feature-complete: named-policy CRUD with presets + tri-state + divergence indicators + conflict UX, env-var inputs, blocklist subnav with custom dictionary editor + word-check tool, retention page with `notificationLogRetentionDays`, **Email Notifications subnav with token picker + per-(key, siteId) editing + sender overrides + AJAX test-send**, group-deletion observability listener, force-reset action.
 - **Pro front-end Twig surface — closed 2026-05-01, polished 2026-05-02 via the C2 code-review bug-fix sweep.** `PasswordPolicyVariable` exposes status helpers (`daysUntilExpiry`, `isExpired`, `isExpiring`, `passwordStatus`, `lastPasswordChange`, `activeSessionCount`) and the full P1.12 builder surface: fluent render builders for fields (`passwordField`, `requirementList`, `strengthMeter`, `requirementsHint`, `passwordWidget`) + forms (`loginForm`, `passwordChangeForm`, `passwordResetForm`), data accessors (`requirements`, `requirementsText`, `requirementRules`), JS asset bundle (no Vite dep on consumer side), strength engine A baseline + B Pro opt-in (`bjeavons/zxcvbn-php`, approved 2026-05-01), a11y baseline, show/hide toggle. **Both `craft.passwordPolicy` (camelCase) and `craft.passwordpolicy` (legacy lowercase) handles work.** P2.4 absorbed.
 - **Bug fix sweep — done 2026-05-02 (6 commits, all PHPStan clean).** C2 code-review followups + a 5.1.1 file-based config compatibility blocker. Twig tag layer (composite null-gating, `id()` setter alias on `PasswordResetFormTag`, `__toString()` docblock correction); controllers (explicit session invalidation via new `PasswordService::destroyOtherSessions()`, ValidationController context-input hardening); client asset (auto-register on any interactivity flag, blocklist-hit propagation in zxcvbn-php engine, cpTrigger-safe fallback URL with rebuilt CP strength bundle); HIBP 429 site-wide backoff cache; dual variable handle registration; SettingsModel alias for legacy `pwned` / `pwnedFailMode` keys. P1.12 fully closed (Layer 4b + bug fixes). Phase C2 closed-closed. See `progress.md` "Session: 2026-05-02" for per-bug details.
-- Manual tests: **56/57 PASS** (Phases A + B + C closed 2026-04-30; T1.2 + TX.2 + T9.7 deferred to P2.5 Pest fixtures).
+- Manual tests: **78/79 PASS**. T1.2 + TX.2 + T9.7 deferred to P2.5 Pest fixtures. T12.6 (Enterprise audit), T13.6 + T13.11 (browser-driven AJAX UX + screen-reader a11y) gated by environment, not by code.
 - **P1 backlog: 0 items remaining (Phase C2 closed-closed).**
 - P1.8 (deployment docs) moved to Phase H — Enterprise must exist before authoritative deployment docs can be written.
-- P2/P3/P4: not started.
-- **Release strategy:** 5.2.0 ships as a single release covering Lite + Pro + Enterprise. Nothing tags / publishes until Enterprise (Phase 10–12) is complete and tested.
-- Hard gate: all Pro manual tests + all P1 items + Enterprise build (G) must pass before release prep (F).
+- **P2 backlog: 4 items remaining** — P2.1, P2.2 (Phase D), P2.5 (Phase E, scope-expanded), P2.8 (Phase F, Phase G build plan draft). P2.4 absorbed into P1.12. P2.6 absorbed into Phase D verification gate.
+- P3 (Enterprise — Phase 10/11/12) blocked on D + E + F. P4: future.
+- **5.1.x backports parked.** Three commits on the `5.1.x` branch (TLS verify, fail-open log level, sensitive-key strip — all backports from 5.x bug fix work). NOT pushed, NOT tagged. Tag-or-park decision pending — discuss before resuming.
+- **Release strategy:** 5.2.0 ships as a single release covering Lite + Pro + Enterprise. Nothing tags / publishes until Enterprise (Phase 10–12) is complete and tested. Once the Phase G build plan is drafted (P2.8), revisit whether any G subset can defer to 5.3 if scope expands beyond a comfortable build cycle.
+- Hard gate: Phase E + Phase D + Phase F + Enterprise build (G) must pass before release prep (H).
 
 ---
 
@@ -107,8 +112,9 @@ T4.1–T4.6 (audit logging) gated on Phase 10–12.
 | P2.1 | User index table attributes | `EVENT_REGISTER_TABLE_ATTRIBUTES` + `EVENT_SET_TABLE_ATTRIBUTE_HTML`. Columns: password status (badge), last change, expired, reset required. Lite edition. |
 | P2.2 | Admin password change action | Element action with elevated session + `changedByUserId` tracking. Storage: Option A (see 6.2). New permission `pp:change-user-passwords`. Migration: nullable column on password history table. |
 | ~~P2.4~~ | ~~`passwordField()` Twig function~~ — absorbed into P1.12 | Original entry was scoped narrowly to a single front-end input with strength indicator. P1.12 expands the surface to a full image-optimize-style render builder API covering field renderers + form renderers + JS asset bundle + strength engine A+B. The original deliverable becomes one method (`craft.passwordPolicy.passwordField()`) inside the larger surface. |
-| P2.5 | Integration test suite | Pest scaffold exists, no test files. Validators, GroupPolicyModel merge, PolicyResolverService (incl. tri-state Option A semantics + auto-correction). |
-| P2.6 | `allowAdminChanges` read-only verification | Confirm `readOnlyNotice()` banner renders and inputs disabled. |
+| P2.5 | Integration test suite — **scope expanded 2026-05-02 (Phase E, build order swap)** | Pest scaffold exists, no test files. **Original targets**: validators, GroupPolicyModel merge, PolicyResolverService (incl. tri-state Option A semantics + auto-correction). **Bug-fix sweep additions** (added so the next refactor of any of these surfaces doesn't regress the same fix twice): (a) HIBP 429 backoff cache — site-wide sentinel set/cleared, per-call short-circuit, `Retry-After` parsing, `HIBP_DEFAULT_BACKOFF_SECONDS` fallback; mock the HIBP HTTP layer rather than hit the live API. (b) `PasswordWidgetTag` null-gating — composite forwards only non-null `submitGate`/`groups` to child setters (TypeError regression vector). (c) `PasswordChangeController::destroyOtherSessions()` belt-and-braces helper — sessions for the user destroyed except current request's token; both web and console paths covered. (d) `ValidationController` context input hardening — anonymous requests must not factor `username`/`email` POST params into zxcvbn; authenticated requests pull identity from session. (e) `StrengthService::analyzeZxcvbn` `blocklistHit` propagation — engine B forces `weak` label + clamps `score` to 0 on blocklist hit, mirroring engine A. (f) `SettingsModel` four-hook legacy alias (`attributes`, `canGet/SetProperty`, `__get`, `__set`) — `pwned: true` in static `config/password-policy.php` flows to `hibp` with a deprecation warning. **Deferred manual tests**: T1.2 (5.1.1 → 5.2.0 upgrade migration seeds history), TX.2 (zero behavior change on 5.1.1 upgrade), T9.7 (multi-site propagation listener + FK CASCADE — single-site playground can't exercise). |
+| ~~P2.6~~ | ~~`allowAdminChanges` read-only verification~~ — absorbed into Phase D verification gate | Phase D adds new CP affordances (user index columns, password change action) that need the same read-only verification. Roll into Phase D's gate ("verify all new CP affordances respect `allowAdminChanges`") rather than carrying as a standalone Phase F item. |
+| P2.8 | Draft Phase G build plan | New 2026-05-02 (Phase F deliverable). Use `internal/history/phase-c2-build-plan.md` as the template. **Lock these architectural decisions before any Phase G code lands**: hash-chained audit row format (canonical JSON shape, `previousHash` column), independent verifier CLI (`password-policy/audit/verify` exit codes + chain-walk semantics), SIEM forwarders (which protocols, queue-driven), webhook HMAC scheme (signature header, payload canonicalisation), `AlertCooldownService` scope (which event classes register cooldowns), streaming audit-log export (BaseBatchedJob pattern from P1.4). Also re-evaluate at draft time whether any Phase G subset (e.g. SIEM webhooks, ApiTokenService) can defer to 5.3 if scope expands beyond one comfortable build cycle. |
 
 ### P3: Enterprise (gated)
 
@@ -124,9 +130,10 @@ T4.1–T4.6 (audit logging) gated on Phase 10–12.
 
 - Plugin documentation site (craftpulse.com/docs/password-policy)
 - v5.3.0: per-group alerts, IP geo, inactive accounts, min change interval
-- CP password field show/hide toggle (JS injection)
+- CP password field show/hide toggle (JS injection) — partially redundant with P1.12's CP indicator; could collapse to "extend `cp-strength.js` to inject toggle on the same selector"
 - Policy summary view (plain-language effective policy per user)
 - CLI debug: `policy/resolve --user=<id>`, `policy/validate --user=<id> --password=<test>`
+- **Remove `pwned` / `pwnedFailMode` `SettingsModel` aliases in 5.4** — two-minor-version grace from 5.2.0 (deprecation logs on every `getSettings()` call for sites still using the legacy file-config keys; once consumers have had two minors to migrate, drop the alias four-hook layer). Don't pin to 5.3 — give consumers the grace.
 
 ---
 
@@ -138,16 +145,20 @@ T4.1–T4.6 (audit logging) gated on Phase 10–12.
 | B | Pre-release security tests — T7.3 PASS, T1.3 PASS, T1.4 PASS, TX.3 PASS, T1.2 + TX.2 deferred to P2.5 | done 2026-04-30 |
 | C | Original P1 backlog — P1.2 / P1.3 / P1.4 / P1.5 / P1.7 / P1.11 done 2026-04-30. P1.8 (deployment docs) deferred to Phase H since Enterprise must exist first. | done 2026-04-30 |
 | C2 | P1 expansion — Pro front-end surface bundle (P1.14 RegistrationService → P1.13 HIBP-on-login → P1.12 front-end Twig render builders + JS asset + strength engine A+B → P1.15 events catalog). | fully closed 2026-05-01 (Layer 4b strength engine unification landed in a focused session — single AJAX engine for both CP and front-end surfaces, ~1.65 MB bundle reduction) |
-| D | User index integration (P2.1, P2.2) | pending |
-| E | Testing infrastructure (P2.5) | pending |
-| F | Polish (P2.6 — P2.4 absorbed into P1.12) | pending |
-| G | Enterprise (Phase 10, 11, 12) | blocked on A+B+C+C2 |
+| **E** | **Testing infrastructure (P2.5, scope-expanded)** — Pest covers C2 surface + bug fix sweep + deferred manual tests | **next** (build order swap signed off 2026-05-02) |
+| D | User index integration (P2.1, P2.2; absorbs P2.6 `allowAdminChanges` verification gate) | pending |
+| F | Polish + draft Phase G build plan (P2.8) — P2.4 absorbed into P1.12; P2.6 absorbed into D | pending |
+| G | Enterprise (Phase 10, 11, 12) — driven by P2.8 build plan | blocked on E + D + F |
 | H | Release prep + deployment docs (P1.8) — tag 5.2.0, Plugin Store listing, marketing copy, migration guide review, deployment/cron docs (Enterprise required to write authoritative docs) | blocked on A–G |
+| **(parallel)** | **5.1.x backports — parked.** Three commits on `5.1.x` branch (TLS verify, fail-open log level, sensitive-key strip). Tag-or-park decision pending — discuss before resuming. Independent of the linear A → H sequence. | parked |
 
 Gates:
 - B cannot start until A is complete (don't run security tests against known-broken code).
 - C2 cannot start until C is complete (P1.13 builds on the email-notifications infrastructure shipped in P1.3+P1.4; P1.14 fires events that P1.15 catalogues).
-- G cannot start until A+B+C+C2 are all complete (Enterprise builds on Pro foundations + finished P1 backlog + verified upgrade story).
+- **E cannot start until C2 is complete** (Pest covers the C2 surface; that surface had to land first).
+- **D cannot start until E is complete** (Phase D extends the codebase with new CP surfaces; Pest must cover the existing C2 surface before new code lands on top).
+- F cannot start until D is complete (P2.8 Phase G build plan benefits from the user-index work being in-hand for cross-references).
+- G cannot start until F is complete (Phase G needs the P2.8 build plan to lock architectural decisions before code).
 - H cannot start until G is complete (single 5.2.0 release covers all editions; nothing tags until Enterprise is built and tested).
 
 ---
