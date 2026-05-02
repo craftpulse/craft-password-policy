@@ -125,10 +125,10 @@ class GuzzleHibpClient extends Component implements HibpClientInterface
                 return null;
             }
 
-            PasswordPolicy::$plugin->log($exception->getMessage(), [], Logger::LEVEL_ERROR);
+            PasswordPolicy::$plugin->log($exception->getMessage(), [], Logger::LEVEL_WARNING);
             return null;
         } catch (GuzzleException $exception) {
-            PasswordPolicy::$plugin->log($exception->getMessage(), [], Logger::LEVEL_ERROR);
+            PasswordPolicy::$plugin->log($exception->getMessage(), [], Logger::LEVEL_WARNING);
             return null;
         }
     }

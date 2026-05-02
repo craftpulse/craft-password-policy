@@ -21,9 +21,10 @@
  *    `ctype_digit` numeric seconds. HTTP-date returns the default. The
  *    inline docblock notes this; tests pin it so a future implementer
  *    extending parsing knows what they're regressing.
- *  - Non-2xx-non-429 errors log at `Logger::LEVEL_ERROR`, NOT WARNING
- *    (which would be the security.md fail-open guidance). Tests pin
- *    current behavior. Flagged as a follow-up.
+ *  - Non-2xx-non-429 errors log at `Logger::LEVEL_WARNING` per security.md
+ *    (a transient HIBP outage is fail-open, not an alertable error — every
+ *    upstream blip shouldn't page someone). Tests pin the level so a future
+ *    refactor doesn't silently raise non-2xx back to ERROR.
  *  - `isBackoffActive()` reads the cache via `!== false` rather than
  *    `cache->exists()`. With the sentinel value `'1'`, the gap is
  *    inert — but the read pattern is the gap #11 collision idiom.
@@ -75,19 +76,25 @@ it('returns the response body on a 200', function() {
 });
 
 // =============================================================================
-// query() — non-2xx, non-429 fail-open (codifies LEVEL_ERROR logging)
+// query() — non-2xx, non-429 fail-open (logs at WARNING per security.md)
 // =============================================================================
 
-it('returns null on a 500 server error', function() {
+it('returns null on a 500 server error and logs at WARNING', function() {
     // Fail-open: the caller can distinguish "unable to check" from
-    // "not breached" via the null return. CURRENT BEHAVIOR: logs at
-    // Logger::LEVEL_ERROR, not WARNING. security.md prescribes WARNING
-    // for transient outages — the spec/code divergence is flagged in
-    // the commit body as a follow-up.
+    // "not breached" via the null return. Log level is WARNING, not ERROR
+    // — security.md prescribes WARNING for transient outages so a single
+    // HIBP CDN burp doesn't page someone.
     $this->mockHandler->append(new Response(500, [], 'Internal Server Error'));
+
+    $logger = Craft::getLogger();
+    $initialCount = count($logger->messages);
 
     expect($this->client->query('00000'))->toBeNull()
         ->and(Craft::$app->getCache()->get(GuzzleHibpClient::BACKOFF_CACHE_KEY))->toBeFalse();
+
+    $newMessages = array_slice($logger->messages, $initialCount);
+    $warnings = array_filter($newMessages, fn($m) => $m[1] === \yii\log\Logger::LEVEL_WARNING);
+    expect($warnings)->not->toBeEmpty();
 });
 
 it('returns null on a 404 (range path missing)', function() {
