@@ -1,0 +1,168 @@
+<?php
+/**
+ * Password policy plugin for Craft CMS
+ *
+ * @link      https://craftpulse.com
+ * @copyright Copyright (c) 2024 CraftPulse
+ */
+
+namespace craftpulse\passwordpolicy\tests\Support;
+
+use craft\web\Request;
+
+/**
+ * Lightweight stub of `craft\web\Request` for tests that need to flip
+ * `Craft::$app->getRequest()->getIsConsoleRequest()` to `false` while the
+ * test process is still bootstrapped as a console application.
+ *
+ * The stub forces `getIsConsoleRequest()` to `false` and exposes
+ * `setBodyParams()` so controller-flow tests can populate POST data
+ * without standing up a full HTTP request lifecycle. Acceptance
+ * (`getAcceptsJson`), POST detection (`getIsPost`), and CSRF
+ * (`getCsrfToken`) all return defaults that keep `craft\web\Controller`
+ * happy without needing real HTTP plumbing.
+ *
+ * Use via `Craft::$app->set('request', new WebRequestStub())` inside a
+ * `beforeEach()`; the singleton swap restores when the test process
+ * exits or another `set()` overwrites it. Tests that don't need the
+ * web-context flip stick with the bootstrap's console request.
+ *
+ * @author      CraftPulse
+ * @package     PasswordPolicy
+ * @since       5.2.0
+ */
+class WebRequestStub extends Request
+{
+    // Public Properties
+    // =========================================================================
+
+    /**
+     * @var array<string, mixed>
+     */
+    public array $stubBodyParams = [];
+
+    /**
+     * @var bool
+     */
+    public bool $stubIsPost = true;
+
+    /**
+     * @var bool
+     */
+    public bool $stubAcceptsJson = true;
+
+    // Public Methods
+    // =========================================================================
+
+    /**
+     * @inheritdoc
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function init(): void
+    {
+        // Skip parent init — Craft's Request::init reads from $_SERVER /
+        // $_REQUEST and resolves a Site, neither of which makes sense in
+        // a console-bootstrapped test process.
+    }
+
+    /**
+     * @return false
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getIsConsoleRequest(): bool
+    {
+        return false;
+    }
+
+    /**
+     * @inheritdoc
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getIsPost(): bool
+    {
+        return $this->stubIsPost;
+    }
+
+    /**
+     * @inheritdoc
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getAcceptsJson(): bool
+    {
+        return $this->stubAcceptsJson;
+    }
+
+    /**
+     * @inheritdoc
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getIsOptions(): bool
+    {
+        return false;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getBodyParams(): array
+    {
+        return $this->stubBodyParams;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function setBodyParams($values): void
+    {
+        $this->stubBodyParams = $values;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getBodyParam($name, $defaultValue = null): mixed
+    {
+        return $this->stubBodyParams[$name] ?? $defaultValue;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getRequiredBodyParam($name): mixed
+    {
+        if (!array_key_exists($name, $this->stubBodyParams)) {
+            throw new \yii\web\BadRequestHttpException(sprintf(
+                'Required body param `%s` not present.',
+                $name,
+            ));
+        }
+
+        return $this->stubBodyParams[$name];
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getCsrfToken($regenerate = false): string
+    {
+        return 'stub-csrf-token';
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function validateCsrfToken($clientSuppliedToken = null): bool
+    {
+        return true;
+    }
+}
