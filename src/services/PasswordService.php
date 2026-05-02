@@ -129,7 +129,14 @@ class PasswordService extends Component
 
             return $passwords->isNotEmpty();
         } catch (GuzzleException $exception) {
-            PasswordPolicy::$plugin->log($exception->getMessage(), [], Logger::LEVEL_ERROR);
+            // Fail-open by design: if HIBP is unreachable we cannot determine
+            // whether the password is breached, and blocking the user would
+            // make password change/registration impossible whenever the API is
+            // down. Logged at WARNING (not ERROR) so the degradation is visible
+            // in operational dashboards without firing alert pages on every
+            // transient HIBP outage. Operators wanting fail-closed behavior
+            // should upgrade to 5.2.0+ where `hibpFailMode: 'closed'` is wired.
+            PasswordPolicy::$plugin->log($exception->getMessage(), [], Logger::LEVEL_WARNING);
             return false;
         }
     }
