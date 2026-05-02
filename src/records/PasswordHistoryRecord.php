@@ -17,8 +17,13 @@ use craft\db\ActiveRecord;
  *
  * @property int $id
  * @property int $userId
+ * @property int|null $changedByUserId
  * @property string $passwordHash
- * @property \DateTime $dateCreated
+ * @property string $changeReason
+ * @property string|null $changeSourceIp
+ * @property string|null $changeUserAgent
+ * @property string|null $policySnapshot
+ * @property \DateTime|string $dateCreated
  * @property string $uid
  *
  * @author      CraftPulse
