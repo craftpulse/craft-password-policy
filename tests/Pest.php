@@ -30,11 +30,13 @@ use craftpulse\passwordpolicy\tests\TestCase;
 uses(MigrationTestCase::class)->in('Integration/Migrations');
 uses(MultiSiteTestCase::class)->in('Integration/MultiSite');
 uses(TestCase::class)->in(
+    'Integration/ConditionRules',
     'Integration/Controllers',
     'Integration/Models',
     'Integration/Records',
     'Integration/Services',
     'Integration/TwigTags',
+    'Integration/UserIndex',
     'Integration/Validators',
     'Integration/CraftBootstrapTest.php',
 );

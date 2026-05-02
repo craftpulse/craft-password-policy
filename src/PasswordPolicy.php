@@ -11,16 +11,21 @@
 namespace craftpulse\passwordpolicy;
 
 use Craft;
+use craft\base\Element;
 use craft\base\Model;
 use craft\base\Plugin;
 use craft\elements\conditions\users\UserCondition;
 use craft\elements\User;
+use craft\enums\CmsEdition;
 use craft\events\AuthenticateUserEvent;
+use craft\events\DefineAttributeHtmlEvent;
 use craft\events\DefineRulesEvent;
 use craft\events\ModelEvent;
 use craft\events\RegisterComponentTypesEvent;
 use craft\events\RegisterConditionRulesEvent;
 use craft\events\RegisterElementActionsEvent;
+use craft\events\RegisterElementSortOptionsEvent;
+use craft\events\RegisterElementTableAttributesEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
 use craft\events\SiteEvent;
@@ -348,6 +353,41 @@ class PasswordPolicy extends Plugin
     public function getIsEnterprise(): bool
     {
         return $this->is(self::EDITION_ENTERPRISE);
+    }
+
+    /**
+     * Returns whether the host Craft install is on the Solo edition.
+     *
+     * Solo caps multi-user features that two of D2's user-index columns
+     * (policy drift + applied policies) and one condition rule depend on
+     * — namely user groups and per-group policy resolution. The plugin
+     * gate (`getIsPro()`) handles its own edition; this gate handles the
+     * underlying Craft license. Both must clear before the gated affordance
+     * registers.
+     *
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function isCraftSolo(): bool
+    {
+        return Craft::$app->edition === CmsEdition::Solo;
+    }
+
+    /**
+     * Returns whether the host Craft install is on the Team edition or
+     * higher (Team, Pro, Enterprise). Convenience inverse of
+     * {@see self::isCraftSolo()}.
+     *
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function isCraftTeamOrBetter(): bool
+    {
+        return Craft::$app->edition->value >= CmsEdition::Team->value;
     }
 
     /**
@@ -1216,10 +1256,15 @@ class PasswordPolicy extends Plugin
     }
 
     /**
-     * Registers User index integration: condition rules and bulk action.
+     * Registers User index integration: condition rules, table
+     * attributes (D2), sort options (D2), and the force-reset bulk
+     * action.
      *
-     * Condition rules allow filtering users by password status in
-     * the Users index. Bulk action enables force-reset on selected users.
+     * The table-attribute side relies on the per-request preload in
+     * {@see UserIndexService::preloadForUsers()} to keep cell rendering
+     * out of N+1 territory. The preload runs once per request behind a
+     * static flag — re-firing across many `EVENT_DEFINE_ATTRIBUTE_HTML`
+     * callbacks for the same render cycle is a no-op.
      *
      * @return void
      *
@@ -1228,7 +1273,10 @@ class PasswordPolicy extends Plugin
      */
     private function _registerUserIndexIntegration(): void
     {
-        // Condition rules for user filtering
+        // Condition rules for user filtering. D2.3 extends this list
+        // with the additional rules that pair with the table-attribute
+        // columns shipped in D2.1/D2.2; the gate-aware additions
+        // (BreachedRecently, PolicyDrift) live in that step.
         Event::on(
             UserCondition::class,
             UserCondition::EVENT_REGISTER_CONDITION_RULES,
@@ -1236,7 +1284,7 @@ class PasswordPolicy extends Plugin
                 $event->conditionRules[] = PasswordExpiredConditionRule::class;
                 $event->conditionRules[] = PasswordResetRequiredConditionRule::class;
                 $event->conditionRules[] = PasswordNeverChangedConditionRule::class;
-            }
+            },
         );
 
         // Bulk action for force password reset
@@ -1247,7 +1295,82 @@ class PasswordPolicy extends Plugin
                 if ($this->getIsPro()) {
                     $event->actions[] = ForcePasswordReset::class;
                 }
-            }
+            },
+        );
+
+        // Column registration on the Users element index. Edition gates
+        // live in `UserIndexService::getAttributesForRegistration()` so
+        // both this listener and any direct callers see a consistent
+        // shape.
+        Event::on(
+            User::class,
+            Element::EVENT_REGISTER_TABLE_ATTRIBUTES,
+            function(RegisterElementTableAttributesEvent $event): void {
+                $event->tableAttributes = array_merge(
+                    $event->tableAttributes,
+                    $this->getUserIndex()->getAttributesForRegistration(),
+                );
+            },
+        );
+
+        // Per-cell HTML rendering. The handler defers to
+        // `renderAttributeHtml()`, which short-circuits to null for
+        // non-plugin attributes — leaves Craft's own cell rendering
+        // untouched. The service caches per-user state once preloaded;
+        // additional cells for the same user are array lookups.
+        Event::on(
+            User::class,
+            Element::EVENT_DEFINE_ATTRIBUTE_HTML,
+            function(DefineAttributeHtmlEvent $event): void {
+                /** @var User $user */
+                $user = $event->sender;
+                $service = $this->getUserIndex();
+
+                // Lazy-load: the first cell encountering this user
+                // primes the cache; later cells for the same user are
+                // free. Test surfaces drive a deliberate `preloadForUsers()`
+                // up-front to assert the bounded query count contract.
+                if ($user->id !== null) {
+                    $service->preloadForUsers([$user->id]);
+                }
+
+                $html = $service->renderAttributeHtml($user, $event->attribute);
+
+                if ($html !== null) {
+                    $event->html = $html;
+                }
+            },
+        );
+
+        // Sort options. Cheap-to-sort columns only — see
+        // `UserIndexService::getSortOptions()` for the rationale.
+        Event::on(
+            User::class,
+            Element::EVENT_REGISTER_SORT_OPTIONS,
+            function(RegisterElementSortOptionsEvent $event): void {
+                $service = $this->getUserIndex();
+                $sortMappings = [];
+
+                foreach (array_keys($service->getSortOptions()) as $attribute) {
+                    $mapping = $service->getSortMapping($attribute);
+
+                    if ($mapping === null) {
+                        continue;
+                    }
+
+                    $sortMappings[] = [
+                        'label' => $service->getSortOptions()[$attribute],
+                        'orderBy' => array_keys($mapping)[0],
+                        'attribute' => $attribute,
+                    ];
+                }
+
+                if (empty($sortMappings)) {
+                    return;
+                }
+
+                $event->sortOptions = array_merge($event->sortOptions, $sortMappings);
+            },
         );
     }
 
