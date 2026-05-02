@@ -24,9 +24,19 @@ use craftpulse\passwordpolicy\validators\PwnedValidator;
  */
 class UserRules
 {
+    // Public Methods
+    // =========================================================================
+
+    /**
+     * Returns the validation rules for user password fields.
+     *
+     * @return array
+     *
+     * @author CraftPulse
+     */
     public static function defineRules(): array
     {
-        $settings = PasswordPolicy::$plugin->settings;
+        $settings = PasswordPolicy::$plugin->getSettings();
 
         $rules[] =
             [
@@ -35,7 +45,7 @@ class UserRules
                 'min' => $settings->minLength,
                 'tooShort' => Craft::t(
                     'password-policy',
-                    Craft::t('password-policy','Password must contain at least {min} characters.'),
+                    'Password must contain at least {min} characters.',
                     ['min' => $settings->minLength]
                 ),
                 'skipOnError' => false,
@@ -60,7 +70,7 @@ class UserRules
                     'max' => $settings->maxLength,
                     'tooLong' => Craft::t(
                         'password-policy',
-                        Craft::t('password-policy','Password can maximum contain {max} characters.'),
+                        'Password can maximum contain {max} characters.',
                         ['max' => $settings->maxLength]
                     ),
                     'skipOnError' => false,

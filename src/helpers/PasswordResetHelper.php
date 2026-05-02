@@ -12,9 +12,10 @@ namespace craftpulse\passwordpolicy\helpers;
 
 use Carbon\Carbon;
 use craft\elements\User;
+use craft\helpers\Db;
 
 use craftpulse\passwordpolicy\PasswordPolicy;
-use DateTime;
+use DateInterval;
 
 /**
  * Class PasswordResetHelper
@@ -25,68 +26,52 @@ use DateTime;
  */
 class PasswordResetHelper
 {
+    // Public Methods
+    // =========================================================================
+
     /**
-     * Returns all the users where the password should be expired.
+     * Returns all active users whose password has expired according to the retention settings.
      *
-     * @return array
+     * @return User[]
+     *
+     * @author CraftPulse
      */
     public static function getAllUsersToExpire(): array
     {
-        // make sure we have the lastPasswordChangeDate on our users
-        $users = User::find()->addSelect('lastPasswordChangeDate')->collect();
+        $interval = self::_createInterval();
 
-        // only get the active users
-        $users = $users->filter(function($user) {
-            return $user->active === true;
-        });
+        if ($interval === null) {
+            return [];
+        }
 
-        // now only get the ones where their password is changed at least 90 days ago (how lol?);
-        $users = $users->filter(function($user) {
-            return self::checkIfExpired($user->lastPasswordChangeDate);
-        })->all();
+        $expiryDate = Carbon::now()->sub(new DateInterval($interval));
 
-        return $users;
+        return User::find()
+            ->status('active')
+            ->andWhere(['<', 'users.lastPasswordChangeDate', Db::prepareDateForDb($expiryDate)])
+            ->all();
     }
 
-    private static function checkIfExpired(?DateTime $lastPasswordChangeDate = null): bool
+    // Private Methods
+    // =========================================================================
+
+    /**
+     * Creates an ISO 8601 duration string from the plugin's expiry settings.
+     *
+     * @return string|null
+     *
+     * @author CraftPulse
+     */
+    private static function _createInterval(): ?string
     {
-        if ($lastPasswordChangeDate === null) {
-            return false;
-        }
+        $settings = PasswordPolicy::$plugin->getSettings();
 
-        $now = Carbon::now();
-        $interval = self::createInterval();
-        $lastPasswordChangeDate = new Carbon($lastPasswordChangeDate);
-        if ($interval) {
-            $requiredLastPasswordChangeDate = $now->subtract(self::createInterval());
-            if ($lastPasswordChangeDate->lessThan($requiredLastPasswordChangeDate)) {
-                return true;
-            };
-        }
-
-        return false;
-    }
-
-    private static function createInterval(): ?string
-    {
-        $settings = PasswordPolicy::$plugin->settings;
-        $period = null;
-
-        switch ($settings->expiryPeriod) {
-            case 'day':
-                $period = "P{$settings->expiryAmount}D";
-                break;
-            case 'week':
-                $period = "P{$settings->expiryAmount}W";
-                break;
-            case 'month':
-                $period = "P{$settings->expiryAmount}M";
-                break;
-            case 'year':
-                $period = "P{$settings->expiryAmount}Y";
-                break;
-        }
-
-        return $period;
+        return match ($settings->expiryPeriod) {
+            'day' => "P{$settings->expiryAmount}D",
+            'week' => "P{$settings->expiryAmount}W",
+            'month' => "P{$settings->expiryAmount}M",
+            'year' => "P{$settings->expiryAmount}Y",
+            default => null,
+        };
     }
 }

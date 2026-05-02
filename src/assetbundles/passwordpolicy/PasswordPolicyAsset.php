@@ -32,6 +32,8 @@ class PasswordPolicyAsset extends AssetBundle
 
     /**
      * @inheritdoc
+     *
+     * @author CraftPulse
      */
     public function init(): void
     {
@@ -41,9 +43,9 @@ class PasswordPolicyAsset extends AssetBundle
         ];
 
         // Register Javascript variable with nonce support
-        Craft::$app->view->registerJs(
+        Craft::$app->getView()->registerJs(
             'window.passwordpolicy = ' . Json::encode([
-                'showStrengthIndicator' => PasswordPolicy::$plugin->settings->showStrengthIndicator,
+                'showStrengthIndicator' => PasswordPolicy::$plugin->getSettings()->showStrengthIndicator,
             ]) . ';',
             View::POS_HEAD
         );

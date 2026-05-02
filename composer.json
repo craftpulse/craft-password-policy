@@ -2,7 +2,7 @@
     "name": "craftpulse/craft-password-policy",
     "description": "Password Policy plugin",
     "type": "craft-plugin",
-    "version": "5.1.0",
+    "version": "5.1.2",
     "keywords": [
         "craft",
         "cms",
@@ -50,7 +50,8 @@
         "developerUrl": "https://craft-pulse.com",
         "documentationUrl": "https://github.com/craftpulse/craft-password-policy/blob/v5/README.md",
         "changelogUrl": "https://github.com/craftpulse/craft-password-policy/blob/v5/CHANGELOG.md",
-        "class": "craftpulse\\passwordpolicy\\PasswordPolicy"
+        "class": "craftpulse\\passwordpolicy\\PasswordPolicy",
+        "craftcms-claude-skills": "1.2.0"
     },
     "scripts": {
         "phpstan": "phpstan --ansi --memory-limit=1G",

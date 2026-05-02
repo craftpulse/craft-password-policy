@@ -16,6 +16,7 @@ use craft\web\Controller;
 use craft\web\UrlManager;
 
 use craftpulse\passwordpolicy\PasswordPolicy;
+use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
@@ -29,8 +30,15 @@ use yii\web\Response;
  */
 class SettingsController extends Controller
 {
+    // Public Methods
+    // =========================================================================
+
     /**
      * @inheritdoc
+     *
+     * @throws ForbiddenHttpException
+     *
+     * @author CraftPulse
      */
     public function beforeAction($action): bool
     {
@@ -40,7 +48,13 @@ class SettingsController extends Controller
     }
 
     /**
+     * Renders the plugin settings form.
+     *
      * @return Response|null
+     *
+     * @throws ForbiddenHttpException
+     *
+     * @author CraftPulse
      */
     public function actionEdit(): ?Response
     {
@@ -73,16 +87,26 @@ class SettingsController extends Controller
                 'url' => UrlHelper::cpUrl('password-policy/plugin'),
             ],
         ];
-        $variables['settings'] = PasswordPolicy::$plugin->settings;
+        $variables['settings'] = PasswordPolicy::$plugin->getSettings();
 
         return $this->renderTemplate('password-policy/_settings', $variables);
     }
 
     /**
-     * Saves the plugin settings
+     * Saves the plugin settings.
+     *
+     * @return Response|null
+     *
+     * @throws BadRequestHttpException
+     * @throws ForbiddenHttpException
+     * @throws NotFoundHttpException
+     *
+     * @author CraftPulse
      */
     public function actionSave(): ?Response
     {
+        $this->requirePostRequest();
+
         // Ensure they have permission to edit the plugin settings
         $currentUser = Craft::$app->getUser()->getIdentity();
         if (!$currentUser->can('pp:settings')) {
@@ -94,7 +118,6 @@ class SettingsController extends Controller
         }
 
         // Save the plugin settings
-        $this->requirePostRequest();
         $pluginHandle = Craft::$app->getRequest()->getRequiredBodyParam('pluginHandle');
         $plugin = Craft::$app->getPlugins()->getPlugin($pluginHandle);
         $settings = Craft::$app->getRequest()->getBodyParam('settings', []);
