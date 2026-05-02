@@ -15,6 +15,7 @@ use craft\base\Component;
 use craft\db\Table;
 use craft\elements\User as UserElement;
 use craft\helpers\Queue;
+use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\jobs\PasswordResetJob;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use Throwable;
@@ -78,6 +79,16 @@ class RetentionService extends Component
             $user->passwordResetRequired = true;
             Craft::$app->getElements()->saveElement($user);
             $this->resets++;
+
+            // Pin a pending `ExpiryForced` reason on the user_state row so
+            // the user's NEXT password change records the right
+            // `changeReason` in history. Capture is non-negotiable across
+            // editions — Lite, Pro, and Enterprise installs all populate
+            // this row (memory rule `project_audit_capture_principle.md`).
+            PasswordPolicy::$plugin->getUserState()->setPendingReason(
+                $user,
+                ChangeReason::ExpiryForced,
+            );
 
             // Audit log: force reset
             PasswordPolicy::$plugin->getAuditLog()->logEvent(
