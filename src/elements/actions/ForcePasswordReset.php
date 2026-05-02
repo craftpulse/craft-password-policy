@@ -14,6 +14,8 @@ use Craft;
 use craft\base\ElementAction;
 use craft\elements\db\ElementQueryInterface;
 use craft\elements\User;
+use craftpulse\passwordpolicy\enums\ChangeReason;
+use craftpulse\passwordpolicy\PasswordPolicy;
 
 use Throwable;
 
@@ -79,6 +81,8 @@ class ForcePasswordReset extends ElementAction
         $elementsService = Craft::$app->getElements();
         $successCount = 0;
 
+        $userState = PasswordPolicy::$plugin->getUserState();
+
         foreach ($users as $user) {
             if ($user->passwordResetRequired) {
                 $successCount++;
@@ -88,6 +92,15 @@ class ForcePasswordReset extends ElementAction
             try {
                 $user->passwordResetRequired = true;
                 $elementsService->saveElement($user, false);
+
+                // Pin a pending `AdminForceReset` reason on the user_state
+                // row so the user's NEXT password change records the right
+                // `changeReason` in history. Capture is non-negotiable
+                // across editions — Lite, Pro, and Enterprise installs all
+                // populate this row (memory rule
+                // `project_audit_capture_principle.md`).
+                $userState->setPendingReason($user, ChangeReason::AdminForceReset);
+
                 $successCount++;
             } catch (Throwable) {
                 Craft::warning(
