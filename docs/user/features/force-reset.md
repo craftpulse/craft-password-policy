@@ -1,43 +1,8 @@
-# Phase 8 — Developer Events, Session Invalidation, Enhanced Force Reset
+# Force Password Reset
 
-## Overview
+Pro and Enterprise editions ship two ways to require users to set a new password on next login: invalidating their existing sessions, and bulk-resetting every member of a user group.
 
-Phase 8 adds the developer event system (Lite — free for ecosystem), session invalidation on force reset (Pro), and group-based force reset (Pro).
-
-## Developer Events
-
-### PasswordChangedEvent (`EVENT_PASSWORD_CHANGED`)
-
-Fired after a password has been successfully changed and history stored. By the time this event fires, `newPassword` is already null — the plaintext is gone.
-
-**Properties:**
-- `User $user` — The user whose password was changed
-- `bool $isNew` — Whether this is a newly created user
-
-**Available in:** All editions (Lite)
-
-**Example — Slack notification on admin password change:**
-```php
-use craftpulse\passwordpolicy\PasswordPolicy;
-use craftpulse\passwordpolicy\events\PasswordChangedEvent;
-
-Event::on(
-    PasswordPolicy::class,
-    PasswordPolicy::EVENT_PASSWORD_CHANGED,
-    function(PasswordChangedEvent $event) {
-        if ($event->user->admin) {
-            // Send webhook to Slack
-        }
-    }
-);
-```
-
-### PasswordValidationEvent
-
-Event class for future use in validation pipeline. Properties:
-- `User $user` — The user being validated
-- `array $errors` — Validation errors from built-in rules
-- `bool $isValid` — Whether built-in validation passed
+For the developer event catalog (`PasswordChangedEvent`, `PasswordValidationEvent`, `UserRegisteredEvent`, `BreachDetectedEvent`), see [events reference](../reference/events.md).
 
 ## Session Invalidation
 
