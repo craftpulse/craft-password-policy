@@ -1,5 +1,13 @@
 # Release Notes for Password Policy
 
+## 5.1.2 - 2026-05-02
+### Fixed
+- Fixed HIBP requests not enforcing TLS verification when a site-level `config/guzzle.php` had `verify => false`. The plugin now always verifies TLS on the Pwned Passwords API call regardless of the site's Guzzle defaults.
+
+### Changed
+- Bumped HIBP fail-open log level from `ERROR` to `WARNING`. A transient HIBP outage shouldn't trigger ERROR-level alerts in operator monitoring.
+- `PasswordPolicy::log()` now strips sensitive keys (`password`, `newPassword`, `plaintext`, `hash`, `passwordHash`) from logged params as defense-in-depth for third-party listener authors.
+
 ## 5.1.1 - 2026-05-02
 ### Changed
 - Symbols regex now accepts any non-alphanumeric character (hyphens, underscores, etc.) instead of a limited set [#46](https://github.com/craftpulse/craft-password-policy/issues/46)
