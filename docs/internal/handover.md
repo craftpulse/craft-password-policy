@@ -53,6 +53,8 @@ df26265 chore(test): scaffold Pest config + bootstrap (E1.1)
 
 **Manual tests:** **78/79 PASS** for the active C2 + Layer 4b + bug fix sweep pass. **T1.2 + TX.2 + T9.7 now covered by Pest** (no longer deferred). T12.6 (Enterprise audit) gated on Phase G. T13.6 + T13.11 (browser-driven AJAX UX + screen-reader a11y) require manual browser/SR verification — environment-gated, not code-gated.
 
+**Pending — focused manual test session committed (2026-05-02).** The active test pass at the top of `manual-tests.md` (Phase C2 + Layer 4b + bug fix sweep walkthrough — 6 blocks: front-end demos, CP strength, HIBP-on-login, email notifications, bug-fix-specific verifications, edition matrix) needs to be run end-to-end in a multi-hour focused session driven by the user (browser + Mailpit work, not agent-suitable). Phase D continues in parallel; the manual session is independent. Run before tagging 5.2.0 in any case.
+
 **Phase status (`plan.md` §4):**
 - A — audit fix-ups: **done 2026-04-29**.
 - B — pre-release security tests: **done 2026-04-30**.
