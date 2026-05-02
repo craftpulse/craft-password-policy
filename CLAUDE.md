@@ -1,4 +1,13 @@
+<!-- craftcms-claude-skills v1.3.0 -->
 # Claude Code project guide — craft-password-policy
+
+@.claude/rules/coding-style.md
+@.claude/rules/architecture.md
+@.claude/rules/git-workflow.md
+@.claude/rules/scaffolding.md
+@.claude/rules/security.md
+@.claude/rules/migrations.md
+@.claude/rules/testing.md
 
 This file orients fresh Claude sessions to the plugin's structure, conventions, and the docs hierarchy. Read this before opening anything in `docs/`.
 

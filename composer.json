@@ -58,7 +58,7 @@
         "documentationUrl": "https://github.com/craftpulse/craft-password-policy/blob/v5/README.md",
         "changelogUrl": "https://github.com/craftpulse/craft-password-policy/blob/v5/CHANGELOG.md",
         "class": "craftpulse\\passwordpolicy\\PasswordPolicy",
-        "craftcms-claude-skills": "1.2.0"
+        "craftcms-claude-skills": "1.3.0"
     },
     "scripts": {
         "phpstan": "phpstan --ansi --memory-limit=1G",
