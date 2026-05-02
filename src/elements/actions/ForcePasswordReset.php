@@ -12,6 +12,8 @@ namespace craftpulse\passwordpolicy\elements\actions;
 
 use Craft;
 use craft\base\ElementAction;
+use craft\db\Query;
+use craft\db\Table;
 use craft\elements\db\ElementQueryInterface;
 use craft\elements\User;
 use craftpulse\passwordpolicy\enums\ChangeReason;
@@ -83,8 +85,20 @@ class ForcePasswordReset extends ElementAction
 
         $userState = PasswordPolicy::$plugin->getUserState();
 
+        // `UserQuery::beforePrepare()` does NOT addSelect
+        // `passwordResetRequired`, so the in-memory `$user->passwordResetRequired`
+        // is always `false` regardless of the DB column. Same gotcha as
+        // `lastPasswordChangeDate` (memory gap #9). Pre-load the persisted
+        // column for the queried user IDs so the short-circuit skips users
+        // already flagged — otherwise we'd clobber any in-flight pending
+        // reason (BreachForced from HIBP-on-login, ExpiryForced from cron)
+        // with `AdminForceReset` on a redundant admin click.
+        $persistedFlags = $this->_loadPasswordResetFlags(
+            array_map(static fn(User $u): int => (int)$u->id, $users),
+        );
+
         foreach ($users as $user) {
-            if ($user->passwordResetRequired) {
+            if ($persistedFlags[$user->id] ?? false) {
                 $successCount++;
                 continue;
             }
@@ -126,5 +140,44 @@ class ForcePasswordReset extends ElementAction
         );
 
         return true;
+    }
+
+    // Private Methods
+    // =========================================================================
+
+    /**
+     * Returns a map of `[userId => bool]` reflecting the persisted
+     * `users.passwordResetRequired` column for every queried user.
+     *
+     * Workaround for `UserQuery::beforePrepare()` not addSelect-ing the
+     * column — without this the in-memory User element always reads as
+     * `false` regardless of DB state, and the bulk action's
+     * already-flagged short-circuit would never fire.
+     *
+     * @param int[] $userIds
+     * @return array<int, bool> map keyed by userId
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _loadPasswordResetFlags(array $userIds): array
+    {
+        if (empty($userIds)) {
+            return [];
+        }
+
+        $rows = (new Query())
+            ->select(['id', 'passwordResetRequired'])
+            ->from(Table::USERS)
+            ->where(['id' => $userIds])
+            ->all();
+
+        $flags = [];
+
+        foreach ($rows as $row) {
+            $flags[(int)$row['id']] = (bool)$row['passwordResetRequired'];
+        }
+
+        return $flags;
     }
 }
