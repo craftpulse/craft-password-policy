@@ -10,6 +10,7 @@ namespace craftpulse\passwordpolicy\tests\Support\Factories;
 
 use Craft;
 use craft\elements\User;
+use craft\enums\CmsEdition;
 use craft\errors\ElementNotFoundException;
 use Throwable;
 use yii\base\Exception;
@@ -56,6 +57,15 @@ class UserFactory
      */
     public static function admin(array $overrides = []): User
     {
+        // Solo edition caps install at one user — and the bootstrap already
+        // created the seed admin. Elevate to Pro before saving so additional
+        // test users can persist. Mutating `$app->edition` directly is the
+        // right move here: it sticks for the test process and doesn't write
+        // project config (which would break the per-test transaction wrap).
+        if (Craft::$app->edition->value < CmsEdition::Pro->value) {
+            Craft::$app->edition = CmsEdition::Pro;
+        }
+
         $unique = bin2hex(random_bytes(4));
 
         $user = new User([
