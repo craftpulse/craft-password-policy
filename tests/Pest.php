@@ -14,6 +14,26 @@
  * @copyright Copyright (c) 2024 CraftPulse
  */
 
+use craftpulse\passwordpolicy\tests\Support\MigrationTestCase;
+use craftpulse\passwordpolicy\tests\Support\MultiSiteTestCase;
 use craftpulse\passwordpolicy\tests\TestCase;
 
-uses(TestCase::class)->in('Integration');
+// Pest's TestRepository iterates `uses()` rules in registration order and
+// the first match to set the test case wins — any later match for the
+// same file throws `TestCaseAlreadyInUse`. So we register the most-
+// specific paths first, then the broader ones, and we DON'T register a
+// blanket `Integration` rule because the per-subfolder bindings below
+// cover every file. Migration tests run outside the standard transaction
+// wrap (DDL is auto-committed in MySQL/MariaDB and can't roll back);
+// multi-site tests run outside it (site saves trigger project-config
+// writes that bypass DB transactions).
+uses(MigrationTestCase::class)->in('Integration/Migrations');
+uses(MultiSiteTestCase::class)->in('Integration/MultiSite');
+uses(TestCase::class)->in(
+    'Integration/Controllers',
+    'Integration/Models',
+    'Integration/Services',
+    'Integration/TwigTags',
+    'Integration/Validators',
+    'Integration/CraftBootstrapTest.php',
+);
