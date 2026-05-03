@@ -75,26 +75,16 @@
 
         <hr>
 
+        {% set strengthIndicatorInfo %}
+            <span class="info">{{ "Powered by zxcvbn — analyses the password against common patterns, dictionaries, and keyboard sequences. Same engine drives the front-end Twig render builders, so blocklist hits and per-group policy resolution surface in the CP indicator too."|t('password-policy') }}</span>
+        {% endset %}
         {{ forms.lightswitchField({
             label: 'Show password strength indicator'|t('password-policy'),
-            instructions: "Display a password strength meter on control panel password fields. Shares the same engine as the front-end Twig builders, so the blocklist, per-group policy resolution, and the strength engine selected below all surface here too."|t('password-policy'),
+            instructions: "Display a password strength meter on control panel password fields."|t('password-policy') ~ strengthIndicatorInfo,
             name: 'settings[showStrengthIndicator]',
             on: settings.showStrengthIndicator,
             disabled: readOnly,
         }) }}
-
-        {% if craft.app.plugins.getPlugin('password-policy').getIsPro() %}
-            {% set strengthEngineInfo %}
-                <span class="info">{{ "When off, the meter scores passwords by counting policy rule satisfaction. When on, the bundled zxcvbn engine produces materially better strength estimates plus per-password suggestions, at the cost of ~200KB of additional dictionary payload sent to clients running the front-end builders."|t('password-policy') }}</span>
-            {% endset %}
-            {{ forms.lightswitchField({
-                label: 'Use zxcvbn strength engine (Pro)'|t('password-policy'),
-                instructions: "Score password strength via the zxcvbn dictionary engine instead of the rule-counting baseline."|t('password-policy') ~ strengthEngineInfo,
-                name: 'settings[useZxcvbnStrength]',
-                on: settings.useZxcvbnStrength,
-                disabled: readOnly,
-            }) }}
-        {% endif %}
 
         <hr>
 

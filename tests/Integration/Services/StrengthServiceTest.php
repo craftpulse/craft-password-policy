@@ -1,22 +1,19 @@
 <?php
 /**
- * Pest coverage for `StrengthService` — both engines (rule-counting
- * baseline and zxcvbn-php) plus the `compute()` router. Pins the
- * blocklist-hit propagation that landed in C2 commit c84aef3:
- * Engine B previously returned zxcvbn's score/label as-is, so a
- * blocklisted long+complex password read as `excellent` while the
- * rule list correctly rejected it. The fix routes blocklist hits to
- * override Engine B's output to `weak` + score 0.
+ * Pest coverage for `StrengthService`. The service wraps `bjeavons/zxcvbn-php`
+ * (a `require` Composer dep — always loaded) into the plugin's stable
+ * `{engine, label, score, crackTime, suggestions, warning}` response shape.
  *
- * The override is intentionally narrow — only `label` + `score` get
- * clamped. `crackTime`, `suggestions`, and `warning` survive zxcvbn's
- * analysis unchanged. Pinned here so a refactor that "fixes" the
- * narrow scope (clearing all fields on blocklist hit) doesn't silently
- * regress the user-visible suggestions list.
+ * Pinned: the C2 commit c84aef3 blocklist-hit propagation. Without the
+ * override, a blocklisted long+complex password reads as `excellent` while
+ * the rule list correctly rejects it. The override clamps `label` + `score`
+ * to weak/0 on blocklist hit but lets `crackTime`, `suggestions`, and
+ * `warning` carry through unchanged so the user still sees zxcvbn's
+ * dictionary breakdown.
  *
- * `compute()` routing tests cover the gate that picks Engine B —
- * Pro edition AND `useZxcvbnStrength=true` AND zxcvbn-php loaded.
- * Engine A path verified for the Lite / opt-out fallback.
+ * `compute()` is a thin pass-through to `analyzeZxcvbn()` — kept on the
+ * service contract so a future engine swap doesn't have to renegotiate
+ * call sites. Edition is irrelevant: the meter ships on every edition.
  *
  * @link      https://craftpulse.com
  * @copyright Copyright (c) 2024 CraftPulse
@@ -37,18 +34,10 @@ beforeEach(function() {
     $this->settings = $this->plugin->getSettings();
 
     $this->originalEdition = $this->plugin->edition;
-    $this->originalUseZxcvbn = $this->settings->useZxcvbnStrength;
-
-    // Strength tests run against Pro by default — Engine B requires Pro
-    // AND `useZxcvbnStrength=true`. Individual tests downshift to Lite or
-    // toggle the setting to exercise the fallback branches.
-    $this->plugin->edition = PasswordPolicy::EDITION_PRO;
-    $this->settings->useZxcvbnStrength = true;
 });
 
 afterEach(function() {
     $this->plugin->edition = $this->originalEdition;
-    $this->settings->useZxcvbnStrength = $this->originalUseZxcvbn;
 });
 
 // =============================================================================
@@ -175,71 +164,37 @@ it('uses context as user-input dictionary so a name-based password scores low', 
 });
 
 // =============================================================================
-// analyzeBaseline — blocklist hit override (Engine A side, regression guard)
+// compute() — thin pass-through to analyzeZxcvbn on every edition
 // =============================================================================
 
-it('forces baseline label to "weak" on blocklist hit regardless of length', function() {
-    // Long, complex, high-tier password — Engine A would normally call
-    // this 'strong' or 'excellent'. blocklistHit override clamps to weak.
-    $result = $this->service->analyzeBaseline(
-        'aB1!aB1!aB1!aB1!aB1!',
-        $this->settings,
-        true,
-    );
-
-    expect($result['engine'])->toBe('baseline')
-        ->and($result['label'])->toBe('weak');
-});
-
-it('returns the natural baseline label when no blocklist hit', function() {
-    // Same password, blocklistHit=false — verify the override is
-    // actually doing work above (i.e. the natural reading is high).
-    $result = $this->service->analyzeBaseline(
-        'aB1!aB1!aB1!aB1!aB1!',
-        $this->settings,
-        false,
-    );
-
-    expect($result['engine'])->toBe('baseline')
-        ->and($result['label'])->toBeIn(['strong', 'excellent']);
-});
-
-// =============================================================================
-// compute() — routing between engines
-// =============================================================================
-
-it('routes through Engine B when Pro edition + useZxcvbnStrength is on', function() {
+it('returns the zxcvbn shape on Pro', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
-    $this->settings->useZxcvbnStrength = true;
 
     $result = $this->service->compute('correct horse battery staple', $this->settings, [], false);
 
-    expect($result['engine'])->toBe('zxcvbn');
+    expect($result['engine'])->toBe('zxcvbn')
+        ->and($result)->toHaveKey('score')
+        ->and($result)->toHaveKey('crackTime')
+        ->and($result)->toHaveKey('suggestions')
+        ->and($result)->toHaveKey('warning');
 });
 
-it('falls back to Engine A on Lite edition even when useZxcvbnStrength is on', function() {
+it('returns the zxcvbn shape on Lite (no edition gating on the meter)', function() {
+    // The strength meter is Lite-or-better. The Pro upsell on strength
+    // is the front-end Twig render-builder surface, not a different
+    // algorithm — both editions hit the same engine.
     $this->plugin->edition = PasswordPolicy::EDITION_LITE;
-    $this->settings->useZxcvbnStrength = true;
 
     $result = $this->service->compute('correct horse battery staple', $this->settings, [], false);
 
-    expect($result['engine'])->toBe('baseline');
+    expect($result['engine'])->toBe('zxcvbn')
+        ->and($result)->toHaveKey('score');
 });
 
-it('falls back to Engine A when useZxcvbnStrength is off', function() {
+it('preserves the blocklist override across the compute() pass-through', function() {
+    // End-to-end: route through compute() with blocklistHit=true. The
+    // pass-through shouldn't strip the flag.
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
-    $this->settings->useZxcvbnStrength = false;
-
-    $result = $this->service->compute('correct horse battery staple', $this->settings, [], false);
-
-    expect($result['engine'])->toBe('baseline');
-});
-
-it('preserves the blocklist override across the compute() router (Engine B)', function() {
-    // End-to-end: route through compute() on Engine B with
-    // blocklistHit=true. The route shouldn't strip the flag.
-    $this->plugin->edition = PasswordPolicy::EDITION_PRO;
-    $this->settings->useZxcvbnStrength = true;
 
     $result = $this->service->compute(
         'tHis-Is-A-Pretty-S0lid-Passphrase-2026',
@@ -251,19 +206,4 @@ it('preserves the blocklist override across the compute() router (Engine B)', fu
     expect($result['engine'])->toBe('zxcvbn')
         ->and($result['label'])->toBe('weak')
         ->and($result['score'])->toBe(0);
-});
-
-it('preserves the blocklist override across the compute() router (Engine A)', function() {
-    $this->plugin->edition = PasswordPolicy::EDITION_LITE;
-    $this->settings->useZxcvbnStrength = false;
-
-    $result = $this->service->compute(
-        'aB1!aB1!aB1!aB1!aB1!',
-        $this->settings,
-        [],
-        true,
-    );
-
-    expect($result['engine'])->toBe('baseline')
-        ->and($result['label'])->toBe('weak');
 });
