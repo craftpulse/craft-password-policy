@@ -80,7 +80,7 @@ ab1d456 feat(audit): add ChangeReason enum + AuditContext model (D0.1)
 **Plugin DB state at end of session:**
 - 7 tables. `passwordpolicy_notification_templates` now has 2 rows on the playground: `expiry-reminder` (siteId=1) + `breach-detected` (siteId=1) — both with default content from `EmailDefaults`.
 - Notification log has 1 `breach_detected` entry from T12.1 verification (editor user 55) — clear it via `DELETE FROM passwordpolicy_notification_log WHERE notificationType = 'breach_detected'` if you need a fresh fixture.
-- `useZxcvbnStrength` toggled true during T13.8 verification, then back to false. Now `false` in project config.
+- T13.8 verification flipped a now-removed setting (`useZxcvbnStrength`) on/off; the setting and Engine A baseline are gone in Phase F polish (single zxcvbn-php engine across CP + front-end builders).
 - `editor@playground.dev` password was set to `Welcome2024` (live HIBP-breached) for T12.1; `passwordResetRequired` flipped on/off during testing. Reset via `ddev craft users/set-password editor@playground.dev --password='<new>'` if you need a known starting value.
 - 3 named policies in `passwordpolicy_policies` (NIST → Team, OWASP → Editors+Managers, "Enterprise With Changes" → Managers — harmless test fixtures).
 - `bjeavons/zxcvbn-php ^1.4` added to plugin's composer.json (require, not require-dev). Installed at playground level.

@@ -19,11 +19,11 @@ import '~/css/app.css';
  * CP password strength indicator (P1.12 layer 4b)
  *
  * Thin AJAX renderer against `password-policy/validation/validate`. The
- * server-side StrengthService picks engine A (baseline) or engine B
- * (zxcvbn-php Pro opt-in) — this client just paints the bars. Same code
- * path that drives the front-end consumer builders, so blocklist hits,
- * per-group policy resolution, and the `useZxcvbnStrength` toggle all
- * flow through here for free.
+ * server-side StrengthService runs zxcvbn-php and returns
+ * `{engine, label, score, crackTime, suggestions, warning}` — this client
+ * just paints the bars. Same code path that drives the front-end consumer
+ * builders, so blocklist hits and per-group policy resolution flow through
+ * here for free.
  *
  * Selector: every CP `<input type="password" autocomplete="new-password">`
  * not opted out via `data-pp-no-strength`. That covers the admin account
@@ -66,8 +66,9 @@ const defaultBarClass = 'pp-bg-slate-200 pp-h-2';
 /**
  * Maps the server's strength block onto a 5-bar fill count.
  *
- * Engine B's `score` (0-4) maps directly: 0 → 1 bar, 4 → 5 bars.
- * Engine A only sends `label`, so we map onto a coarser fill count.
+ * zxcvbn's `score` (0-4) maps directly: 0 → 1 bar, 4 → 5 bars. Falls back
+ * to the label vocabulary if `score` is missing — defensive against any
+ * future engine swap that returns labels only.
  */
 function fillCount(strength: { label?: string; score?: number | null }): number {
     if (typeof strength.score === 'number') {
@@ -163,8 +164,6 @@ interface StrengthBlock {
     engine?: string;
     label?: string;
     score?: number | null;
-    ruleCount?: number;
-    lengthTier?: number;
     suggestions?: string[];
     crackTime?: string;
     warning?: string;

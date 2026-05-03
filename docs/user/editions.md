@@ -5,7 +5,7 @@ Password Policy ships three editions from a single 5.2.0 codebase. Lite is free;
 | Edition | Price | Focus |
 |---------|-------|-------|
 | **Lite** | Free | Baseline policy enforcement, HIBP at change time, strength meter, retention/expiry, force-change-on-first-login |
-| **Pro** | ~$149 | Per-group policies + presets, password history, advanced validators, blocklist editor, notifications, front-end Twig surface, HIBP-on-login, zxcvbn strength engine |
+| **Pro** | ~$149 | Per-group policies + presets, password history, advanced validators, blocklist editor, notifications, front-end Twig render-builder surface, HIBP-on-login |
 | **Enterprise** | ~$299 | (Phase G) Hash-chained audit log, compliance dashboard, SIEM forwarders, webhooks, API tokens |
 
 ## Edition helpers
@@ -27,8 +27,8 @@ PasswordPolicy::$plugin->isCraftTeamOrBetter();  // Team / Pro / Enterprise
 | Length, complexity, expiry rules | ✓ | ✓ | ✓ |
 | HIBP check at password change | ✓ | ✓ | ✓ |
 | HIBP check on every login | | ✓ | ✓ |
-| Strength meter (rule-counting baseline) | ✓ | ✓ | ✓ |
-| Strength meter (zxcvbn dictionary engine) | | ✓ | ✓ |
+| CP strength meter (zxcvbn) | ✓ | ✓ | ✓ |
+| Front-end Twig render builders (consumer-site forms) | | ✓ | ✓ |
 | Force change on first login | ✓ | ✓ | ✓ |
 | Force-reset element action | | ✓ | ✓ |
 | Change-password element action | ✓ | ✓ | ✓ |
@@ -38,7 +38,6 @@ PasswordPolicy::$plugin->isCraftTeamOrBetter();  // Team / Pro / Enterprise
 | Sequential / repeated / contextual / blocklist validators | | ✓ | ✓ |
 | Custom blocklist editor (CP page) | | ✓ | ✓ |
 | Email notifications (expiry, breach, etc.) | | ✓ | ✓ |
-| Front-end Twig render builders | | ✓ | ✓ |
 | Hash-chained audit log | | | ✓ (Phase G) |
 | Compliance dashboard | | | ✓ (Phase G) |
 | SIEM forwarders + webhooks | | | ✓ (Phase G) |
@@ -84,7 +83,6 @@ All settings persist in project config regardless of edition. The CP UI hides se
 | `complexityMode` | `string` | `'individual'` | `'individual'` runs each toggle separately; `'minimum'` requires X-of-4 character types. |
 | `minimumCharacterTypes` | `int` | `0` | When `complexityMode = 'minimum'`, requires this many types (0–4). |
 | `enableHibpOnLogin` | `bool` | `true` | Re-check the user's password against HIBP every login. |
-| `useZxcvbnStrength` | `bool` | `false` | Use the `bjeavons/zxcvbn-php` engine for strength scoring instead of the rule-counting baseline. |
 | `expiryReminderDays` | `int` | `14` | Days before expiry to send the reminder notification. |
 | `notificationLogRetentionDays` | `int` | `30` | Days to retain notification dedup-log rows. |
 

@@ -174,7 +174,6 @@ class SettingsController extends Controller
                 $settings['expiryReminderDays'],
                 $settings['notificationLogRetentionDays'],
                 $settings['enableHibpOnLogin'],
-                $settings['useZxcvbnStrength'],
             );
         }
         if (!$plugin->getIsEnterprise()) {

@@ -225,34 +225,29 @@ The validate AJAX endpoint returns a `strength` block alongside the per-rule `er
   "errors": [],
   "rules": [...],
   "strength": {
-    "engine": "baseline",
-    "label": "fair",
-    "ruleCount": 3,
-    "lengthTier": 1
+    "engine": "zxcvbn",
+    "label": "strong",
+    "score": 3,
+    "crackTime": "centuries",
+    "suggestions": [],
+    "warning": ""
   }
 }
 ```
 
-### Engine A (baseline)
+The plugin runs `bjeavons/zxcvbn-php` server-side. zxcvbn analyses the candidate password against common patterns, dictionaries, keyboard sequences, and (when context is supplied) the user's own username/email. Returns a 0-4 score, a crack-time estimate, an array of suggestions, and an optional warning string. Same engine on every edition — the `engine` key always reads `'zxcvbn'`.
 
-Always available. Rule-counting × length tier produces a label:
+The label vocabulary is `weak | fair | strong | excellent` (mapped from score: `0,1 → weak`, `2 → fair`, `3 → strong`, `4 → excellent`). CSS classes key off the `label` so consumer styles are stable.
 
-| Length | 0 rule types | 1 | 2 | 3 | 4 |
-|--------|--------------|---|---|---|---|
-| `<8`   | weak | weak | weak | weak | weak |
-| `8-11` | weak | weak | fair | fair | fair |
-| `12-15`| weak | fair | fair | strong | strong |
-| `16+`  | weak | strong | strong | excellent | excellent |
+**Blocklist hit override.** When the password matches the plugin's bundled or custom blocklist, `label` is forced to `weak` and `score` to `0` regardless of zxcvbn's natural reading. zxcvbn doesn't know about the plugin's custom dictionary, so without this override a blocklisted long+complex password reads as "excellent" while the back-end correctly rejects it. The override is intentionally narrow — `crackTime`, `suggestions`, and `warning` carry through unchanged so the user still sees the dictionary breakdown.
 
-Blocklist hit forces `weak` regardless of length.
+### Lite vs Pro on strength
 
-### Engine B (zxcvbn-php, Pro opt-in)
-
-Enable via the `useZxcvbnStrength` setting on the Settings → Configuration page (Pro). Replaces the strength block with `{engine: 'zxcvbn', label, score, crackTime, suggestions, warning}`. Same `label` vocabulary so CSS classes are stable across engines.
+The CP strength meter (`showStrengthIndicator` toggle) ships on every edition — Lite included. The Pro upsell on strength is **the front-end render-builder surface itself**: `passwordField()`, `passwordWidget()`, `requirementList()`, `strengthMeter()`, and the form builders. Pro consumer sites get the turnkey markup + AJAX wiring + a11y baseline; Lite installs use the CP meter without the front-end render builders.
 
 ### Same engine drives the CP indicator
 
-The CP password-strength indicator (`buildchain/src/js/indicator.ts`, registered via `PasswordPolicyAsset` on every CP request when `showStrengthIndicator` is on) consumes the same `password-policy/validation/validate` endpoint. There is one strength engine in the plugin, and it lives in `services/StrengthService.php`. Adjustments to the baseline matrix or to the zxcvbn-php integration apply uniformly to consumer-facing forms and to admin/installer/set-password screens in the control panel — no second implementation to keep in sync.
+The CP password-strength indicator (`buildchain/src/js/indicator.ts`, registered via `PasswordPolicyAsset` on every CP request when `showStrengthIndicator` is on) consumes the same `password-policy/validation/validate` endpoint. There is one strength engine in the plugin, and it lives in `services/StrengthService.php`. Adjustments to the zxcvbn-php integration apply uniformly to consumer-facing forms and to admin/installer/set-password screens in the control panel — no second implementation to keep in sync.
 
 ---
 

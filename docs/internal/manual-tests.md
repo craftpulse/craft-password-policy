@@ -22,7 +22,7 @@ ddev describe | grep -i mailpit                                         # note U
 git -C /Users/michtio/dev/craft-plugins/v5/craft-password-policy log --oneline -1
 ```
 
-In CP settings: `showStrengthIndicator: ON`, `useZxcvbnStrength: OFF` initially, `cspNonce: OFF` initially.
+In CP settings: `showStrengthIndicator: ON`, `cspNonce: OFF` initially.
 
 ### Block 1 — Front-end demos (anonymous, then authenticated)
 
@@ -38,7 +38,7 @@ Order matches the site-builder's recommended click-through (cross-references the
 
 **1.5 `/demo/password-policy/registration`** — full widget. Type weak password → bar red, requirement items fail, submit gate disables. Type strong → bar green, items pass, submit enables. DevTools Network shows debounced ~250ms POSTs to `password-policy/validation/validate` with `{rules, strength, hibp}` response shape.
 
-- **Bug 4 verification**: type a custom-blocklisted word (set one via `/admin/password-policy/blocklist`, e.g. `acmecorp`) → bar red regardless of length/case. Toggle `useZxcvbnStrength: ON` in CP settings → retype the blocklisted word → bar STILL red (the engine-B blocklist propagation fix).
+- **Bug 4 verification**: type a custom-blocklisted word (set one via `/admin/password-policy/blocklist`, e.g. `acmecorp`) → bar red regardless of length/case. Verifies the strength meter's blocklist-hit override clamps `label` + `score` even when zxcvbn would otherwise rate the password high.
 
 **1.6 `/demo/password-policy/login` + `/login-styled`** — both POST to Craft `users/login`. Styled version applies `formAttrs`/`submitButtonAttrs`/per-field attrs (visible Tailwind classes).
 
@@ -65,7 +65,7 @@ Reload any demo → edition badge shows `LITE`. Builders still render (graceful 
 **2.1 Admin account password change** — visit My Account → Password tab. Type passwords. DevTools Network shows POSTs to `validation/validate` (CP path). Bars update ~250ms debounce.
 
 - **Bug 4 CP-side**: type custom-blocklisted word → bars red.
-- Toggle `useZxcvbnStrength: ON` → response carries `score`, `crackTime`, `suggestions`. Bars use score for granularity.
+- Response carries `engine: 'zxcvbn'`, `score` (0-4), `crackTime`, `suggestions`, `warning`. Bars use score for granularity (5-bar fill: `score + 1`).
 
 **2.2 Create new user form** — strength indicator attaches to password input. Indicator does NOT attach to email/username/current-password fields.
 
@@ -105,7 +105,7 @@ ddev craft project-config/set plugins.password-policy.settings.expiryAmount '~'
 | **1** PasswordWidget null `submitGate` | `/demo/password-policy/permutations`. The "passwordWidget without submitGate" variant does NOT fatal. Markup renders. |
 | **5** BaseTag `__toString` doc | Open `src/twig/tags/BaseTag.php` — docblock says "always use `{{ tag.render() }}`. `{{ tag }}` will HTML-escape." (No claim it works directly.) |
 | **6** HIBP 429 backoff | Hard to test without a 429 simulator. Verification by code review of `PasswordService::isHibpBackoffActive()` short-circuit + `_setHibpBackoff()` cache-write path. Belt-and-braces test: temporarily seed `Craft::$app->getCache()->set('pp:hibp-429-backoff', '1', 60)` via a one-off route, attempt a login with a breached password — listener short-circuits (no Mailpit hit). |
-| **7** ValidationController context input | `curl -X POST 'https://plugin-playground-v5.ddev.site/actions/password-policy/validation/validate' -d 'password=foo&username=victim@example.com'` — response should NOT factor `victim@example.com` into the strength score (anonymous → context dropped). Toggle `useZxcvbnStrength: ON` and confirm score is identical with/without the username param. |
+| **7** ValidationController context input | `curl -X POST 'https://plugin-playground-v5.ddev.site/actions/password-policy/validation/validate' -d 'password=foo&username=victim@example.com'` — response should NOT factor `victim@example.com` into the strength score (anonymous → context dropped). Score is identical with/without the username param. |
 | **9** dual variable handles | `craft.passwordPolicy.requirements()` and `craft.passwordpolicy.requirements()` both render in Twig. `dump()` each in a demo template. |
 | **10** `id()` vs `userUid()` | `/demo/password-policy/password-reset?code=...&id=...` — view source → `name="id"` not `name="userUid"`. |
 | **11** `pwned:` config-file alias | Drop `<?php return ['pwned' => true];` into `cms/config/password-policy.php`. Reload any plugin page. Plugin log (`storage/logs/password-policy-*.log`) shows deprecation warning AND `craft.app.plugins.getPlugin('password-policy').settings.hibp` evaluates `true`. Remove the file when done. |
@@ -116,9 +116,9 @@ Run **Block 1.5** (registration full widget) and **Block 2.1** (CP strength) und
 
 | Edition | Front-end builders | CP indicator | HIBP-on-login | Per-group |
 |---|---|---|---|---|
-| Lite | Work, global resolution | Engine A | Disabled | n/a |
-| Pro | Work, per-group | Engine A or B | Enabled | Yes |
-| Enterprise | Same as Pro | Same as Pro | Same as Pro + audit log entry | Yes |
+| Lite | Work, global resolution | zxcvbn | Disabled | n/a |
+| Pro | Work, per-group | zxcvbn | Enabled | Yes |
+| Enterprise | Same as Pro | zxcvbn | Same as Pro + audit log entry | Yes |
 
 ### Capturing failures
 

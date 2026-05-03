@@ -188,7 +188,7 @@ If a future Craft release adds a tab-injection event, swap the registration list
 
 All SIEM settings, all webhook settings, `enableNewDeviceAlerts`, `deviceRetentionDays`, `auditLogRetentionDays`, `adminAlertEmail`, `adminAlertEvents`, `apiEnabled`. Wired into the model + validation; render in Phase G alongside the Enterprise audit / SIEM / webhooks features.
 
-`notificationLogRetentionDays` (P1.7), `expiryReminderDays` (P1.7), `enableAuditLog` (P1.6), and `useZxcvbnStrength` (Phase F polish) all have UI now.
+`notificationLogRetentionDays` (P1.7), `expiryReminderDays` (P1.7), and `enableAuditLog` (P1.6) all have UI now.
 
 ### 7.4 Edge cases for P2.5 integration tests — status post-Phase-E
 

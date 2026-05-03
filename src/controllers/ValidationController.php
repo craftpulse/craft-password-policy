@@ -184,8 +184,9 @@ class ValidationController extends Controller
             $clientErrorsByKey[$this->_clientKey($key)] = $message;
         }
 
-        // Strength block — Engine A baseline always; Engine B (zxcvbn-php)
-        // when Pro + setting + library installed (StrengthService picks).
+        // Strength block — zxcvbn-php on every edition. Blocklist hits
+        // force the meter to "weak" so the indicator stays consistent
+        // with the rule list.
         $blocklistHit = isset($errorsByKey['common']);
         $strength = $plugin->getStrength()->compute(
             $password,

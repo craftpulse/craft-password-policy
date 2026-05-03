@@ -49,13 +49,13 @@ beforeEach(function() {
     $this->originalRequest = Craft::$app->getRequest();
     $this->originalUser = Craft::$app->getUser();
     $this->originalEdition = $this->plugin->edition;
-    $this->originalUseZxcvbn = $this->settings->useZxcvbnStrength;
     $this->originalHibp = $this->settings->hibp;
     $this->originalHibpClient = $this->plugin->getHibpClient();
 
     // Default ValidationController context: web request, anonymous user,
-    // Pro edition (so Engine B is available for context-leak assertions),
-    // HIBP off (we toggle on per-test when needed), zxcvbn on.
+    // Pro edition (gives the controller's full path coverage), HIBP off
+    // (we toggle on per-test when needed). Strength scoring runs through
+    // zxcvbn-php on every edition.
     $this->request = new WebRequestStub();
     Craft::$app->set('request', $this->request);
     Craft::$app->set('response', new Response());
@@ -64,7 +64,6 @@ beforeEach(function() {
     Craft::$app->set('user', $this->userStub);
 
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
-    $this->settings->useZxcvbnStrength = true;
     $this->settings->hibp = false;
 
     // Swap in the HIBP fake so the controller never hits the live API.
@@ -76,7 +75,6 @@ afterEach(function() {
     Craft::$app->set('request', $this->originalRequest);
     Craft::$app->set('user', $this->originalUser);
     $this->plugin->edition = $this->originalEdition;
-    $this->settings->useZxcvbnStrength = $this->originalUseZxcvbn;
     $this->settings->hibp = $this->originalHibp;
     $this->plugin->set('hibpClient', $this->originalHibpClient);
 });
@@ -174,8 +172,6 @@ it('does not factor anonymous POST username/email into zxcvbn context', function
     // the strength score for a known account. Pin: anonymous request
     // with a username that matches the password tokens should produce
     // the same score as the no-context baseline.
-    $this->settings->useZxcvbnStrength = true;
-
     $this->request->stubBodyParams = [
         'password' => 'JbloggsJbloggs1!',
         'username' => 'jbloggs',
@@ -204,8 +200,6 @@ it('uses authenticated session identity for zxcvbn context, not POST values', fu
     // are ignored even when they differ. Build a real user, set them
     // as the current identity, and verify the strength score reacts to
     // their session username (not the attacker-supplied POST value).
-    $this->settings->useZxcvbnStrength = true;
-
     $user = UserFactory::admin([
         'username' => 'sessionuser',
         'email' => 'sessionuser@example.com',
@@ -247,8 +241,6 @@ it('clamps the authenticated session context to 254 characters', function() {
     // validators cap it), but we can verify the substr() trim in the
     // controller's resolver is exercised by passing a 254+ char username
     // via the User stub directly.
-    $this->settings->useZxcvbnStrength = true;
-
     $longUsername = str_repeat('a', 1000);
     $user = UserFactory::admin();
     // Bypass Craft's validator by writing the property directly — the
@@ -369,7 +361,7 @@ it('only sends the 5-char SHA-1 prefix to the HIBP client (k-anonymity)', functi
 // =============================================================================
 
 it('propagates blocklistHit into the strength block via the engine override', function() {
-    // The C2 fix routes blocklist hits to override Engine B's score/label
+    // The C2 fix routes blocklist hits to override the meter's score/label
     // to weak/0. The controller computes blocklistHit from
     // `errorsByKey['common']` set when CommonPasswordValidator rejects
     // the password. Pin the propagation through the controller seam.
@@ -389,9 +381,8 @@ it('propagates blocklistHit into the strength block via the engine override', fu
         ->and($payload['strength']['score'])->toBe(0);
 });
 
-it('returns Engine B response shape on Pro+useZxcvbnStrength=true', function() {
+it('returns the zxcvbn response shape on Pro', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
-    $this->settings->useZxcvbnStrength = true;
 
     $this->request->stubBodyParams = [
         'password' => 'tHis-Is-A-Pretty-S0lid-Passphrase-2026',
@@ -399,12 +390,18 @@ it('returns Engine B response shape on Pro+useZxcvbnStrength=true', function() {
 
     $payload = invokeValidate();
 
-    expect($payload['strength']['engine'])->toBe('zxcvbn');
+    expect($payload['strength']['engine'])->toBe('zxcvbn')
+        ->and($payload['strength'])->toHaveKey('score')
+        ->and($payload['strength'])->toHaveKey('crackTime')
+        ->and($payload['strength'])->toHaveKey('suggestions')
+        ->and($payload['strength'])->toHaveKey('warning');
 });
 
-it('falls back to Engine A response shape on Lite edition', function() {
+it('returns the zxcvbn response shape on Lite (no edition gating on the meter)', function() {
+    // The strength meter ships on every edition. The Pro upsell on
+    // strength is the front-end Twig render-builder surface — same engine,
+    // different render layer.
     $this->plugin->edition = PasswordPolicy::EDITION_LITE;
-    $this->settings->useZxcvbnStrength = true; // ignored on Lite
 
     $this->request->stubBodyParams = [
         'password' => 'tHis-Is-A-Pretty-S0lid-Passphrase-2026',
@@ -412,7 +409,8 @@ it('falls back to Engine A response shape on Lite edition', function() {
 
     $payload = invokeValidate();
 
-    expect($payload['strength']['engine'])->toBe('baseline');
+    expect($payload['strength']['engine'])->toBe('zxcvbn')
+        ->and($payload['strength'])->toHaveKey('score');
 });
 
 // =============================================================================
