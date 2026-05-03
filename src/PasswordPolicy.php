@@ -46,7 +46,9 @@ use craft\web\twig\variables\CraftVariable;
 use craft\web\UrlManager;
 use craft\web\View;
 use craftpulse\passwordpolicy\assetbundles\passwordpolicy\PasswordPolicyAsset;
+use craftpulse\passwordpolicy\elements\actions\ChangeUserPassword;
 use craftpulse\passwordpolicy\elements\actions\ForcePasswordReset;
+use craftpulse\passwordpolicy\elements\actions\SendPasswordResetEmail;
 use craftpulse\passwordpolicy\elements\conditions\BreachedRecentlyConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\LastChangeReasonConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\PasswordExpiredConditionRule;
@@ -633,6 +635,8 @@ class PasswordPolicy extends Plugin
                         'password-policy/notifications/<key:[\w\-]+>' => 'password-policy/notification-template/edit',
                         'password-policy/notifications/<key:[\w\-]+>/save' => 'password-policy/notification-template/save',
                         'password-policy/notifications/<key:[\w\-]+>/test-send' => 'password-policy/notification-template/test-send',
+                        'password-policy/user-password/change' => 'password-policy/user-password/change',
+                        'password-policy/user-password/send-reset-email' => 'password-policy/user-password/send-reset-email',
                         'password-policy/validate' => 'password-policy/validation/validate',
                     ],
                     $event->rules
@@ -660,6 +664,12 @@ class PasswordPolicy extends Plugin
                         ],
                         'pp:force-reset-passwords' => [
                             'label' => Craft::t('password-policy', 'Force reset passwords retention access.'),
+                        ],
+                        'pp:change-user-passwords' => [
+                            'label' => Craft::t(
+                                'password-policy',
+                                'Change another user’s password and send password reset emails.',
+                            ),
                         ],
                         'pp:blocklist-view' => [
                             'label' => Craft::t('password-policy', 'View password blocklist.'),
@@ -843,13 +853,17 @@ class PasswordPolicy extends Plugin
 
     /**
      * Resolves the audit context for a password-change save inside the
-     * central history-write listener. Reads the user's `passwordpolicy_user_state`
-     * row — if a pending-reset reason is set, that wins (HIBP-on-login,
-     * admin force-reset, expiry, first-login propagate via this seam) and
-     * the request IP/UA are still attached so the history row tells the
-     * full operational story. With no pending reason, falls back to a
-     * self-service-from-request context for web, or a CLI context for
-     * console runs.
+     * central history-write listener. Three-tier precedence:
+     *
+     *  1. Explicit context via `UserStateService::setExplicitContext()` —
+     *     D3's `ChangeUserPassword` admin action pins this so the row
+     *     records `AdminChange` + `changedByUserId` regardless of any
+     *     prior pending reason on the user.
+     *  2. Pending-reset reason on the user_state row — HIBP-on-login,
+     *     `ForcePasswordReset`, expiry, first-login propagate through
+     *     this seam. Request IP/UA still attached so the history row
+     *     records HOW the user completed the forced change.
+     *  3. Default — `SelfService` (web) or `Cli` (console).
      *
      * Stays a private helper rather than a `UserStateService` method —
      * the listener is the only place that does the consume-and-fall-back
@@ -863,6 +877,16 @@ class PasswordPolicy extends Plugin
      */
     private function _resolveAuditContext(User $user): AuditContext
     {
+        // Tier 1 — explicit context wins. The slot is consumed (single-use)
+        // so a follow-up save in the same request can't pick up a stale
+        // context. Admin direct change overrides any prior pending reason.
+        $explicit = $this->getUserState()->consumeExplicitContext($user);
+
+        if ($explicit !== null) {
+            return $explicit;
+        }
+
+        // Tier 2 — pending-reset reason on user_state.
         $state = $this->getUserState()->getStateForUser($user);
 
         if ($state !== null && $state->pendingResetReason !== null) {
@@ -877,9 +901,9 @@ class PasswordPolicy extends Plugin
             }
         }
 
-        // No pending reason — normal flow. Console context maps to
+        // Tier 3 — no explicit context, no pending reason. Console maps to
         // `ChangeReason::Cli` so `users/set-password` and friends record
-        // the right cause; web request maps to `SelfService`.
+        // the right cause; web maps to `SelfService`.
         if (Craft::$app->getRequest()->getIsConsoleRequest()) {
             return AuditContext::cli();
         }
@@ -1310,7 +1334,28 @@ class PasswordPolicy extends Plugin
             },
         );
 
-        // Bulk action for force password reset
+        // Bulk + single-user element actions on the Users index.
+        //
+        // `ForcePasswordReset` (Pro) — flips `passwordResetRequired` and
+        // pins an `AdminForceReset` pending reason. Bulk-friendly.
+        //
+        // `ChangeUserPassword` (all editions) — admin-direct password
+        // change with elevated session + per-policy validation. The
+        // action's modal trigger is single-user only (bulk-change-with-
+        // same-password is a security anti-pattern); the action's
+        // controller writes the new hash and the central history-write
+        // listener picks up the explicit `AuditContext::adminChange()`.
+        //
+        // `SendPasswordResetEmail` (all editions) — pins a pending
+        // `AdminForceReset` reason on user_state and sends Craft's
+        // standard reset email. Bulk-friendly. Distinct from
+        // `ForcePasswordReset`: this one mails the link, that one flags
+        // `passwordResetRequired`. Operators may use them together or
+        // separately depending on workflow.
+        //
+        // All three respect `allowAdminChanges = false` — the actions'
+        // own `getTriggerHtml()` returns null in read-only mode so the
+        // trigger never registers on the index.
         Event::on(
             User::class,
             User::EVENT_REGISTER_ACTIONS,
@@ -1318,6 +1363,9 @@ class PasswordPolicy extends Plugin
                 if ($this->getIsPro()) {
                     $event->actions[] = ForcePasswordReset::class;
                 }
+
+                $event->actions[] = ChangeUserPassword::class;
+                $event->actions[] = SendPasswordResetEmail::class;
             },
         );
 
