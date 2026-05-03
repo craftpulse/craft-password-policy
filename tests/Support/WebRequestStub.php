@@ -145,6 +145,42 @@ class WebRequestStub extends Request
 
     /**
      * @inheritdoc
+     *
+     * Returns a stub CP-shaped path. The default `_path` is left
+     * uninitialised on `craft\web\Request`, so any code that calls
+     * `getPathInfo()` (which the CP layout's global sidebar does
+     * unconditionally) trips an "uninitialized typed property" error.
+     * Tests that render full CP templates need this method to return a
+     * stable string. Front-end controller tests don't hit this path.
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getPathInfo(bool $returnRealPathInfo = false): string
+    {
+        return 'pest-stub';
+    }
+
+    /**
+     * @inheritdoc
+     *
+     * Returns a stub URL. Yii's `Request::getUrl()` reads from
+     * `$_SERVER['REQUEST_URI']` and throws when the key is absent,
+     * which is the case in console-bootstrapped tests. CP templates
+     * routinely call `craft.app.request.url` (e.g. for
+     * `redirectInput(craft.app.request.url)`); the stub returns a
+     * deterministic string so those reads don't blow up the render.
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getUrl(): string
+    {
+        return '/pest-stub';
+    }
+
+    /**
+     * @inheritdoc
      */
     public function getIsLivePreview(): bool
     {
