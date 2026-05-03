@@ -155,37 +155,40 @@ If a future Craft release adds a tab-injection event, swap the registration list
 
 ### 7.1 Counts
 
-- Services: 9
-- Web controllers: 5
-- Console controllers: 3
+- Services: 17
+- Web controllers: 8 + 1 front-end
+- Console controllers: 5
 - Validators: 7
-- Utilities: 2
-- Jobs: 2
-- Condition rules: 3
-- Element actions: 1
-- Events: 1
-- Permissions: 3 + 1 planned
+- Utilities: 1
+- Jobs: 3
+- Condition rules: 8
+- Element actions: 3
+- Events: 4
+- Permissions: 5
 
 ### 7.2 By component
 
 | Type | Names |
 |---|---|
-| Services | AuditLogService, BlocklistService, NotificationService, PasswordHistoryService, PasswordService, PolicyResolverService, PolicyService, RetentionService, SecurityService |
-| Web controllers | SettingsController, ValidationController, BlocklistController, RetentionController, PolicyController |
-| Console controllers | BlocklistController, AuditController, GcController |
-| Models | PolicyModel, GroupPolicyModel, SettingsModel |
-| Records | PolicyRecord, PolicyGroupRecord |
-| Validators | HibpValidator, SequentialCharsValidator, RepeatedCharsValidator, ContextualValidator, CommonPasswordValidator, MinimumCharacterTypesValidator, PasswordHistoryValidator |
-| Utilities | RetentionUtility (Lite), BlocklistUtility (Pro) |
-| Jobs | PasswordResetJob, SeedBlocklist |
-| Condition rules | PasswordExpiredConditionRule, PasswordResetRequiredConditionRule, PasswordNeverChangedConditionRule |
-| Element actions | ForcePasswordReset (Pro) |
-| Events | PasswordChangedEvent (Lite — free for ecosystem) |
-| Permissions | `pp:settings`, `pp:force-reset-passwords`, `pp:blocklist-manage`, `pp:change-user-passwords` (planned for P2.2) |
+| Services | AuditLogService, BlocklistService, GuzzleHibpClient, HibpClientInterface, NotificationService, NotificationTemplateService, PasswordHistoryService, PasswordService, PolicyResolverService, PolicyService, RegistrationService, RetentionService, SecurityService, StrengthService, UserIndexService, UserStateService (+ ServicesTrait) |
+| Web controllers | BlocklistController, NotificationTemplateController, PolicyController, RetentionController, SettingsController, UserPasswordController, UserSecurityController, ValidationController + front/PasswordChangeController |
+| Console controllers | AuditController, BlocklistController, GcController, NotificationController, RetentionController |
+| Models | AuditContext, GroupPolicyModel, NotificationTemplateModel, PolicyModel, SettingsModel |
+| Records | AuditLogRecord, BlocklistWordRecord, NotificationLogRecord, NotificationTemplateRecord, PasswordHistoryRecord, PolicyGroupRecord, PolicyRecord, UserStateRecord |
+| Validators | CommonPasswordValidator, ContextualValidator, HibpValidator, MinimumCharacterTypesValidator, PasswordHistoryValidator, RepeatedCharsValidator, SequentialCharsValidator |
+| Utilities | RetentionUtility (Lite) — BlocklistUtility removed in Phase C2 (functionality moved to `/admin/password-policy/blocklist` subnav) |
+| Jobs | PasswordResetJob, SeedBlocklist, SendPasswordExpiryRemindersJob |
+| Condition rules | BreachedRecentlyConditionRule (Pro), LastChangeReasonConditionRule, PasswordExpiredConditionRule, PasswordExpiringWithinConditionRule, PasswordNeverChangedConditionRule, PasswordResetRequiredConditionRule, PasswordStatusConditionRule, PolicyDriftConditionRule (Pro + Craft Team+) |
+| Element actions | ChangeUserPassword (all editions), ForcePasswordReset (Pro), SendPasswordResetEmail (all editions) |
+| Events | BreachDetectedEvent (Pro), PasswordChangedEvent (Lite), PasswordValidationEvent (Lite — wired in Phase F polish), UserRegisteredEvent (Lite) |
+| Enums | ChangeReason, PolicyPreset |
+| Permissions | `pp:settings`, `pp:force-reset-passwords`, `pp:change-user-passwords`, `pp:blocklist-view`/`pp:blocklist-manage`, `pp:notification-templates-manage` |
 
 ### 7.3 Settings without UI
 
-`adminAlertEvents`, all SIEM settings, all webhook settings, `enableNewDeviceAlerts`, `deviceRetentionDays`, `notificationLogRetentionDays`. Wired into model + validation, not yet rendered. P1.7 covers `notificationLogRetentionDays`. Others wait for Phase 10–12.
+All SIEM settings, all webhook settings, `enableNewDeviceAlerts`, `deviceRetentionDays`, `auditLogRetentionDays`, `adminAlertEmail`, `adminAlertEvents`, `apiEnabled`. Wired into the model + validation; render in Phase G alongside the Enterprise audit / SIEM / webhooks features.
+
+`notificationLogRetentionDays` (P1.7), `expiryReminderDays` (P1.7), `enableAuditLog` (P1.6), and `useZxcvbnStrength` (Phase F polish) all have UI now.
 
 ### 7.4 Edge cases for P2.5 integration tests — status post-Phase-E
 
