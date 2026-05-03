@@ -134,16 +134,19 @@ Event::on(
 ## `PasswordValidationEvent`
 
 **FQ class:** `craftpulse\passwordpolicy\events\PasswordValidationEvent`
-**Edition:** Lite
-**When:** After all built-in validators have run. Allows third-party modules to add their own validation logic by inspecting `$event->errors` and pushing additional messages onto the array. This event was introduced in 5.2.0 alongside the validator pipeline refactor.
+**Edition:** Lite (free for the ecosystem)
+**Triggered by:** `PasswordPolicy::EVENT_PASSWORD_VALIDATION`
+**When:** After Yii's `Model::validate()` finishes running every rule (including the plugin's password rules) on a User element. Fires from the plugin's own `User::EVENT_AFTER_VALIDATE` listener, which packages the password-attribute errors into the event payload before triggering. The plaintext password and any derived hash material are intentionally NOT in the payload.
 
 ### Payload
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `$user` | `craft\elements\User` | The user whose password is being validated |
-| `$errors` | `string[]` | Validation error messages from built-in rules (third parties may push additional ones) |
-| `$isValid` | `bool` | Whether the password passed all built-in validation |
+| `$user` | `craft\elements\User` | The user whose password is being validated. Listeners can call `$event->user->addError('newPassword', '…')` to push their own error onto the user-facing form response. |
+| `$errors` | `string[]` | Validation error messages collected from `password` + `newPassword` attribute errors. Snapshot of the plugin's rule outcome at firing time. |
+| `$isValid` | `bool` | `true` when no password-attribute errors were collected, otherwise `false`. |
+
+> The event does NOT fire when neither `password` nor `newPassword` is in scope on the User — that filters out validate() calls triggered by unrelated edits (a name-only update, etc.).
 
 ### Example listener
 
@@ -154,13 +157,21 @@ use craftpulse\passwordpolicy\PasswordPolicy;
 
 Event::on(
     PasswordPolicy::class,
-    'passwordValidation',
+    PasswordPolicy::EVENT_PASSWORD_VALIDATION,
     function(PasswordValidationEvent $event) {
-        // Custom rule: forbid passwords that contain the user's last name
+        // Custom rule: forbid passwords that contain the user's last name.
         $lastName = $event->user->getFieldValue('lastName');
-        if ($lastName && stripos($event->user->newPassword ?? '', $lastName) !== false) {
-            $event->errors[] = 'Password must not contain your last name.';
+        $newPassword = $event->user->newPassword ?? '';
+
+        if ($lastName && $newPassword !== '' && stripos($newPassword, $lastName) !== false) {
+            $message = 'Password must not contain your last name.';
+            $event->errors[] = $message;
             $event->isValid = false;
+
+            // Surface the error in the form response too — `$event->errors`
+            // alone is observability-only; addError() pushes the error to
+            // the user-facing validation output.
+            $event->user->addError('newPassword', $message);
         }
     },
 );

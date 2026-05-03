@@ -32,6 +32,7 @@ uses(MultiSiteTestCase::class)->in('Integration/MultiSite');
 uses(TestCase::class)->in(
     'Integration/ConditionRules',
     'Integration/Controllers',
+    'Integration/Events',
     'Integration/Models',
     'Integration/Records',
     'Integration/Services',
