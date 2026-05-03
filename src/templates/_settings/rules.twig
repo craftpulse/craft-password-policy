@@ -19,7 +19,7 @@
 
     <div class="flex-fields">
         {% set minLengthInfo %}
-            <span class="info">{{ "NIST SP 800-63B recommends a minimum of 8 characters. Longer minimums (12–15) significantly improve resistance to brute-force attacks."|t('password-policy') }}</span>
+            <span class="info">{{ "NIST SP 800-63B Rev. 4 recommends a minimum of 15 characters for single-factor auth. Anything below 12 reads as out of date in modern compliance reviews."|t('password-policy') }}</span>
         {% endset %}
         {{ forms.autosuggestField({
             label: 'Minimum password length'|t('password-policy'),

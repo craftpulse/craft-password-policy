@@ -88,7 +88,13 @@ enum PolicyPreset: string
     }
 
     /**
-     * NIST 800-63B preset: min 8, no complexity, no expiration, HIBP on.
+     * NIST 800-63B preset: min 15, no complexity, no expiration, HIBP on.
+     *
+     * Tracks the Aug 2024 Rev. 4 update to SP 800-63B, which raised the
+     * memorized-secret length floor for single-factor authentication
+     * from 8 to 15 characters. Rev. 3 (the prior baseline) shipped 8;
+     * keeping the preset at 8 reads as out-of-date to compliance buyers
+     * who know the spec.
      *
      * @param GroupPolicyModel $policy
      * @return void
@@ -98,7 +104,7 @@ enum PolicyPreset: string
      */
     private function _applyNist(GroupPolicyModel $policy): void
     {
-        $policy->minLength = 8;
+        $policy->minLength = 15;
         $policy->cases = false;
         $policy->numbers = false;
         $policy->symbols = false;

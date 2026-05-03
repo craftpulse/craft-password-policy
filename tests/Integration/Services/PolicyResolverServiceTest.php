@@ -164,8 +164,8 @@ it('applies a NIST preset policy', function() {
 
     $resolved = $this->resolver->resolveForUser($user);
 
-    // NIST sets minLength=8, hibp=true, cases=false, numbers=false, symbols=false.
-    expect($resolved->minLength)->toBe(8)
+    // NIST sets minLength=15 (Rev. 4), hibp=true, cases=false, numbers=false, symbols=false.
+    expect($resolved->minLength)->toBe(15)
         ->and($resolved->hibp)->toBeTrue();
 });
 

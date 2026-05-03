@@ -340,7 +340,7 @@
     // Use '' (inherit) where the PHP enum leaves a field unset so that
     // applying a preset produces a policy with 0 divergence.
     var presets = {{ {
-        nist_800_63b: { minLength: 8, maxLength: '', cases: '0', numbers: '0', symbols: '0', hibp: '1', hibpFailMode: '', passwordHistoryCount: '', checkSequentialChars: '', checkRepeatedChars: '', checkContextual: '', checkCommonPasswords: '', expiryAmount: '', expiryPeriod: 'day' },
+        nist_800_63b: { minLength: 15, maxLength: '', cases: '0', numbers: '0', symbols: '0', hibp: '1', hibpFailMode: '', passwordHistoryCount: '', checkSequentialChars: '', checkRepeatedChars: '', checkContextual: '', checkCommonPasswords: '', expiryAmount: '', expiryPeriod: 'day' },
         owasp_asvs: { minLength: 12, maxLength: 128, cases: '0', numbers: '0', symbols: '0', hibp: '1', hibpFailMode: '', passwordHistoryCount: '', checkSequentialChars: '', checkRepeatedChars: '', checkContextual: '', checkCommonPasswords: '', expiryAmount: '', expiryPeriod: 'day' },
         pci_dss_v4: { minLength: 12, maxLength: '', cases: '1', numbers: '1', symbols: '', hibp: '1', hibpFailMode: '', passwordHistoryCount: 4, checkSequentialChars: '', checkRepeatedChars: '', checkContextual: '', checkCommonPasswords: '1', expiryAmount: 90, expiryPeriod: 'day' },
         strict_enterprise: { minLength: 12, maxLength: '', cases: '1', numbers: '1', symbols: '1', hibp: '1', hibpFailMode: 'closed', passwordHistoryCount: 5, checkSequentialChars: '1', checkRepeatedChars: '1', checkContextual: '1', checkCommonPasswords: '1', expiryAmount: 90, expiryPeriod: 'day' },

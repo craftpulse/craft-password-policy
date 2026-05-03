@@ -92,7 +92,7 @@ When a user belongs to multiple groups, the resolver applies "most-restrictive w
 
 Apply a security standard as a starting template, then customize:
 
-- **NIST 800-63B** — passphrase-friendly, breach-checking, no complexity, no expiration
+- **NIST 800-63B** — 15+ characters (Rev. 4), passphrase-friendly, breach-checking, no complexity, no expiration
 - **OWASP ASVS L1** — 12+ characters, max 128, breach-checking
 - **PCI-DSS v4.0** — 12+ chars, mixed case + numbers, history of 4, common-password blocklist, 90-day expiry
 - **Strict Enterprise** — 12+ chars, all complexity, all advanced checks, history of 5, 90-day expiry, fail-closed HIBP
