@@ -21,6 +21,16 @@ use yii\validators\Validator;
  * uppercase, lowercase, digit, symbol. Active only when complexityMode
  * is 'minimum'. Mutually exclusive with individual cases/numbers/symbols toggles.
  *
+ * Letter classes use Unicode property escapes (`\p{Ll}` / `\p{Lu}`) so
+ * accented or non-Latin lowercase / uppercase letters count as letters,
+ * not as symbols. The digit class is intentionally kept as `[0-9]` —
+ * "digit" in password-policy context means an Arabic numeral that a user
+ * typed off the number row, not every Unicode numeral (`²`, ⅓, ٤). The
+ * symbol class is the residual: anything that isn't a Unicode letter
+ * (`\p{L}`), a Unicode number (`\p{N}`), or a Unicode whitespace
+ * separator (`\p{Z}`). Emoji, punctuation, and currency symbols all
+ * count; whitespace doesn't.
+ *
  * @author      CraftPulse
  * @package     PasswordPolicy
  * @since       5.2.0
@@ -47,16 +57,16 @@ class MinimumCharacterTypesValidator extends Validator
 
         $count = 0;
 
-        if (preg_match('/[A-Z]/', $value)) {
+        if (preg_match('/\p{Lu}/u', $value)) {
             $count++;
         }
-        if (preg_match('/[a-z]/', $value)) {
+        if (preg_match('/\p{Ll}/u', $value)) {
             $count++;
         }
         if (preg_match('/[0-9]/', $value)) {
             $count++;
         }
-        if (preg_match('/[^a-zA-Z0-9]/', $value)) {
+        if (preg_match('/[^\p{L}\p{N}\p{Z}]/u', $value)) {
             $count++;
         }
 

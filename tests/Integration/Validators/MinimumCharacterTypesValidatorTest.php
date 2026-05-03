@@ -122,15 +122,69 @@ it('counts symbols as a class', function() {
 // Quirks — Unicode + symbol class definition
 // =============================================================================
 
-it('counts non-ASCII letters as the symbol class', function() {
-    // The symbol regex is `[^a-zA-Z0-9]`, so anything outside the ASCII
-    // alphanumerics — including Latin-1, accented letters, and emoji —
-    // qualifies as a symbol. Codifies the current matcher; if the
-    // validator ever switches to Unicode-aware character classes this
-    // assertion becomes the canary.
+it('counts an accented lowercase letter as lowercase', function() {
+    // `é` (U+00E9) is `\p{Ll}` — the Unicode-aware lowercase class.
+    // Pre-fix the symbol regex `[^a-zA-Z0-9]` matched it and `é` counted
+    // as a symbol; an admin requiring "1 symbol" let `password123é`
+    // through. Post-fix `é` counts as lowercase, and the same password
+    // satisfies a "1 lowercase" requirement — but does NOT satisfy a
+    // "1 symbol" requirement. Canary for the gap-2 fix landed in 5.2.0.
     $this->settings->minimumCharacterTypes = 1;
 
     expect($this->validator->validateValue('é'))->toBeNull();
+});
+
+it('counts a Greek lowercase letter as lowercase', function() {
+    // `λ` (U+03BB) is `\p{Ll}`. Same story as `é` — categorised as a
+    // letter, not a symbol.
+    $this->settings->minimumCharacterTypes = 1;
+
+    expect($this->validator->validateValue('λ'))->toBeNull();
+});
+
+it('counts a Greek uppercase letter as uppercase', function() {
+    // `Λ` (U+039B) is `\p{Lu}` — the Unicode-aware uppercase class. Pre-
+    // fix it failed `[A-Z]` and counted as a symbol; post-fix it counts
+    // as uppercase.
+    $this->settings->minimumCharacterTypes = 1;
+
+    expect($this->validator->validateValue('Λ'))->toBeNull();
+});
+
+it('counts emoji as symbols', function() {
+    // `🎉` (U+1F389) is `\p{So}` (other symbol) — outside `\p{L}`,
+    // `\p{N}`, and `\p{Z}`, so it falls through to the residual symbol
+    // class. Pinned because it was the leading non-letter case in the
+    // gap report.
+    $this->settings->minimumCharacterTypes = 1;
+
+    expect($this->validator->validateValue('🎉'))->toBeNull();
+});
+
+it('does not count Unicode digits as the digit class', function() {
+    // `²` (U+00B2) is `\p{No}` (other number). The digit class is
+    // intentionally `[0-9]` — "digit" in password-policy context means
+    // an Arabic numeral the user typed off the number row, not every
+    // Unicode numeral. `²` also fails the residual symbol class because
+    // `\p{N}` is excluded. So it's effectively uncounted: a password
+    // containing only `²` satisfies zero classes. Codify so a future
+    // change to either class surfaces as a deliberate flip.
+    $this->settings->minimumCharacterTypes = 1;
+
+    expect($this->validator->validateValue('²'))->not->toBeNull();
+});
+
+it('treats `password123é` as lowercase + digits — symbol still missing', function() {
+    // Two distinct classes: lowercase (`p`,`a`,`s`,`w`,`o`,`r`,`d`,`é`)
+    // + digits (`1`,`2`,`3`). With required=2 it passes; with required=3
+    // it fails because there's no symbol or uppercase. Documents the
+    // user-visible consequence of the symbol-class fix: an accented
+    // letter no longer satisfies a "needs at least one symbol" rule.
+    $this->settings->minimumCharacterTypes = 2;
+    expect($this->validator->validateValue('password123é'))->toBeNull();
+
+    $this->settings->minimumCharacterTypes = 3;
+    expect($this->validator->validateValue('password123é'))->not->toBeNull();
 });
 
 it('does not double-count classes when a class repeats', function() {
