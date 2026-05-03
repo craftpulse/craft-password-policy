@@ -57,7 +57,7 @@
         }) }}
 
         {% set commonInfo %}
-            <span class="info">{{ "Checks against a curated blocklist stored locally in your database — no external API calls. If the blocklist is empty when enabled, it will be automatically seeded from the bundled data file via a background job. Manage the blocklist from the Utilities section."|t('password-policy') }}</span>
+            <span class="info">{{ "Checks against a curated blocklist stored locally in your database — no external API calls. If the blocklist is empty when enabled, it will be automatically seeded from the bundled data file via a background job. Manage the blocklist from the Blocklist subnav under Password Policy."|t('password-policy') }}</span>
         {% endset %}
         {{ forms.lightswitchField({
             label: 'Block common passwords'|t('password-policy'),
