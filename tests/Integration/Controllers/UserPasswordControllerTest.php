@@ -59,6 +59,10 @@ beforeEach(function() {
     $this->originalEdition = $this->plugin->edition;
     $this->originalAllowAdminChanges = Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
     $this->originalHistoryCount = $this->settings->passwordHistoryCount;
+    $this->originalMinLength = $this->settings->minLength;
+    $this->originalCases = $this->settings->cases;
+    $this->originalNumbers = $this->settings->numbers;
+    $this->originalSymbols = $this->settings->symbols;
 
     // Default web/CP context: CP request, JSON-accepting, elevated
     // session true, admin identity authenticated.
@@ -89,6 +93,10 @@ afterEach(function() {
     $this->plugin->edition = $this->originalEdition;
     Craft::$app->getConfig()->getGeneral()->allowAdminChanges = $this->originalAllowAdminChanges;
     $this->settings->passwordHistoryCount = $this->originalHistoryCount;
+    $this->settings->minLength = $this->originalMinLength;
+    $this->settings->cases = $this->originalCases;
+    $this->settings->numbers = $this->originalNumbers;
+    $this->settings->symbols = $this->originalSymbols;
 });
 
 // =============================================================================
@@ -168,6 +176,44 @@ it('clears any prior pending reason on success', function() {
         ->one();
 
     expect($row['changeReason'])->toBe(ChangeReason::AdminChange->value);
+});
+
+it('rejects when the new password fails policy validation', function() {
+    // Pin a strict global policy: 12-char minimum + complexity + cases
+    // requirement. The new password "weak" is too short and missing
+    // required types — the User element's defineRules listener picks
+    // up `UserRules::defineRules()` which runs the per-group resolver
+    // and rejects on save.
+    $this->settings->minLength = 12;
+    $this->settings->cases = true;
+    $this->settings->numbers = true;
+    $this->settings->symbols = true;
+
+    $target = UserFactory::nonAdmin();
+
+    $this->request->stubBodyParams = [
+        'userId' => $target->id,
+        'newPassword' => 'weak',
+        'newPasswordConfirm' => 'weak',
+    ];
+
+    $response = runUserPasswordAction('change');
+
+    expect($response)->toBeInstanceOf(Response::class)
+        ->and($response->getStatusCode())->toBe(400);
+
+    // No history row written — the save failed.
+    $count = (new Query())
+        ->from('{{%passwordpolicy_password_history}}')
+        ->where(['userId' => $target->id])
+        ->count();
+    expect((int)$count)->toBe(0);
+
+    // The explicit-context slot pinned before save should have been
+    // drained by the controller's failure path (otherwise a follow-up
+    // unrelated save would pick up a stale `AdminChange` context).
+    $consumed = $this->plugin->getUserState()->consumeExplicitContext($target);
+    expect($consumed)->toBeNull();
 });
 
 // =============================================================================

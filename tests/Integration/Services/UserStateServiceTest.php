@@ -181,3 +181,69 @@ it('preserves pending reason when only recording a breach check', function() {
 
     expect($record->pendingResetReason)->toBe(ChangeReason::BreachForced->value);
 });
+
+// =============================================================================
+// setExplicitContext / consumeExplicitContext — D3 admin-direct override slot
+// =============================================================================
+
+it('returns null from consumeExplicitContext when no slot was set', function() {
+    $user = UserFactory::admin();
+
+    expect($this->service->consumeExplicitContext($user))->toBeNull();
+});
+
+it('round-trips an AuditContext through set + consume', function() {
+    $user = UserFactory::admin();
+
+    $context = \craftpulse\passwordpolicy\models\AuditContext::adminChange(99);
+
+    $this->service->setExplicitContext($user, $context);
+
+    $consumed = $this->service->consumeExplicitContext($user);
+
+    expect($consumed)->toBeInstanceOf(\craftpulse\passwordpolicy\models\AuditContext::class)
+        ->and($consumed->reason)->toBe(ChangeReason::AdminChange)
+        ->and($consumed->changedByUserId)->toBe(99);
+});
+
+it('drains the slot on first consume — second call returns null', function() {
+    $user = UserFactory::admin();
+
+    $context = \craftpulse\passwordpolicy\models\AuditContext::adminChange(7);
+    $this->service->setExplicitContext($user, $context);
+
+    // First consume returns the context; second returns null. Single-
+    // use slot — the listener clears it so a follow-up unrelated save
+    // doesn't pick up a stale context.
+    expect($this->service->consumeExplicitContext($user))->not->toBeNull()
+        ->and($this->service->consumeExplicitContext($user))->toBeNull();
+});
+
+it('isolates explicit contexts per user', function() {
+    $a = UserFactory::admin();
+    $b = UserFactory::admin();
+
+    $this->service->setExplicitContext(
+        $a,
+        \craftpulse\passwordpolicy\models\AuditContext::adminChange(1),
+    );
+
+    // Consuming for user B doesn't drain user A's slot.
+    expect($this->service->consumeExplicitContext($b))->toBeNull();
+
+    $consumedA = $this->service->consumeExplicitContext($a);
+    expect($consumedA)->not->toBeNull()
+        ->and($consumedA->changedByUserId)->toBe(1);
+});
+
+it('is a no-op for a user without an id (setExplicitContext)', function() {
+    $user = new craft\elements\User();
+
+    $this->service->setExplicitContext(
+        $user,
+        \craftpulse\passwordpolicy\models\AuditContext::adminChange(1),
+    );
+
+    // No id means no slot; consume returns null.
+    expect($this->service->consumeExplicitContext($user))->toBeNull();
+});
