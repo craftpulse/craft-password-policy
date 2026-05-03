@@ -92,31 +92,6 @@ Brainstorming notes from the v5.2.0 build sessions. Not committed to any of thes
 
 ---
 
-## Validator Unicode-awareness gaps (5.2.x cleanup candidates)
-
-**Date:** 2026-05-02
-**Context:** Phase E2 codified two validator behaviors that are technically correct against the current regex but fail the spirit of the rule for non-ASCII users. Captured here so future cleanup is intentional, not silent.
-
-**Gap 1 — `RepeatedCharsValidator` matches at the byte level, not the code-point level.**
-- Regex is `(.)\1{2,}` without the `/u` modifier — matches identical bytes, not identical Unicode characters.
-- `ααα` (three Greek alphas, U+03B1 — two-byte UTF-8 with alternating bytes) sails through. `aaa` rejects.
-- Non-ASCII repeats currently bypass the rule entirely.
-- Fix would be a single-character change: add the `/u` modifier to the regex. Verify with a passing-then-failing Pest test pair (the codified test in `RepeatedCharsValidatorTest` expects current behavior — flip the assertion when the fix lands).
-
-**Gap 2 — `MinimumCharacterTypesValidator` symbol class is `[^a-zA-Z0-9]`, not Unicode-aware.**
-- `é` matches the negated-class regex and counts as a "symbol" alongside `!@#$`.
-- A user typing `password123é` could pass a "needs at least one symbol" requirement when they typed an accented letter, not a symbol.
-- Affects every locale where users naturally type accented or non-Latin alphabets.
-- Fix would route through Unicode property escapes (`\p{L}`, `\p{N}`, `\p{P}`, `\p{S}`) instead of ASCII-locked classes. Bigger change than gap 1 — needs to define what "symbol" means when the alphabet itself is Unicode (probably "any character not in `\p{L}` ∪ `\p{N}` ∪ `\p{Z}`").
-
-**Edition / framing:** Both are 5.2.x cleanup work, not a v5.3 deferral. They're product-quality polish on Lite-tier validators that already ship — fixing them doesn't change the edition matrix, doesn't add features, just makes the existing rules behave correctly for non-ASCII users. Pairs with the broader "validator hardening" theme. Land in a 5.2.x patch release alongside related polish, not as standalone fixes.
-
-**Test impact:** Two Pest tests in `tests/Integration/Validators/` codify the current (wrong) behavior. When the fix lands, flip those assertions. The tests themselves shouldn't be deleted — they document why the behavior changed.
-
-**Status:** parked as 5.2.x candidates. Worth a single combined commit when polish window opens.
-
----
-
 ## Audit log levels against security.md (5.2.x cleanup)
 
 **Date:** 2026-05-02
@@ -130,26 +105,18 @@ Brainstorming notes from the v5.2.0 build sessions. Not committed to any of thes
 - ValidationController failures — currently logs at the framework default; security.md doesn't prescribe a level. Probably leave unprescribed but add a row to security.md confirming.
 - Any "audit log" entries (Phase G) need their own level guidance — those are different from operational logs.
 
-**Why 5.2.x and not 5.3:** log-level adjustments are observability fixes, not features. Operators relying on alert thresholds tied to ERROR-level entries will see noise drop after the fix; not breaking, but worth landing as soon as there's a polish window. Same window as the validator Unicode fixes — both are quality polish on shipped behavior.
+**Why 5.2.x and not 5.3:** log-level adjustments are observability fixes, not features. Operators relying on alert thresholds tied to ERROR-level entries will see noise drop after the fix; not breaking, but worth landing as soon as there's a polish window.
 
 **Test impact:** any existing test that asserts on log level (currently just `GuzzleHibpClientTest::it_returns_null_on_a_500_server_error_and_logs_at_warning`) gets flipped if the corresponding fix changes the level. Tests that don't assert on level are unaffected. Add level assertions where they'd guard against silent regressions in the audited surfaces.
 
-**Status:** parked as 5.2.x candidate. Pairs with the validator Unicode fixes — single combined polish PR.
+**Status:** parked as 5.2.x candidate.
 
 ---
 
 ## Phase D leftovers — quality polish
 
 **Date:** 2026-05-03
-**Context:** Three small surfaces noted during the Phase D build that deliberately weren't fixed inline because each one is either out-of-scope, low-impact, or needs customer signal before acting.
-
-### `PasswordExpiredConditionRule::matchElement()` reads `lastPasswordChangeDate` directly
-
-The `matchElement()` path returns null on non-eager-loaded queries because `UserQuery::beforePrepare()` doesn't addSelect `lastPasswordChangeDate` (memory gap #9). The `modifyQuery()` path is correct — it uses `users.lastPasswordChangeDate` in the WHERE clause directly. So filtering on the user index works; only programmatic `->matchElement($element)` checks would silently miss matches when called against a freshly-loaded User.
-
-**Why not fix now:** the condition rule's primary use case is the user-index column filter (which goes through `modifyQuery()`). Programmatic match-element calls are an unlikely surface. Fix: hydrate `lastPasswordChangeDate` from the users table on entry to `matchElement()`, mirroring what `UserSecurityController::actionIndex()` does in D4.
-
-**Edition / scope:** quality polish. Land alongside the D-cycle leftovers in 5.2.x or 5.3.
+**Context:** Two small surfaces noted during the Phase D build that deliberately weren't fixed inline because each one is either out-of-scope, low-impact, or needs customer signal before acting.
 
 ### `BREACHED_RECENT_DAYS = 90` and `EXPIRING_SOON_DAYS = 7` are hardcoded
 
@@ -167,4 +134,4 @@ The `matchElement()` path returns null on non-eager-loaded queries because `User
 
 **Edition / scope:** internal optimisation. Land if profiling shows it's a bottleneck — otherwise YAGNI. The `PreloadBatchingTest` query-count contract holds the line at "preload runs at most N+M queries"; a future `resolveForUsers` swap would add only one additional query class without changing the contract shape.
 
-**Status:** all three parked, captured here so the next session knows the surface is intentional, not overlooked. Combine into a single 5.2.x polish commit if any one of them ships — they're all small, all in `UserIndexService` or one condition rule, and all share the "we noticed but didn't act" framing.
+**Status:** both parked, captured here so the next session knows the surface is intentional, not overlooked. Combine into a single 5.2.x polish commit if either ships — they're both small, both in `UserIndexService`, and share the "we noticed but didn't act" framing.
