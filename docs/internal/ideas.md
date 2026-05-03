@@ -135,3 +135,36 @@ Brainstorming notes from the v5.2.0 build sessions. Not committed to any of thes
 **Test impact:** any existing test that asserts on log level (currently just `GuzzleHibpClientTest::it_returns_null_on_a_500_server_error_and_logs_at_warning`) gets flipped if the corresponding fix changes the level. Tests that don't assert on level are unaffected. Add level assertions where they'd guard against silent regressions in the audited surfaces.
 
 **Status:** parked as 5.2.x candidate. Pairs with the validator Unicode fixes — single combined polish PR.
+
+---
+
+## Phase D leftovers — quality polish
+
+**Date:** 2026-05-03
+**Context:** Three small surfaces noted during the Phase D build that deliberately weren't fixed inline because each one is either out-of-scope, low-impact, or needs customer signal before acting.
+
+### `PasswordExpiredConditionRule::matchElement()` reads `lastPasswordChangeDate` directly
+
+The `matchElement()` path returns null on non-eager-loaded queries because `UserQuery::beforePrepare()` doesn't addSelect `lastPasswordChangeDate` (memory gap #9). The `modifyQuery()` path is correct — it uses `users.lastPasswordChangeDate` in the WHERE clause directly. So filtering on the user index works; only programmatic `->matchElement($element)` checks would silently miss matches when called against a freshly-loaded User.
+
+**Why not fix now:** the condition rule's primary use case is the user-index column filter (which goes through `modifyQuery()`). Programmatic match-element calls are an unlikely surface. Fix: hydrate `lastPasswordChangeDate` from the users table on entry to `matchElement()`, mirroring what `UserSecurityController::actionIndex()` does in D4.
+
+**Edition / scope:** quality polish. Land alongside the D-cycle leftovers in 5.2.x or 5.3.
+
+### `BREACHED_RECENT_DAYS = 90` and `EXPIRING_SOON_DAYS = 7` are hardcoded
+
+`UserIndexService` ships these as class constants. The composite-status priority lookup uses them to decide "should this user show as breached?" / "expiring soon?". They're reasonable defaults — 90 days matches HIBP's typical breach disclosure latency, 7 days matches the existing `expiryReminderDays` cadence — but customer input from compliance-buyer accounts may want either as a CP setting.
+
+**Why not fix now:** no customer has asked. Promoting to settings before the demand exists is YAGNI. The constants are documented in `UserIndexService` so a future Phase G "compliance dashboard customisation" feature has a known seam.
+
+**Edition / scope:** Pro-tier setting (Lite installs already see the columns; the threshold tuning is a Pro / Enterprise compliance affordance). Add to `SettingsModel` + the retention/breach-detection settings page when demand surfaces.
+
+### Per-user policy resolver iteration in the Pro+Team+ preload
+
+`UserIndexService::_preloadResolvedPolicies()` iterates each user one at a time and calls `PolicyResolverService::resolveForUser($user)` per user. The resolver's own caching helps within a single render (same user resolved twice → second call hits cache). But across a 50-user user-index page on Pro+Team+, that's 50 distinct resolver calls — each one walks the user's groups + queries policy junction rows + merges.
+
+**Why not fix now:** the user index page is paginated, `pp:change-user-passwords`-restricted, and rendered infrequently. Per-resolve cost is in the milliseconds. At current customer scale (Pro tier targets at < 10k users typically), it's not load-bearing. If a customer reports user-index slowness post-launch, batch-resolve becomes a worthwhile refactor: `resolveForUsers(array $users): array<int, SettingsModel>` walking the policy junction once for the whole batch and merging in-memory.
+
+**Edition / scope:** internal optimisation. Land if profiling shows it's a bottleneck — otherwise YAGNI. The `PreloadBatchingTest` query-count contract holds the line at "preload runs at most N+M queries"; a future `resolveForUsers` swap would add only one additional query class without changing the contract shape.
+
+**Status:** all three parked, captured here so the next session knows the surface is intentional, not overlooked. Combine into a single 5.2.x polish commit if any one of them ships — they're all small, all in `UserIndexService` or one condition rule, and all share the "we noticed but didn't act" framing.

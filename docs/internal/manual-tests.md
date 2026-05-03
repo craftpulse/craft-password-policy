@@ -126,17 +126,18 @@ For each failure: page URL, browser console error, Network tab response (if AJAX
 
 ### Branch state for this pass
 
-- `5.x` — 49 commits ahead of `origin/5.x`. Phase C2 + Layer 4b + bug fix sweep + docs restructure + project setup + Phase E (18 commits) + `fix(hibp)` + `docs(ideas)` + Phase E close docs. Not pushed.
+- `5.x` — 69 commits ahead of `origin/5.x`. Phase C2 + Layer 4b + bug fix sweep + docs restructure + project setup + Phase E (18 commits) + `fix(hibp)` + `docs(ideas)` + Phase E close docs + Phase D (19 commits across D0–D4) + Phase D close docs. Not pushed.
 - `5.1.x` — 3 commits ahead of tag `5.1.1`. TLS verify, fail-open log level, sensitive-key strip backports. Not pushed, not tagged.
 
-### Pest suite (Phase E close, 2026-05-02)
+### Pest suite (Phase D close, 2026-05-03)
 
-The active manual pass above covers Phase C2 + Layer 4b + the bug fix sweep — all surfaces that ship to users. Independent of that pass, Phase E built a Pest test suite covering validators, services, models, controllers, Twig tags, migrations, and multi-site behavior:
+The active manual pass above covers Phase C2 + Layer 4b + the bug fix sweep — all surfaces that ship to users. Independent of that pass, Phases E + D built a Pest test suite covering validators, services, models, controllers, Twig tags, migrations, multi-site behavior, the audit-context surface, user-index columns, admin element actions, and the user-edit tab page:
 
-- **329 passing / 0 skipped / 634 assertions** across `tests/Unit/`, `tests/Integration/`.
+- **513 passing / 0 skipped / 1049 assertions** across `tests/Unit/`, `tests/Integration/`. Phase D added +184 tests over Phase E's baseline.
 - Run via `cd /Users/michtio/dev/craft-plugin-playground/cms_v5 && ddev exec --dir /Users/Shared/dev/craft-plugins/v5/craft-password-policy composer test` (chains ECS + PHPStan + Pest; first failure stops the chain).
-- The 11-bug C2 sweep (commits `322c18f` → `9691541`) is now pinned by 32 of E4 + E5's tests — refactor regressions on those surfaces fail loudly in CI before reaching manual review.
-- The three deferred manual tests (T1.2, TX.2, T9.7) are now covered by Pest fixtures — see the per-test rows below.
+- The 11-bug C2 sweep (commits `322c18f` → `9691541`) is pinned by 32 of E4 + E5's tests.
+- The three deferred manual tests (T1.2, TX.2, T9.7) are covered by Pest fixtures — see the per-test rows below.
+- Phase D's P2.1 (user-index columns) + P2.2 (admin password change action) + P2.6 (read-only mode) — every CP affordance backed by a Pest pin in `tests/Integration/UserIndex/`, `tests/Integration/UserEditTab/`, and `tests/Integration/Controllers/UserPasswordControllerTest.php`.
 
 If a manual test fails: try to reproduce in Pest first (the regression net should catch surface-level breakage). If the manual scenario can't be expressed as a Pest test (browser interaction, screen reader, real Mailpit verification), record it on the failing T-row.
 

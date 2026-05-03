@@ -39,6 +39,7 @@ This file is the reference companion to [`plan.md`](./plan.md). It carries the h
 | 9 | beta.4 | NotificationService, GC hook, ValidationController (AJAX), Twig variables |
 | - | 5.x (Phase C2) | Named policies CRUD, tabbed edit screen, tri-state UI, divergence indicators, resolver bool refactor (Option A), per-user UserRules resolution; Pro front-end Twig surface (P1.12 fluent builders + Layer 4b strength engine unification); HIBP-on-login (P1.13); RegistrationService (P1.14); events catalog (P1.15); 11-bug code-review sweep |
 | E | 5.x (Phase E, 2026-05-02) | Pest test infrastructure — 18 commits + `fix(hibp)` + `docs(ideas)`. Custom Pest bootstrap (no Codeception), dedicated `db_test` MySQL DB, `MigrationTestCase` + `MultiSiteTestCase` non-transactional bases, six factories + four stubs. `HibpClientInterface` extracted from `PasswordService` for testability. Coverage: validators (5), services (5), models (2), controllers (2), Twig tags (1), migrations (T1.2 + TX.2), multi-site (T9.7). 329 passing / 0 skipped / 634 assertions. Five new skill gaps (#15–19) captured. See `history/progress-phase-e.md` for full detail. |
+| D | 5.x (Phase D, 2026-05-03) | User index integration — 19 commits across D0–D4. **D0** audit context surface (`ChangeReason` enum, `AuditContext` model, `UserStateService`, audit-shape migration adding `changeReason`/`changedByUserId`/`changedFromIp`/`changedFromUserAgent` columns + new `passwordpolicy_user_state` table). **D1** central history-listener wiring (three-tier explicit > pending-reason > default precedence; force-reset, expiry, HIBP, first-login pin pending reasons that next save consumes). **D2** user-index columns + condition rules (`UserIndexService` with bounded-query preload contract; six Lite-tier columns + three Pro-tier columns gated on Craft Team or higher; composite seven-state status priority; five new condition rules). **D3** admin element actions (`ChangeUserPassword`, `SendPasswordResetEmail`) + `UserPasswordController` (CP POST, elevated session, policy-validation gate, explicit-context propagation) + new `pp:change-user-passwords` permission. **D4** user-edit "tab" via sidebar pointer (`Element::EVENT_DEFINE_SIDEBAR_HTML` — Craft 5 has no native top-level tab event; sidebar is the closest idiomatic surface) + `UserSecurityController` rendering the half-built `_users/password-security.twig` template. P2.6 verification gate satisfied throughout — every CP affordance respects `allowAdminChanges = false`. 513 passing / 0 skipped / 1049 assertions (+184). One new skill gap (#20 — console-bootstrap CP-test trifecta) captured. See `history/progress-phase-d.md` for full detail. |
 
 ### 5.2 Bug fixes (this session, uncommitted)
 
@@ -138,6 +139,14 @@ Craft users live at install level, not per-site. No multi-site edge cases for pa
 
 Lowercase before scanning. `pqR`/`Pqr`/`PQR` all trigger on `pqr` sequence. Matches zxcvbn / hashcat-rules thinking — case-mixed variants of a sequence provide no meaningful additional strength against real attackers.
 
+### 6.8 User-edit "tab" is a sidebar pointer, not a top-level tab (Phase D4)
+
+Craft 5 doesn't expose a public event for plugins to register top-level tabs on the User edit screen. Tabs come from the field layout (admin-editable) plus the controller-owned `CpScreenResponseBehavior::tabs()` slot — neither extensible by plugins. Verified by reading `craft\elements\User`, `craft\controllers\ElementsController::actionEdit`, `craft\helpers\Cp`, `craft\web\View`, and the entire `vendor/craftcms/cms/src/templates` Twig hook surface. The Craft 3-era `cp.users.edit` hook isn't there; the historical `users/_edit.twig` template doesn't exist either.
+
+The closest idiomatic surface is `Element::EVENT_DEFINE_SIDEBAR_HTML` on the User class, which appends to the right-side meta-fields column. Phase D4's "Password Security" pointer registers there, linking to a standalone CP page (`password-policy/users/<userId>/security`) rendered by `UserSecurityController`. The link is gated either-or on `pp:force-reset-passwords` OR `pp:change-user-passwords` (single source of truth: `UserSecurityController::callerHasViewPermission()`).
+
+If a future Craft release adds a tab-injection event, swap the registration listener — the controller, URL rule, and template stay unchanged.
+
 ---
 
 ## 7. Reference: source code inventory
@@ -187,15 +196,17 @@ P2.5 closed as Phase E (2026-05-02). The four edge cases enumerated when this se
 3. **GraphQL mutation password changes — confirm plugin events fire** — NOT covered in Phase E (no GraphQL tests in scope; P3+ follow-up).
 4. **`passwordHistoryCount` validator class instantiation on Lite if setting > 0** — NOT explicitly covered; `PasswordHistoryValidator` tests in E3 codify the validator's internal Pro-edition gate. The class-loading concern is best caught by static analysis or a future micro-benchmark.
 
-### 7.5 Pest test surface (added 2026-05-02 — Phase E close)
+### 7.5 Pest test surface (post-Phase D, 2026-05-03)
 
 | Type | Count | Notes |
 |---|---|---|
-| Test files | 18 | `tests/Unit/`, `tests/Integration/{Validators,Services,Models,Controllers,TwigTags,Migrations,MultiSite}/` |
-| Tests | 329 | 0 skipped |
-| Assertions | 634 | — |
-| Factories | 6 | UserFactory, GroupFactory, PolicyFactory, BlocklistFactory, PasswordHistoryFactory, SessionFactory |
-| Stubs / fakes | 4 | HibpClientFake, WebRequestStub, UserStub, TestGuzzleConfig |
+| Test files | 36 | `tests/Unit/`, `tests/Integration/{Validators,Services,Models,Records,Controllers,TwigTags,Migrations,MultiSite,ConditionRules,UserIndex,UserEditTab}/` |
+| Tests | 513 | 0 skipped (+184 over Phase E baseline) |
+| Assertions | 1049 | (+415 over Phase E baseline) |
+| Factories | 6 | UserFactory (with `nonAdmin()` added in D), GroupFactory, PolicyFactory, BlocklistFactory, PasswordHistoryFactory, SessionFactory |
+| Stubs / fakes | 4 | HibpClientFake, WebRequestStub (extended in D with `getPathInfo()` + `getUrl()`), UserStub (extended in D with `stubHasElevatedSession`), TestGuzzleConfig |
 | Base test cases | 3 | TestCase (transaction wrap), MigrationTestCase (DDL teardown), MultiSiteTestCase (site cleanup) |
+
+Phase D added 18 new test files (`Integration/ConditionRules/` × 5, `Integration/UserIndex/` × 8, `Integration/UserEditTab/` × 1, plus four new `Integration/Services/` files for audit-context propagation, `Integration/Records/UserStateRecordTest.php`, and `Integration/Controllers/UserPasswordControllerTest.php`). The bounded-query contract for `UserIndexService::preloadForUsers()` is pinned by `PreloadBatchingTest` — refactor regressions on the preload surface fail loudly in CI.
 
 Run via `cd /Users/michtio/dev/craft-plugin-playground/cms_v5 && ddev exec --dir /Users/Shared/dev/craft-plugins/v5/craft-password-policy composer test`. Chains ECS → PHPStan → Pest; first failure stops the chain.
