@@ -91,4 +91,53 @@ class UserFactory
 
         return $user;
     }
+
+    /**
+     * Creates and saves a non-admin user. Non-admin users do NOT
+     * automatically pass every `User::can()` check the way admins do
+     * (Solo edition is a separate fallthrough — non-admins on Solo
+     * still pass every check). Use for permission-denial tests where
+     * an admin's auto-grant would mask the gate.
+     *
+     * @param array<string, mixed> $overrides
+     * @return User
+     *
+     * @throws ElementNotFoundException
+     * @throws Throwable
+     * @throws Exception
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public static function nonAdmin(array $overrides = []): User
+    {
+        if (Craft::$app->edition->value < CmsEdition::Pro->value) {
+            Craft::$app->edition = CmsEdition::Pro;
+        }
+
+        $unique = bin2hex(random_bytes(4));
+
+        $user = new User([
+            'admin' => false,
+            'username' => "user-{$unique}",
+            'email' => "user-{$unique}@craftpulse.test",
+            'firstName' => 'Test',
+            'lastName' => 'User',
+        ]);
+
+        foreach ($overrides as $property => $value) {
+            $user->{$property} = $value;
+        }
+
+        if (!Craft::$app->getElements()->saveElement($user)) {
+            throw new Exception(
+                sprintf(
+                    'UserFactory::nonAdmin failed to save user: %s',
+                    implode('; ', $user->getFirstErrors()),
+                ),
+            );
+        }
+
+        return $user;
+    }
 }

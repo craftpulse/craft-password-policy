@@ -277,29 +277,53 @@ class UserPasswordController extends Controller
     // =========================================================================
 
     /**
-     * Returns a JSON or redirect failure response with the error map.
+     * Returns a failure response. JSON for AJAX callers (the modal +
+     * the user-edit tab); a flash + posted-URL redirect for plain
+     * form posts.
      *
-     * @param User $user the target user
+     * Inlined rather than delegated to `asModelFailure()` because the
+     * latter pulls in `Cp::chipHtml($user)` for notification settings,
+     * which builds CP URLs and needs a request-host context that the
+     * test stub doesn't have. The endpoints here only need to surface
+     * `errors` + `message` to the modal — `asModelFailure`'s extra
+     * payload (`modelName`, `user.toArray()`) isn't consumed.
+     *
+     * @param User $user the target user (kept on the signature for
+     *     future use; today we expose the per-field errors only)
      * @param array<string, mixed> $errors per-field error messages
      * @return Response|null
+     *
+     * @throws BadRequestHttpException
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     private function _failure(User $user, array $errors): ?Response
     {
-        return $this->asModelFailure(
-            $user,
-            Craft::t('password-policy', 'Couldn’t update password.'),
-            'user',
-            ['errors' => $errors],
-        );
+        $message = Craft::t('password-policy', 'Couldn’t update password.');
+
+        if ($this->request->getAcceptsJson()) {
+            $this->response->setStatusCode(400);
+            return $this->asJson([
+                'message' => $message,
+                'errors' => $errors,
+            ]);
+        }
+
+        $this->setFailFlash($message);
+        Craft::$app->getSession()->setFlash('errors', $errors);
+
+        return null;
     }
 
     /**
-     * Returns a JSON or redirect success response.
+     * Returns a success response. Same JSON-vs-redirect split as
+     * `_failure()`; same rationale for inlining over `asModelSuccess()`
+     * — the chip-HTML notification settings would build CP URLs and
+     * the test stub doesn't carry a host context.
      *
-     * @param User $user the target user
+     * @param User $user the target user (signature reserved for
+     *     future per-user metadata; today we surface message only)
      * @param string $message the success message
      * @return Response
      *
@@ -310,6 +334,15 @@ class UserPasswordController extends Controller
      */
     private function _success(User $user, string $message): Response
     {
-        return $this->asModelSuccess($user, $message, 'user');
+        if ($this->request->getAcceptsJson()) {
+            return $this->asJson([
+                'success' => true,
+                'message' => $message,
+            ]);
+        }
+
+        $this->setSuccessFlash($message);
+
+        return $this->redirectToPostedUrl();
     }
 }

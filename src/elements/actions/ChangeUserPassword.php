@@ -89,16 +89,102 @@ class ChangeUserPassword extends ElementAction
         }
 
         $type = Json::encode(static::class);
-        $actionUrl = UrlHelper::actionUrl('password-policy/user-password/change');
-        $actionUrlEncoded = Json::encode($actionUrl);
+        $actionUrl = Json::encode(UrlHelper::actionUrl('password-policy/user-password/change'));
         $modalTitle = Json::encode(Craft::t('password-policy', 'Change password'));
         $newLabel = Json::encode(Craft::t('app', 'New Password'));
         $confirmLabel = Json::encode(Craft::t('password-policy', 'Confirm New Password'));
         $submitLabel = Json::encode(Craft::t('password-policy', 'Change password'));
         $cancelLabel = Json::encode(Craft::t('app', 'Cancel'));
+        $genericError = Json::encode(Craft::t('password-policy', 'Couldn’t update password.'));
 
+        // Modal opener — defined once per CP page render. Garnish is
+        // already loaded on every CP page (CpAsset dependency); the
+        // modal itself is a vanilla `Garnish.Modal` constructed from a
+        // string of HTML, no separate template required.
+        //
+        // The modal posts as JSON. The controller responds via
+        // `asModelSuccess` / `asModelFailure`, which JSON-encode the
+        // success message + per-field errors. Post-success we close the
+        // modal and notify the operator via Craft's flash mechanism
+        // (Craft.cp.displayNotice).
         $js = <<<JS
 (() => {
+    Craft.PasswordPolicy = Craft.PasswordPolicy || {};
+
+    // Define once — re-rendering the index re-runs this script, so
+    // guard against redefining the helper on every render.
+    if (!Craft.PasswordPolicy.openChangePasswordModal) {
+        Craft.PasswordPolicy.openChangePasswordModal = function(options) {
+            const html = ''
+                + '<form class="modal pp-change-password-modal" method="post" accept-charset="UTF-8">'
+                +   '<div class="body">'
+                +     '<h2 class="first"></h2>'
+                +     '<div class="field">'
+                +       '<div class="heading"><label for="pp-change-newPassword"></label></div>'
+                +       '<div class="input"><input type="password" id="pp-change-newPassword" name="newPassword" class="text fullwidth" autocomplete="new-password" /></div>'
+                +     '</div>'
+                +     '<div class="field">'
+                +       '<div class="heading"><label for="pp-change-confirm"></label></div>'
+                +       '<div class="input"><input type="password" id="pp-change-confirm" name="newPasswordConfirm" class="text fullwidth" autocomplete="new-password" /></div>'
+                +     '</div>'
+                +     '<div class="pp-errors errors" style="display:none;"></div>'
+                +   '</div>'
+                +   '<div class="footer">'
+                +     '<div class="buttons right">'
+                +       '<button type="button" class="btn pp-cancel"></button>'
+                +       '<button type="submit" class="btn submit"></button>'
+                +     '</div>'
+                +   '</div>'
+                + '</form>';
+            const \$form = \$(html);
+            \$form.find('h2.first').text(options.modalTitle);
+            \$form.find('label[for=pp-change-newPassword]').text(options.newLabel);
+            \$form.find('label[for=pp-change-confirm]').text(options.confirmLabel);
+            \$form.find('button.submit').text(options.submitLabel);
+            \$form.find('button.pp-cancel').text(options.cancelLabel);
+            const modal = new Garnish.Modal(\$form, { resizable: false });
+            \$form.find('button.pp-cancel').on('click', () => modal.hide());
+            \$form.on('submit', (ev) => {
+                ev.preventDefault();
+                const data = {
+                    userId: options.userId,
+                    newPassword: \$form.find('[name=newPassword]').val(),
+                    newPasswordConfirm: \$form.find('[name=newPasswordConfirm]').val(),
+                };
+                Craft.sendActionRequest('POST', options.actionUrl, { data: data })
+                    .then((response) => {
+                        modal.hide();
+                        if (Craft.cp && typeof Craft.cp.displayNotice === 'function') {
+                            Craft.cp.displayNotice(response.data.message || options.successFallback);
+                        }
+                    })
+                    .catch((err) => {
+                        const data = err && err.response && err.response.data ? err.response.data : {};
+                        const errs = data.errors || {};
+                        const messages = [];
+                        for (const key of Object.keys(errs)) {
+                            const v = errs[key];
+                            if (Array.isArray(v)) {
+                                messages.push(...v);
+                            } else if (typeof v === 'string') {
+                                messages.push(v);
+                            }
+                        }
+                        const \$err = \$form.find('.pp-errors');
+                        \$err.empty();
+                        if (messages.length) {
+                            for (const m of messages) {
+                                \$err.append(\$('<p>').text(m));
+                            }
+                        } else {
+                            \$err.append(\$('<p>').text(data.message || options.genericError));
+                        }
+                        \$err.show();
+                    });
+            });
+        };
+    }
+
     new Craft.ElementActionTrigger({
         type: $type,
         bulk: false,
@@ -108,15 +194,15 @@ class ChangeUserPassword extends ElementAction
             if (!userId) {
                 return;
             }
-            Craft.PasswordPolicy = Craft.PasswordPolicy || {};
             Craft.PasswordPolicy.openChangePasswordModal({
                 userId: userId,
-                actionUrl: $actionUrlEncoded,
+                actionUrl: $actionUrl,
                 modalTitle: $modalTitle,
                 newLabel: $newLabel,
                 confirmLabel: $confirmLabel,
                 submitLabel: $submitLabel,
                 cancelLabel: $cancelLabel,
+                genericError: $genericError,
             });
         },
     });

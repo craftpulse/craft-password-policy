@@ -8,6 +8,7 @@
 
 namespace craftpulse\passwordpolicy\tests\Support;
 
+use Craft;
 use craft\web\Request;
 
 /**
@@ -52,6 +53,18 @@ class WebRequestStub extends Request
     public bool $stubAcceptsJson = true;
 
     /**
+     * Stubbed return value for `getIsCpRequest()`. The default
+     * (`false`) keeps front-end-controller tests working as before;
+     * D3 controller tests flip to `true` so the controller's
+     * `requireCpRequest()` gate passes.
+     *
+     * @var bool
+     *
+     * @since 5.2.0
+     */
+    public bool $stubIsCpRequest = false;
+
+    /**
      * Stub IP returned from `getUserIP()`. Lets `AuditContext::fromRequest()`
      * round-trip a known value into the password-history row without
      * standing up a real `$_SERVER['REMOTE_ADDR']` pin.
@@ -87,6 +100,20 @@ class WebRequestStub extends Request
         // Skip parent init — Craft's Request::init reads from $_SERVER /
         // $_REQUEST and resolves a Site, neither of which makes sense in
         // a console-bootstrapped test process.
+        //
+        // But pin the typed `generalConfig` property so methods that
+        // access it (`getSiteToken()`, `validateCsrfToken()` internals)
+        // don't trip over uninitialized-property errors. Parent init
+        // would normally populate this; we replicate that bit here.
+        $this->generalConfig = Craft::$app->getConfig()->getGeneral();
+
+        // Pin a host info so `UrlHelper::cpUrl()` / `actionUrl()` (used
+        // by Craft's mailer and CP redirect machinery) can resolve a
+        // canonical absolute URL even though the test process is
+        // console-shaped. Without this, `getHostInfo()` returns null
+        // and the URL helpers throw on the typed return.
+        $this->setHostInfo('https://test.craftcms.test');
+        $this->setBaseUrl('');
     }
 
     /**
@@ -105,7 +132,7 @@ class WebRequestStub extends Request
      */
     public function getIsCpRequest(): bool
     {
-        return false;
+        return $this->stubIsCpRequest;
     }
 
     /**
@@ -113,7 +140,7 @@ class WebRequestStub extends Request
      */
     public function getIsSiteRequest(): bool
     {
-        return true;
+        return !$this->stubIsCpRequest;
     }
 
     /**
