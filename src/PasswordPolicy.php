@@ -19,6 +19,7 @@ use craft\elements\User;
 use craft\enums\CmsEdition;
 use craft\events\AuthenticateUserEvent;
 use craft\events\DefineAttributeHtmlEvent;
+use craft\events\DefineHtmlEvent;
 use craft\events\DefineRulesEvent;
 use craft\events\ModelEvent;
 use craft\events\RegisterComponentTypesEvent;
@@ -33,7 +34,9 @@ use craft\events\TemplateEvent;
 use craft\events\UserGroupEvent;
 use craft\helpers\ArrayHelper;
 use craft\helpers\ElementHelper;
+use craft\helpers\Html;
 use craft\helpers\Json;
+use craft\helpers\UrlHelper;
 use craft\log\MonologTarget;
 use craft\services\Gc;
 use craft\services\Sites;
@@ -46,6 +49,7 @@ use craft\web\twig\variables\CraftVariable;
 use craft\web\UrlManager;
 use craft\web\View;
 use craftpulse\passwordpolicy\assetbundles\passwordpolicy\PasswordPolicyAsset;
+use craftpulse\passwordpolicy\controllers\UserSecurityController;
 use craftpulse\passwordpolicy\elements\actions\ChangeUserPassword;
 use craftpulse\passwordpolicy\elements\actions\ForcePasswordReset;
 use craftpulse\passwordpolicy\elements\actions\SendPasswordResetEmail;
@@ -578,6 +582,7 @@ class PasswordPolicy extends Plugin
         $this->_registerUserPermissions();
         $this->_registerUtilities();
         $this->_registerUserIndexIntegration();
+        $this->_registerUserEditTab();
         $this->_registerGarbageCollection();
     }
 
@@ -637,6 +642,7 @@ class PasswordPolicy extends Plugin
                         'password-policy/notifications/<key:[\w\-]+>/test-send' => 'password-policy/notification-template/test-send',
                         'password-policy/user-password/change' => 'password-policy/user-password/change',
                         'password-policy/user-password/send-reset-email' => 'password-policy/user-password/send-reset-email',
+                        'password-policy/users/<userId:\d+>/security' => 'password-policy/user-security/index',
                         'password-policy/validate' => 'password-policy/validation/validate',
                     ],
                     $event->rules
@@ -1441,6 +1447,71 @@ class PasswordPolicy extends Plugin
                 }
 
                 $event->sortOptions = array_merge($event->sortOptions, $sortMappings);
+            },
+        );
+    }
+
+    /**
+     * Registers the "Password Security" pointer on the User edit screen
+     * sidebar, gated on the same `pp:force-reset-passwords` /
+     * `pp:change-user-passwords` permission predicate the
+     * {@see UserSecurityController::beforeAction()} enforces. The
+     * pointer is a link block that targets the standalone CP page
+     * registered at `password-policy/users/<userId>/security`.
+     *
+     * Why a sidebar link rather than a top-level tab — Craft 5 does
+     * not expose a public event for plugins to register top-level tabs
+     * on the User edit screen. Tabs are driven by the User's field
+     * layout (admin-editable) plus the controller-owned
+     * `CpScreenResponseBehavior::tabs()` slot. The closest idiomatic
+     * affordance plugins can hook into is
+     * `Element::EVENT_DEFINE_SIDEBAR_HTML`, which appends to the
+     * meta-fields column on the right of the edit screen. The link
+     * keeps discovery of the Password Security surface while honoring
+     * Craft's own UI ownership of the tab strip.
+     *
+     * Read-only mode (`allowAdminChanges = false`) does NOT suppress
+     * the link — the linked page renders read-only data (status +
+     * resolved policy) which is fine to view; the page template
+     * disables form controls via `readOnlyNotice()` + the `disabled`
+     * attribute on the force-reset button.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerUserEditTab(): void
+    {
+        Event::on(
+            User::class,
+            Element::EVENT_DEFINE_SIDEBAR_HTML,
+            static function(DefineHtmlEvent $event): void {
+                if (!UserSecurityController::callerHasViewPermission()) {
+                    return;
+                }
+
+                /** @var User $user */
+                $user = $event->sender;
+
+                if ($user->id === null) {
+                    return;
+                }
+
+                $url = UrlHelper::cpUrl("password-policy/users/{$user->id}/security");
+                $label = Craft::t('password-policy', 'Password Security');
+                $description = Craft::t(
+                    'password-policy',
+                    'Review the user’s password status, resolved policy, and force-reset action.',
+                );
+
+                $event->html .= Html::tag(
+                    'fieldset',
+                    Html::tag('legend', $label, ['class' => 'h6']) .
+                    Html::tag('div', Html::a($label, $url, ['class' => 'go']), ['class' => 'flex']) .
+                    Html::tag('div', Html::encode($description), ['class' => 'light smalltext']),
+                    ['class' => 'meta read-only'],
+                );
             },
         );
     }

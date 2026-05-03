@@ -36,6 +36,7 @@ uses(TestCase::class)->in(
     'Integration/Records',
     'Integration/Services',
     'Integration/TwigTags',
+    'Integration/UserEditTab',
     'Integration/UserIndex',
     'Integration/Validators',
     'Integration/CraftBootstrapTest.php',
