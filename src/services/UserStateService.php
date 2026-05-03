@@ -14,6 +14,7 @@ use Carbon\Carbon;
 use craft\elements\User;
 use craft\helpers\StringHelper;
 use craftpulse\passwordpolicy\enums\ChangeReason;
+use craftpulse\passwordpolicy\models\AuditContext;
 use craftpulse\passwordpolicy\records\UserStateRecord;
 use yii\base\Component;
 
@@ -37,6 +38,30 @@ use yii\base\Component;
  */
 class UserStateService extends Component
 {
+    // Private Properties
+    // =========================================================================
+
+    /**
+     * In-process explicit-context override slots, keyed by user id.
+     *
+     * D3's `ChangeUserPassword` element action sets a slot before invoking
+     * `Elements::saveElement()` so the central history-write listener
+     * (`PasswordPolicy::_resolveAuditContext()`) picks up the explicit
+     * `AuditContext::adminChange()` instead of falling back to the
+     * pending-reason or self-service paths. The slot is consumed exactly
+     * once via {@see self::consumeExplicitContext()}; the listener clears
+     * the slot so a follow-up save in the same request doesn't reuse a
+     * stale context.
+     *
+     * Process-private (not persisted) — every web/console request boots
+     * with an empty array. The slot only exists during the synchronous
+     * window between `setExplicitContext()` and `saveElement()`'s
+     * `EVENT_AFTER_SAVE` firing.
+     *
+     * @var array<int, AuditContext>
+     */
+    private static array $_explicitContexts = [];
+
     // Public Methods
     // =========================================================================
 
@@ -149,6 +174,71 @@ class UserStateService extends Component
         }
 
         $record->save(false);
+    }
+
+    /**
+     * Pins an explicit `AuditContext` for the user's NEXT password-save
+     * cycle. The central `EVENT_AFTER_SAVE` listener consumes the slot
+     * via {@see self::consumeExplicitContext()} before falling back to
+     * the pending-reason or self-service paths.
+     *
+     * D3 wires this from the `ChangeUserPassword` element action's
+     * controller — admin direct intent must override any prior pending
+     * reason (breach, expiry, etc.) on the user. Calling this BEFORE
+     * `Craft::$app->getElements()->saveElement($user)` is the contract;
+     * the listener clears the slot regardless of save outcome so a
+     * stale context can't bleed into a later save.
+     *
+     * @param User $user the user being saved
+     * @param AuditContext $context the explicit context to record
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function setExplicitContext(User $user, AuditContext $context): void
+    {
+        if ($user->id === null) {
+            return;
+        }
+
+        self::$_explicitContexts[$user->id] = $context;
+    }
+
+    /**
+     * Returns and clears any explicit `AuditContext` previously set for
+     * the user via {@see self::setExplicitContext()}. Returns `null`
+     * when no slot was set. Single-use — calling twice in a row returns
+     * the context, then `null`.
+     *
+     * Called from the central history-write listener BEFORE the
+     * pending-reason consume so explicit admin intent wins over any
+     * prior `BreachForced` / `ExpiryForced` / `AdminForceReset` pending
+     * reason on the user_state row. The listener separately calls
+     * {@see self::clearPendingReason()} to drop the now-superseded
+     * pending reason after the change lands.
+     *
+     * @param User $user the user whose explicit context should be consumed
+     * @return AuditContext|null the explicit context if one was set, or
+     *     `null` if no slot was reserved
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function consumeExplicitContext(User $user): ?AuditContext
+    {
+        if ($user->id === null) {
+            return null;
+        }
+
+        if (!isset(self::$_explicitContexts[$user->id])) {
+            return null;
+        }
+
+        $context = self::$_explicitContexts[$user->id];
+        unset(self::$_explicitContexts[$user->id]);
+
+        return $context;
     }
 
     // Private Methods
