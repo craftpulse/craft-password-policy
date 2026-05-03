@@ -20,6 +20,16 @@ use yii\validators\Validator;
  * Catches letter sequences (abc, xyz), number sequences (123, 987), and
  * keyboard row sequences (qwerty, asdf).
  *
+ * **Scope: ASCII only.** Both detection paths (the ASCII ord-diff scan and
+ * the `KEYBOARD_SEQUENCES` substring check) operate on bytes / Latin
+ * keyboard layouts. Non-ASCII alphabet walks (Greek `αβγ`, Cyrillic `абв`,
+ * Hebrew `אבג`, etc.) are NOT flagged — by design, not by oversight. The
+ * threat model is "user pattern-walks a Latin keyboard", which is locale-
+ * agnostic: the keyboard layout is the same physical surface regardless of
+ * the user's input language. Operators in non-Latin locales who want
+ * non-ASCII sequence detection should request it as a separate feature; no
+ * customer signal yet.
+ *
  * @author      CraftPulse
  * @package     PasswordPolicy
  * @since       5.2.0
