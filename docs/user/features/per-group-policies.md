@@ -117,7 +117,7 @@ This lets a single group's explicit Off override global On for that group's user
 Each preset is defined in `PolicyPreset::toGroupPolicy()`. The same values are duplicated in the edit template's preset auto-fill JS for client-side previewing — both should stay in sync.
 
 ### NIST 800-63B
-- minLength: 8
+- minLength: 15 (Rev. 4 — superseded the Rev. 3 8-char floor in Aug 2024)
 - All complexity off (passphrase-friendly)
 - No expiration
 - HIBP: on

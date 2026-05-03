@@ -3,9 +3,14 @@
 use craftpulse\passwordpolicy\enums\PolicyPreset;
 
 it('configures NIST 800-63B preset correctly', function() {
+    // SP 800-63B Rev. 4 (Aug 2024) raised the memorized-secret length
+    // floor for single-factor auth from 8 to 15. The Rev. 3 baseline
+    // (8-char) is what the preset shipped with originally; the Rev. 4
+    // bump tracks the current spec so compliance buyers don't read
+    // an out-of-date number.
     $policy = PolicyPreset::NIST_800_63B->toGroupPolicy();
 
-    expect($policy->minLength)->toBe(8)
+    expect($policy->minLength)->toBe(15)
         ->and($policy->hibp)->toBeTrue()
         ->and($policy->cases)->toBeFalse()
         ->and($policy->numbers)->toBeFalse()
