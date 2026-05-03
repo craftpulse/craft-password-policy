@@ -46,6 +46,33 @@ class UserStub extends ConsoleUser
      */
     public ?string $stubToken = null;
 
+    /**
+     * Stubbed return value for `getHasElevatedSession()`. Used by D3
+     * controller tests to flip the elevated-session gate without
+     * standing up real session storage. Defaults to `true` (elevated)
+     * so tests opt into "no elevation" by setting `false` explicitly.
+     *
+     * @var bool
+     *
+     * @since 5.2.0
+     */
+    public bool $stubHasElevatedSession = true;
+
+    /**
+     * Mirror of `yii\web\User::$idParam` — Craft internals
+     * (`Sites::getCurrentSite()`, `App::env()` resolution paths) read
+     * `Craft::$app->getUser()->idParam` directly even when the user
+     * is the console flavour. Console `User` doesn't define this
+     * property, so the read falls through to `Component::__get` and
+     * throws `UnknownPropertyException`. The stub mirrors the web
+     * default so those reads return a safe value.
+     *
+     * @var string
+     *
+     * @since 5.2.0
+     */
+    public string $idParam = '__id';
+
     // Public Methods
     // =========================================================================
 
@@ -58,5 +85,23 @@ class UserStub extends ConsoleUser
     public function getToken(): ?string
     {
         return $this->stubToken;
+    }
+
+    /**
+     * Stubbed elevated-session check used by `Controller::requireElevatedSession()`.
+     * The console `User` doesn't define this method natively; the
+     * D3 controller tests run in a web-shaped request stub and call
+     * the web `Controller::requireElevatedSession()`, which delegates
+     * here. Returning `false` lets tests assert on the
+     * `UserException` thrown by the requirement.
+     *
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getHasElevatedSession(): bool
+    {
+        return $this->stubHasElevatedSession;
     }
 }
