@@ -103,8 +103,8 @@ class ChangeUserPassword extends ElementAction
         // string of HTML, no separate template required.
         //
         // The modal posts as JSON. The controller responds via
-        // `asModelSuccess` / `asModelFailure`, which JSON-encode the
-        // success message + per-field errors. Post-success we close the
+        // `asJson()` — `{message, errors}` on failure (HTTP 400),
+        // `{success, message}` on success. Post-success we close the
         // modal and notify the operator via Craft's flash mechanism
         // (Craft.cp.displayNotice).
         $js = <<<JS
