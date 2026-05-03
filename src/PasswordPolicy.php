@@ -64,6 +64,7 @@ use craftpulse\passwordpolicy\elements\conditions\PolicyDriftConditionRule;
 use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\events\BreachDetectedEvent;
 use craftpulse\passwordpolicy\events\PasswordChangedEvent;
+use craftpulse\passwordpolicy\events\PasswordValidationEvent;
 use craftpulse\passwordpolicy\models\AuditContext;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
@@ -134,6 +135,24 @@ class PasswordPolicy extends Plugin
      * @since 5.2.0
      */
     public const EVENT_BREACH_DETECTED = 'breachDetected';
+
+    /**
+     * Fired after the plugin's password rules have run on a User during
+     * `Model::validate()` and the aggregated outcome is known. Listeners
+     * receive the validating User, the password-specific errors collected
+     * by the plugin's rule set, and the boolean validity flag — third-
+     * party modules use this seam to add their own validation logic
+     * (custom dictionary checks, attribute-derived blocklisting, etc.).
+     *
+     * The plaintext password and any derived hash material are
+     * intentionally NOT in the event payload — see PasswordValidationEvent
+     * class docblock.
+     *
+     * @event PasswordValidationEvent
+     *
+     * @since 5.2.0
+     */
+    public const EVENT_PASSWORD_VALIDATION = 'passwordValidation';
 
     /**
      * Sensitive keys that must never appear in log output.
@@ -559,6 +578,18 @@ class PasswordPolicy extends Plugin
             }
         );
 
+        // Fire the developer-facing `PasswordValidationEvent` once Yii's
+        // `validate()` has run all rules on the User. The listener pulls
+        // the password-attribute errors out of the User, packs them into
+        // the event payload, and triggers — third-party modules use this
+        // seam to add their own validation logic (custom dictionary
+        // checks, attribute-derived blocklisting, etc.). Listeners can
+        // also push back onto `$event->user->addError(...)` if they want
+        // their custom errors to surface in the user-facing form
+        // response — `$event->errors` is a snapshot of the plugin's own
+        // rule outcome at the time of firing.
+        $this->_registerPasswordValidationEvent();
+
         // Password history: cache plaintext before save
         $this->_registerPasswordHistoryListeners();
 
@@ -915,6 +946,78 @@ class PasswordPolicy extends Plugin
         }
 
         return AuditContext::selfService();
+    }
+
+    /**
+     * Registers the listener that fires
+     * {@see self::EVENT_PASSWORD_VALIDATION} after Yii's `validate()`
+     * runs on a User element. Hooks `User::EVENT_AFTER_VALIDATE` —
+     * Yii's `Model::validate()` calls `afterValidate()` once per call,
+     * which triggers this event after every rule (including the
+     * plugin's password rules registered via `EVENT_DEFINE_RULES`)
+     * has executed. At that point, password-attribute errors are
+     * settled and listeners get a deterministic snapshot.
+     *
+     * Privacy invariant: never expose the plaintext password, derived
+     * hash material, or any HIBP bucket payload through the event. The
+     * event class accepts only the User element + an errors array +
+     * the boolean validity flag — verified at the class level
+     * ({@see PasswordValidationEvent}). Listeners that want to push
+     * their own errors back onto the user can call
+     * `$event->user->addError('newPassword', '…')` — Yii model errors
+     * are mutable post-validate.
+     *
+     * Defensive guard: skip firing for User elements that have no
+     * password attribute set (e.g. a name-only edit triggered an
+     * unrelated validate() pass). Avoids noisy events for callers that
+     * don't care about password validation.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerPasswordValidationEvent(): void
+    {
+        Event::on(
+            User::class,
+            User::EVENT_AFTER_VALIDATE,
+            function(Event $event): void {
+                /** @var User $user */
+                $user = $event->sender;
+
+                // Skip when neither password attribute is in scope —
+                // the validate() call wasn't about passwords.
+                if (
+                    ($user->password ?? '') === '' &&
+                    ($user->newPassword ?? '') === ''
+                ) {
+                    return;
+                }
+
+                if (!$this->hasEventHandlers(self::EVENT_PASSWORD_VALIDATION)) {
+                    return;
+                }
+
+                // Aggregate password-specific errors from the User. Pull
+                // both attributes — `password` (existing record) and
+                // `newPassword` (mid-change) — so listeners see the
+                // full picture regardless of save flow.
+                $passwordErrors = array_merge(
+                    $user->getErrors('password'),
+                    $user->getErrors('newPassword'),
+                );
+
+                $this->trigger(
+                    self::EVENT_PASSWORD_VALIDATION,
+                    new PasswordValidationEvent([
+                        'user' => $user,
+                        'errors' => $passwordErrors,
+                        'isValid' => empty($passwordErrors),
+                    ]),
+                );
+            },
+        );
     }
 
     /**
