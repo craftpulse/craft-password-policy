@@ -1,0 +1,72 @@
+{# Per-user notifications panel — embedded on the Password Security
+ # screen. Compact list of the most recent notification log rows
+ # scoped to this user, with a link to the full Activity index
+ # filtered to the same userId.
+ #
+ # Variables:
+ #   - user (User)
+ #   - rows (NotificationLogRecord[]) — most recent first
+ #
+ # @author CraftPulse
+ # @since 5.2.0
+ #}
+
+<div class="pane" style="margin-top: 24px;">
+    <h2>{{ 'Notifications'|t('password-policy') }}</h2>
+
+    {% if rows|length == 0 %}
+        <p class="light">
+            {{ 'No notifications have been sent to this user yet.'|t('password-policy') }}
+        </p>
+    {% else %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th scope="col">{{ 'Sent'|t('password-policy') }}</th>
+                    <th scope="col">{{ 'Status'|t('password-policy') }}</th>
+                    <th scope="col">{{ 'Type'|t('password-policy') }}</th>
+                    <th scope="col">{{ 'Subject'|t('password-policy') }}</th>
+                    <th scope="col"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                    {% set detailUrl = cpUrl('password-policy/notifications/activity/' ~ row.id) %}
+                    <tr>
+                        <td>
+                            <a href="{{ detailUrl }}">{{ row.sentAt|datetime('short') }}</a>
+                        </td>
+                        <td>
+                            {% if row.status == 'failed' %}
+                                <span class="status-label red">
+                                    <span class="status red"></span>
+                                    <span class="status-label-text">{{ 'Failed'|t('password-policy') }}</span>
+                                </span>
+                            {% else %}
+                                <span class="status-label green">
+                                    <span class="status green"></span>
+                                    <span class="status-label-text">{{ 'Sent'|t('password-policy') }}</span>
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td><code>{{ row.notificationType }}</code></td>
+                        <td>
+                            <span title="{{ row.subject ?? '' }}">
+                                {{ row.subject ? row.subject|slice(0, 60) ~ (row.subject|length > 60 ? '…' : '') : '—' }}
+                            </span>
+                        </td>
+                        <td class="thin">
+                            <a href="{{ detailUrl }}" class="btn small">{{ 'View'|t('password-policy') }}</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <p class="light" style="margin-top: 12px;">
+            <a href="{{ cpUrl('password-policy/notifications/activity', { userId: user.id }) }}">
+                {{ 'See all notifications for this user →'|t('password-policy') }}
+            </a>
+        </p>
+    {% endif %}
+</div>

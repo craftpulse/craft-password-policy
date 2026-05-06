@@ -1,0 +1,135 @@
+{# Notifications activity — detail view for a single log row.
+ #
+ # Variables:
+ #   - row (NotificationLogRecord)
+ #   - resentFrom (NotificationLogRecord|null) — populated when this row is itself a re-send
+ #   - recipientUser (User|null) — the target user (null if user was deleted; row preserved via FK CASCADE on userId would actually drop it, so this should normally be set)
+ #
+ # @author CraftPulse
+ # @since 5.2.0
+ #}
+
+{% requirePermission "pp:notification-templates-manage" %}
+
+{% extends "password-policy/_layouts/password-policy-cp.twig" %}
+
+{% set selectedSubnavItem = 'notification-activity' %}
+{% set title = 'Notification #{id}'|t('password-policy', { id: row.id }) %}
+
+{% set crumbs = [
+    { label: 'Activity'|t('password-policy'), url: cpUrl('password-policy/notifications/activity') },
+] %}
+
+{% block content %}
+    <div class="pane">
+        <h2>{{ 'Delivery'|t('password-policy') }}</h2>
+        <table class="data fullwidth">
+            <tbody>
+                <tr>
+                    <th scope="row" style="width: 200px;">{{ 'Status'|t('password-policy') }}</th>
+                    <td>
+                        {% if row.status == 'failed' %}
+                            <span class="status-label red">
+                                <span class="status red"></span>
+                                <span class="status-label-text">{{ 'Failed'|t('password-policy') }}</span>
+                            </span>
+                        {% else %}
+                            <span class="status-label green">
+                                <span class="status green"></span>
+                                <span class="status-label-text">{{ 'Sent'|t('password-policy') }}</span>
+                            </span>
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">{{ 'Type'|t('password-policy') }}</th>
+                    <td><code>{{ row.notificationType }}</code></td>
+                </tr>
+                <tr>
+                    <th scope="row">{{ 'Recipient'|t('password-policy') }}</th>
+                    <td>
+                        {{ row.recipientEmail ?? '—' }}
+                        {% if recipientUser %}
+                            <span class="light">
+                                ({{ 'User'|t('password-policy') }}: <a href="{{ recipientUser.cpEditUrl }}">{{ recipientUser.username }}</a>)
+                            </span>
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">{{ 'Sent at'|t('password-policy') }}</th>
+                    <td>{{ row.sentAt|datetime('short') }}</td>
+                </tr>
+                {% if row.siteId %}
+                    {% set site = craft.app.sites.getSiteById(row.siteId) %}
+                    <tr>
+                        <th scope="row">{{ 'Site'|t('password-policy') }}</th>
+                        <td>{{ site ? site.name : '— (deleted)'|t('password-policy') }}</td>
+                    </tr>
+                {% endif %}
+                {% if resentFrom %}
+                    <tr>
+                        <th scope="row">{{ 'Re-sent from'|t('password-policy') }}</th>
+                        <td>
+                            <a href="{{ cpUrl('password-policy/notifications/activity/' ~ resentFrom.id) }}">
+                                #{{ resentFrom.id }} — {{ resentFrom.sentAt|datetime('short') }}
+                            </a>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pane" style="margin-top: 24px;">
+        <h2>{{ 'Subject'|t('password-policy') }}</h2>
+        {% if row.subject %}
+            <pre class="pp-activity-subject" style="white-space: pre-wrap; padding: 12px; background: var(--gray-050); border-radius: 4px;">{{ row.subject }}</pre>
+        {% else %}
+            <p class="light">{{ 'Subject not captured (legacy row).'|t('password-policy') }}</p>
+        {% endif %}
+    </div>
+
+    <div class="pane" style="margin-top: 24px;">
+        <h2>{{ 'Body'|t('password-policy') }}</h2>
+        {% if row.body %}
+            <pre class="pp-activity-body" style="white-space: pre-wrap; padding: 12px; background: var(--gray-050); border-radius: 4px; max-height: 400px; overflow: auto;">{{ row.body }}</pre>
+        {% else %}
+            <p class="light">{{ 'Body not captured (legacy row or mailer-key path).'|t('password-policy') }}</p>
+        {% endif %}
+    </div>
+
+    {% if row.status == 'failed' and row.errorMessage %}
+        <div class="pane" style="margin-top: 24px;">
+            <h2>{{ 'Error'|t('password-policy') }}</h2>
+            <blockquote class="note warning">
+                <pre style="white-space: pre-wrap; margin: 0;">{{ row.errorMessage }}</pre>
+            </blockquote>
+        </div>
+    {% endif %}
+
+    {# Resend — only resendable types (editable-template-driven) get the
+     # button. Mailer-key types (`new_device`, `admin_alert_*`) need the
+     # original event payload to re-render and aren't snapshotted; the
+     # service rejects them with a clear message but we hide the button
+     # to avoid surfacing a dead affordance.
+     #}
+    {% set resendable = row.notificationType in ['expiry_reminder', 'breach_detected'] %}
+    {% if resendable %}
+        <div class="pane" style="margin-top: 24px;">
+            <h2>{{ 'Actions'|t('password-policy') }}</h2>
+            <p class="light">
+                {{ 'Resend re-renders the template fresh from current state — if the template was edited since the original send, the new copy reflects those edits. The new row links back to this one.'|t('password-policy') }}
+            </p>
+
+            <form method="post" accept-charset="UTF-8">
+                {{ csrfInput() }}
+                {{ actionInput('password-policy/notification-activity/resend') }}
+                {{ hiddenInput('id', row.id) }}
+                <button type="submit" class="btn submit">
+                    {{ 'Resend'|t('password-policy') }}
+                </button>
+            </form>
+        </div>
+    {% endif %}
+{% endblock %}

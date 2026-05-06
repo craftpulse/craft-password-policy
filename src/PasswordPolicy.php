@@ -213,7 +213,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '2.3.0';
+    public string $schemaVersion = '2.4.0';
 
     /**
      * @var bool
@@ -332,11 +332,15 @@ class PasswordPolicy extends Plugin
             );
         }
 
-        if ($this->getIsPro()) {
-            $results['notificationLog'] = $this->getNotification()->pruneOldEntries(
-                $settings->notificationLogRetentionDays,
-            );
-        }
+        // Notification log pruning runs on every edition — capture is
+        // edition-agnostic (admin_alert_* paths fire on Lite too) so
+        // the retention cleanup must match. Gating to Pro here would
+        // let Lite installs grow the log table unbounded. Architectural
+        // invariant: capture everywhere, gate exposure (the Activity
+        // CP screen) — see `project_audit_capture_principle.md`.
+        $results['notificationLog'] = $this->getNotification()->pruneOldEntries(
+            $settings->notificationLogRetentionDays,
+        );
 
         if ($this->getIsEnterprise() && $settings->enableAuditLog) {
             $results['auditLog'] = $this->getAuditLog()->purgeOldEntries(
@@ -472,10 +476,19 @@ class PasswordPolicy extends Plugin
         }
 
         // Notifications subnav (Pro) — sits between Blocklist and Settings.
+        // Activity is a sibling entry (matches Formie's "Email Templates" /
+        // "Sent Notifications" split) — separate page for delivery /
+        // failure history that ops want to land on directly without an
+        // extra click through Templates.
         if ($this->getIsPro() && $currentUser->can('pp:notification-templates-manage')) {
             $subNavs['notifications'] = [
                 'label' => Craft::t('password-policy', 'Notifications'),
                 'url' => 'password-policy/notifications',
+            ];
+
+            $subNavs['notification-activity'] = [
+                'label' => Craft::t('password-policy', 'Activity'),
+                'url' => 'password-policy/notifications/activity',
             ];
         }
 
@@ -670,6 +683,9 @@ class PasswordPolicy extends Plugin
                         'password-policy/policies/<policyId:\d+>' => 'password-policy/policy/edit',
                         'password-policy/blocklist' => 'password-policy/blocklist/index',
                         'password-policy/notifications' => 'password-policy/notification-template/index',
+                        'password-policy/notifications/activity' => 'password-policy/notification-activity/index',
+                        'password-policy/notifications/activity/<id:\d+>' => 'password-policy/notification-activity/view',
+                        'password-policy/notifications/activity/resend' => 'password-policy/notification-activity/resend',
                         'password-policy/notifications/<key:[\w\-]+>' => 'password-policy/notification-template/edit',
                         'password-policy/notifications/<key:[\w\-]+>/save' => 'password-policy/notification-template/save',
                         'password-policy/notifications/<key:[\w\-]+>/test-send' => 'password-policy/notification-template/test-send',

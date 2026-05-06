@@ -194,6 +194,10 @@ class UserSecurityController extends Controller
             && $lastChange !== null
             && $lastChange < $expiryThreshold;
 
+        $notifications = $plugin->getIsPro()
+            ? $plugin->getNotificationActivity()->recentForUser($user->id)
+            : [];
+
         /** @var Response|CpScreenResponseBehavior $response */
         $response = $this->asEditUserScreen($user, 'password-security');
 
@@ -203,6 +207,7 @@ class UserSecurityController extends Controller
             'policySource' => $policySource,
             'isExpired' => $isExpired,
             'neverChanged' => $lastChange === null,
+            'notifications' => $notifications,
         ]);
 
         return $response;

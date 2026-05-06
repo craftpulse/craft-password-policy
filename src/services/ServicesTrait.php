@@ -24,6 +24,7 @@ use yii\base\InvalidConfigException;
  * @property HibpClientInterface $hibpClient
  * @property PasswordHistoryService $passwordHistory
  * @property NotificationService $notification
+ * @property NotificationActivityService $notificationActivity
  * @property NotificationTemplateService $notificationTemplates
  * @property PasswordService $passwords
  * @property PolicyService $policies
@@ -57,6 +58,7 @@ trait ServicesTrait
                 'hibpClient' => GuzzleHibpClient::class,
                 'passwordHistory' => PasswordHistoryService::class,
                 'notification' => NotificationService::class,
+                'notificationActivity' => NotificationActivityService::class,
                 'notificationTemplates' => NotificationTemplateService::class,
                 'passwords' => PasswordService::class,
                 'policies' => PolicyService::class,
@@ -162,6 +164,21 @@ trait ServicesTrait
     public function getNotification(): NotificationService
     {
         return $this->get('notification');
+    }
+
+    /**
+     * Returns the notification activity (read-side) service.
+     *
+     * @return NotificationActivityService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getNotificationActivity(): NotificationActivityService
+    {
+        return $this->get('notificationActivity');
     }
 
     /**
