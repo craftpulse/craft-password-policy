@@ -2,11 +2,13 @@
 title: Phase G Build Plan — Enterprise (Compliance + Audit Integrity + SIEM)
 version: 5.2.0
 phase: G
-features: [hash-chained-audit, verifier-cli, compliance-dashboard, alert-cooldown, siem-syslog, webhook-infra, audit-export, custom-blocklist, custom-template-paths, enterprise-notif-keys]
+features: [hash-chained-audit, verifier-cli, compliance-dashboard, policy-change-diffs, pii-allowlist, custom-blocklist, alert-cooldown, siem-syslog, webhook-full, audit-export, custom-template-paths, enterprise-notif-keys]
 build_order: [G1, G2, G3, G4, G5, G6, G7, G8, G9, G10, G11, G12]
-estimated_effort: ~5-7 working days for the 5.2.0 subset (G1 → G8 + G10 + G11 + G12); G9 webhook infra ships with no UI, ~half day cut from naive scope; G3 compliance dashboard is the largest single feature
-deferred_to_5_3: [WebhookEndpoint CP UI (G9 management), HTTP webhook delivery once UI lands (infra ships in G9), ApiTokenService + ApiController REST surface (Phase 12 § REST), syslog UDP forwarder protocol]
+estimated_effort: ~6-8 working days for the 5.2.0 subset; G3 compliance dashboard + G9 webhook full surface (infrastructure + management UI + endpoint CRUD) are the two largest single features
+deferred_to_5_3: [ApiTokenService + ApiController REST surface (Phase 12 § REST)]
+not_adopted: [syslog UDP forwarder protocol — UDP unreliable for audit forwarding, TCP/TLS is the compliance-correct default; no buyer profile asks for it. Cut from the matrix, not parked.]
 last_updated: 2026-05-06
+user_confirmation: 2026-05-06 — user confirmed deferral scope (G9 ships whole; Phase 12 REST defers; syslog UDP dropped, not parked)
 ---
 
 # Phase G — Enterprise (Compliance + Audit Integrity + SIEM)
@@ -133,9 +135,9 @@ Otherwise — first row's `dateCreated` is recent and `previousHash` doesn't lin
 
 ### 3. SIEM forwarders
 
-Protocols supported in 5.2.0: **syslog over TLS only.** UDP is unreliable and rejected outright. Plain TCP without TLS is rare in the regulated-industry buyer profile this plugin targets. HTTP webhook forwarder lands as **infrastructure-only in 5.2.0** (G9) — the management UI defers to 5.3.
+Protocols supported in 5.2.0: **syslog over TLS only.** UDP is dropped from the matrix entirely (not parked, not deferred — cut). UDP is unreliable for audit forwarding; the regulated-industry buyer profile this plugin targets needs delivery guarantees. Plain TCP without TLS is rare in that profile too — TLS is the compliance-correct default.
 
-This is the deferral choice for the "Phase G grows past one comfortable build cycle" rule the user surfaced in the brief. See § Re-evaluation note at the end.
+HTTP webhook forwarder ships as a full feature in G9 (infrastructure + management UI + endpoint CRUD). User-confirmed scope on 2026-05-06.
 
 **Queue-driven via `\craft\queue\BaseBatchedJob`.** New `SiemForwardJob` follows the P1.4 `SendPasswordExpiryRemindersJob` template:
 
@@ -169,13 +171,13 @@ This implements `project_audit_capture_principle.md`: capture is universal (we a
 
 ### 4. Webhook HMAC scheme
 
-Locked even though the management UI defers to 5.3 (the infrastructure ships in G9 — keep the HMAC scheme stable so 5.3 doesn't break consumer integrations).
+Locked. G9 ships in full in 5.2.0: infrastructure + CP management UI + endpoint CRUD.
 
 - **Signature header:** `X-PasswordPolicy-Signature: sha256=<hex>`. Industry-standard format; matches Stripe and GitHub conventions.
 - **Payload canonicalisation:** raw request body bytes — no key reordering, no whitespace normalisation. Recipients verify against the bytes they received. The body is whatever JSON we serialised on send; consumer treats it as opaque bytes.
-- **Timestamp header:** `X-PasswordPolicy-Timestamp: <unix-epoch-seconds>`. Recipient rejects if `|now - timestamp| > 300` (5 minutes). Document this constraint in the consumer-facing webhook docs (G9 layer 4).
+- **Timestamp header:** `X-PasswordPolicy-Timestamp: <unix-epoch-seconds>`. Recipient rejects if `|now - timestamp| > 300` (5 minutes). Document this constraint in the consumer-facing webhook docs.
 - **Idempotency key:** `X-PasswordPolicy-Event-Id: <uuid>`. Consumer uses this to dedup replays.
-- **Secret rotation:** per-endpoint secret stored on `passwordpolicy_webhook_endpoints.secretCurrent`. Admins generate a new secret via the CP (5.3 UI), the old secret moves to `secretPrevious` with a configurable grace window (default 24h, capped at 7 days). During the grace window both secrets are accepted by signature verification on the consumer side — but the plugin signs with `secretCurrent` only. On grace expiry, `secretPrevious` is null'd out via a queue job.
+- **Secret rotation:** per-endpoint secret stored on `passwordpolicy_webhook_endpoints.secretCurrent`. Admins generate a new secret via the CP, the old secret moves to `secretPrevious` with a configurable grace window (default 24h, capped at 7 days). During the grace window both secrets are accepted by signature verification on the consumer side — but the plugin signs with `secretCurrent` only. On grace expiry, `secretPrevious` is null'd out via a queue job.
 
 The HMAC is computed over `timestamp.eventId.body` (period-delimited concatenation), then `hash_hmac('sha256', $message, $secretCurrent)`. Document the canonical message format in G9 layer 1 PHPDoc.
 
@@ -239,9 +241,13 @@ The default cooldowns are **configurable per-class** via a settings array (`aler
 
 **Synchronous shortcut.** When the date range is bounded and `< 30 days` AND row count `< 1000`, skip the queue and stream the response directly via `Craft::$app->getResponse()->stream(...)`. Same code path on the receiving end (file generated identically), but the admin doesn't wait for queue runner.
 
-### 7. Phase G subset deferral
+### 7. Phase G subset scope
 
-See § Re-evaluation note at the end of this plan.
+User-confirmed 2026-05-06. See § Scope decisions at the end of this plan for the full table. Summary:
+
+- **Ships in 5.2.0:** G1 through G12, all in full. No half-shipped features.
+- **Defers to 5.3:** Phase 12 § REST surface (ApiTokenService + ApiController). Substantial layer on its own; G10's streaming export covers the batch-import-to-SIEM use case in 5.2.0.
+- **Cut from the matrix entirely (not parked, not deferred):** syslog UDP forwarder. UDP is unreliable for audit forwarding; TCP/TLS is the compliance-correct default.
 
 ---
 
@@ -259,7 +265,7 @@ Foundation-first per the C2 plan idiom. The audit hash chain is the foundation �
 | 6 | **G6 — Per-policy custom blocklist editor** | Independent of the chain work. `policyId` column shipped in P1.11. Editor surface + validator merge. |
 | 7 | **G7 — `AlertCooldownService`** | New table + service. Migrate F2's `_hasRecentNotification()` + the admin-alert 5-min filter to the new service. Independent of G1–G6 but lands here because G8 depends on it (SIEM forwarder failures register cooldowns). |
 | 8 | **G8 — SIEM forwarder (syslog over TLS only)** | Reads from G1's chain. Uses G7 for circuit-breaker cooldowns. Reuses the BaseBatchedJob template from P1.4. |
-| 9 | **G9 — Webhook forwarder infrastructure** | Schema + service + HMAC signing. CP UI deferred to 5.3 (see § Re-evaluation note). The infrastructure ships so 5.3 only adds the management surface. |
+| 9 | **G9 — Webhook forwarder (full surface)** | Schema + service + HMAC signing + secret rotation + CP management UI + endpoint CRUD screen. Ships whole in 5.2.0 — half-shipping the infra without the management UI was rejected after review (creates a "you have webhooks but can't make one without a console" gap that rots). |
 | 10 | **G10 — Streaming audit-log export** | Extends `AuditController::actionExport` + new `AuditExportJob`. Builds on G1's chain shape because the export emits canonical-JSON rows. |
 | 11 | **G11 — Custom email template paths (Enterprise)** | Extends `passwordpolicy_notification_templates` JSON content shape with `templatePath`. Pure read-side from `NotificationService::composeFromTemplate`. Independent of G1. Strip-on-save defense gates Pro from writing it. |
 | 12 | **G12 — Enterprise notification keys (`new-device-alert`, `admin-security-alert`)** | Move both to the editable-templates surface. F2 currently captures their `_dispatchMailerKey` outcomes without subject/body — G12 upgrades them to full `_dispatch()` capture. Migration adds the two seed rows per site. |
@@ -838,13 +844,13 @@ First forwarder. Webhook infra in G9.
 
 `feat(siem): syslog-over-TLS forwarder + circuit breaker + CP management (G8)`
 
-Body: new table + service + job + CP controller + edition gating. Circuit-breaker semantics. How to undo: drop the table + revert the controller + remove the subnav. UDP rejected (unreliable); HTTP webhook deferred to G9 (infrastructure only — see G9 commit).
+Body: new table + service + job + CP controller + edition gating. Circuit-breaker semantics. How to undo: drop the table + revert the controller + remove the subnav. UDP rejected outright (unreliable for audit forwarding; not parked, cut from the matrix). HTTP webhook ships in full as G9.
 
 ---
 
-# G9 — Webhook forwarder infrastructure
+# G9 — Webhook forwarder (full surface)
 
-Infrastructure ships. CP management UI defers to 5.3 per the Re-evaluation note.
+Schema + service + HMAC signing + secret rotation + CP management UI + endpoint CRUD. Ships whole in 5.2.0. User-confirmed scope on 2026-05-06 — half-shipping the infrastructure without the CP surface was rejected after review (creates a "you have webhooks but can't make one without a console" gap).
 
 ## Layer 1 — Schema migration
 
@@ -879,30 +885,35 @@ Infrastructure ships. CP management UI defers to 5.3 per the Re-evaluation note.
 **Build**
 
 - New `src/jobs/RotateWebhookSecretJob.php`. Activates `secretPrevious = NULL` after the configured grace window (default 24h) since `secretRotatedAt`.
-- Console action `password-policy/webhook/rotate-secret <endpointId>` — admin-driven rotation. (Full CP UI defers to 5.3, but the rotation primitive is testable via CLI in 5.2.0.)
+- Console action `password-policy/webhook/rotate-secret <endpointId>` for shell-level rotation (parity with the CP button — operators with CI pipelines can rotate via cron without a CP click).
 
 **Verify**
 
 - Console action rotates secret. After grace window, `secretPrevious` nulls out via the job.
 
-## Layer 4 — CP management deferral notice
+## Layer 4 — CP management surface
 
 **Build**
 
-- Add a console action `password-policy/webhook/list` and `password-policy/webhook/create --url=... --events=...` for admin-via-CLI configuration in 5.2.0.
-- Add a section to `docs/user/features/audit-logging.md` documenting the webhook scheme (HMAC, headers, replay window, idempotency key) so consumers can wire integrations even before the CP UI lands in 5.3.
-- Comment block at the top of `WebhookService` explicitly documenting the 5.3-defers-CP-UI decision: "This service is fully functional in 5.2.0 via CLI configuration. The CP management UI ships in 5.3. Don't refactor the service surface during the 5.3 UI work — keep the API stable."
+- New `src/controllers/WebhookEndpointController.php`. Actions: `index` (list view), `edit` (create + edit), `save` (POST), `delete`, `rotateSecret` (AJAX POST), `testFire` (AJAX POST — sends a synthetic audit row to the endpoint and surfaces the response).
+- New CP subnav entry `webhooks` under the `Notifications → Activity` neighbour (or `Audit` parent if Phase G adds one — confirm placement during build). Pro-gated isn't enough; this is Enterprise-only — gate on `pp:webhooks-manage` (new permission).
+- New `src/templates/_webhooks/_index.twig` + `_edit.twig` matching the patterns from `_notifications/_index.twig` + `_edit.twig` (P1.3). EditableTable for `eventClasses`, secret reveal-on-click + rotate button, last-delivery-status badge per row.
+- Console actions `password-policy/webhook/list` and `password-policy/webhook/create --url=... --events=...` ship alongside the CP UI for ops-cron parity (some operators provision endpoints from infrastructure-as-code).
 
 **Verify**
 
-- `ddev craft password-policy/webhook/create --url=https://example.com/hook --events=audit_log`. Confirm: row inserted, secret generated.
-- Trigger an audit event with a CLI-configured endpoint. Confirm: dispatch attempt fires (mock the URL via a local listener for verification).
+- Visit `/admin/password-policy/webhooks` on Enterprise. Index renders. Create a new endpoint via the CP. Trigger an audit event and confirm the dispatch attempt fires (mock the URL via Mailpit-style local listener for verification).
+- Rotate the secret via the CP button. Confirm: `secretPrevious` populated, `secretCurrent` regenerated, grace-window UI surfaces an inline countdown.
+- Test-fire button on the edit screen sends a synthetic event and renders the HTTP response inline (status code + first 1KB of body).
+- `ddev craft password-policy/webhook/create --url=https://example.com/hook --events=audit_log` works for the IaC path.
+- Lite + Pro: subnav doesn't render. Direct URL returns 403.
 
 ## Layer 5 — Pest tests
 
 **Build**
 
 - `tests/Integration/Services/WebhookServiceTest.php`. Cover signature generation, replay-attack window enforcement (consumer-side documentation only — the plugin signs; we test signature determinism), secret rotation grace window.
+- `tests/Integration/Controllers/WebhookEndpointControllerTest.php`. Cover index render, edit-save round trip, rotate-secret AJAX response shape, test-fire AJAX response, edition gating (Lite/Pro return 403).
 
 **Verify**
 
@@ -910,9 +921,9 @@ Infrastructure ships. CP management UI defers to 5.3 per the Re-evaluation note.
 
 ## Commit
 
-`feat(webhook): HMAC-signed webhook delivery infrastructure (CLI-configured; CP UI defers to 5.3) (G9)`
+`feat(webhook): HMAC-signed webhook delivery + CP management surface (G9)`
 
-Body: HMAC scheme, secret rotation primitive, infrastructure-only ship rationale (Phase G subset deferral). How to undo: drop the table + revert the service + remove the console actions. The 5.3 work adds the CP UI on top of this stable surface.
+Body: full webhook surface — schema, service, HMAC scheme, secret rotation primitive, CP CRUD, console actions for IaC parity, Pest coverage. How to undo: drop the table + revert the service + remove the controller + console actions + subnav.
 
 ---
 
@@ -1165,7 +1176,7 @@ When Phase G is complete:
 - **handover.md:** refresh for Phase H start (release prep + deployment docs + Plugin Store listing).
 - **CHANGELOG.md:** entries for all 12 G items under `[5.2.0] - Unreleased`.
 - **`docs/user/reference/events.md`:** five new event rows.
-- **`docs/user/features/audit-logging.md`:** sections (a)–(f) marked DONE; new section "Webhook delivery (5.2.0 infrastructure; 5.3 management UI)" documenting the consumer-side scheme.
+- **`docs/user/features/audit-logging.md`:** sections (a)–(f) marked DONE; new section "Webhook delivery" documenting the consumer-side scheme (HMAC verification, replay window, idempotency UUID, secret rotation).
 - **Suite:** target ~700 passing / ~1500 assertions. Phase E + D + F2 tests continue to pass; Phase G adds ~150 new tests.
 - **Working tree clean** after Phase G completion.
 
@@ -1186,11 +1197,11 @@ If a verify step fails and you can't recover, STOP and report. Don't push past f
 
 ---
 
-# Re-evaluation note — what ships in 5.2.0 vs defers to 5.3
+# Scope decisions — what ships in 5.2.0 vs defers to 5.3 vs not adopted
 
-Per the user brief and `handover.md`, the plan-doc rule loosens once P2.8 is drafted: if Phase G grows past one comfortable build cycle, deferring lower-priority subset to 5.3 is permitted. After scoping the work above, here is the recommended deferral.
+User-confirmed on 2026-05-06. The original draft proposed deferring G9's CP management UI to 5.3 alongside the REST surface. That was reviewed and reversed: half-shipping G9 (infrastructure without the CP CRUD) was rejected as creating a "you have webhooks but can't make one without a console" gap. G9 ships in full. syslog UDP was reviewed and dropped from the matrix entirely (not parked, not deferred — cut) since UDP is unreliable for audit forwarding and no buyer profile asks for it. Phase 12 REST stays deferred — it's a substantial feature on its own and G10 streaming export covers the machine-readable-audit need for 5.2.0.
 
-**Load-bearing for the 5.2.0 release (must ship):**
+**Ships in 5.2.0:**
 
 | ID | Item | Rationale |
 |---|---|---|
@@ -1202,27 +1213,25 @@ Per the user brief and `handover.md`, the plan-doc rule loosens once P2.8 is dra
 | G6 | Per-policy custom blocklist | Specops-style differentiator. Schema column already shipped at install. |
 | G7 | AlertCooldownService | F2's existing dedup is uncomfortable to leave un-factored. The G8 forwarder needs the cooldown for circuit breaker. |
 | G8 | SIEM syslog-over-TLS | Regulated-industry buyers already speak this protocol. |
-| G10 | Streaming audit-log export | SOC 2 / NIS2 evidence packages need 12+ months of audit-log data without PHP memory ceiling. |
+| G9 | Webhook forwarder (full surface) | Schema + service + HMAC + secret rotation + CP management UI + endpoint CRUD + console parity. Ships whole. |
+| G10 | Streaming audit-log export | SOC 2 / NIS2 evidence packages need 12+ months of audit-log data without PHP memory ceiling. Also covers the machine-readable-audit need that REST would otherwise serve. |
 | G11 | Custom email template paths | Whitelabeling for Enterprise; small surface, high perceived value. |
 | G12 | Enterprise notification keys | Closes the F2 capture-coverage gap (`new_device` + `admin_alert_*` currently lack subject/body capture). |
 
-**Deferred to 5.3 (infrastructure ships but not the management UI):**
+**Deferred to 5.3:**
 
 | ID | Item | Rationale |
 |---|---|---|
-| G9 (UI only) | WebhookEndpoint CP management screen | Service + HMAC scheme + secret rotation + CLI configuration ship in 5.2.0 (G9 layers 1–4). 5.3 adds the CP CRUD surface. Webhook-driven SIEM is desirable, but operators willing to configure via CLI in 5.2.0 are exactly the operators with shell access — the constraint is mild. |
-| Phase 12 § REST | ApiTokenService + ApiController REST surface | Heavy infrastructure (token storage + scopes + rate limiting + a complete CRUD surface). Only needed if the API-driven SIEM model wins over the syslog-driven one. Operators who want machine-readable audit access can use the export streaming (G10) in 5.2.0 — exports an entire range as JSONL, sufficient for batch import. The REST surface is interactive-only and can wait. |
-| syslog UDP forwarder | Protocol option | UDP is unreliable. No regulated-industry buyer is asking for it. If demand surfaces, add in 5.3. |
+| Phase 12 § REST | ApiTokenService + ApiController REST surface | Substantial layer on its own — token storage, scopes, per-token rate limiting, full CRUD surface, OpenAPI surface, auth middleware. G10's streaming export covers the batch-import-to-SIEM use case in 5.2.0. The REST is interactive-only and earns a 5.3 placement on its own merits. |
 
 **Not adopted (rejected outright; preserved here so future planning doesn't reopen):**
 
+- syslog UDP forwarder protocol — UDP is unreliable for audit forwarding, TCP/TLS is the compliance-correct default; no buyer profile asks for it. Cut from the matrix, not parked.
 - RFC 3161 external timestamping
 - AWS S3 Object Lock anchoring
 - GeoIP enrichment on audit rows
 - Splunk HEC / Datadog destinations as native protocols (operators integrate via syslog forwarder or webhook — both already present)
 - Merkle tree hash batching (volume doesn't justify; flat per-row chain is simpler to verify)
-
-The user reviews this re-evaluation and confirms before any Phase G code lands. Confirmation can take the form of "ship this as written" or "move X from defer-to-5.3 back into the 5.2.0 set" or "drop Y from the 5.2.0 set."
 
 ---
 
