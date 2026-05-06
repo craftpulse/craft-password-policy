@@ -190,19 +190,33 @@ class Install extends Migration
      */
     private function _createNotificationLogTable(): void
     {
-        if ($this->db->tableExists('{{%passwordpolicy_notification_log}}')) {
+        $table = '{{%passwordpolicy_notification_log}}';
+
+        if ($this->db->tableExists($table)) {
             return;
         }
 
-        $this->createTable('{{%passwordpolicy_notification_log}}', [
+        $this->createTable($table, [
             'id' => $this->primaryKey(),
             'userId' => $this->integer()->notNull(),
             'notificationType' => $this->string()->notNull(),
+            'status' => $this->string(16)->notNull()->defaultValue('sent'),
+            'recipientEmail' => $this->string()->null(),
+            'siteId' => $this->integer()->null(),
+            'subject' => $this->text()->null(),
+            'body' => $this->mediumText()->null(),
+            'errorMessage' => $this->text()->null(),
+            'resentFromId' => $this->integer()->null(),
             'sentAt' => $this->dateTime()->notNull(),
         ]);
 
-        $this->createIndex(null, '{{%passwordpolicy_notification_log}}', ['userId', 'notificationType', 'sentAt'], false);
-        $this->addForeignKey(null, '{{%passwordpolicy_notification_log}}', ['userId'], Table::USERS, ['id'], 'CASCADE', null);
+        $this->createIndex(null, $table, ['userId', 'notificationType', 'sentAt'], false);
+        $this->createIndex(null, $table, ['status', 'sentAt'], false);
+        $this->createIndex(null, $table, ['siteId'], false);
+        $this->createIndex(null, $table, ['resentFromId'], false);
+        $this->addForeignKey(null, $table, ['userId'], Table::USERS, ['id'], 'CASCADE', null);
+        $this->addForeignKey(null, $table, ['siteId'], Table::SITES, ['id'], 'SET NULL', null);
+        $this->addForeignKey(null, $table, ['resentFromId'], $table, ['id'], 'SET NULL', null);
     }
 
     /**

@@ -15,8 +15,11 @@ use Craft;
 use craft\db\Query;
 use craft\elements\User;
 use craft\helpers\App;
+use craftpulse\passwordpolicy\enums\NotificationStatus;
 use craftpulse\passwordpolicy\models\NotificationTemplateModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
+use craftpulse\passwordpolicy\records\NotificationLogRecord;
+use DateTime;
 use RuntimeException;
 use Throwable;
 use yii\base\Component;
@@ -25,8 +28,29 @@ use yii\db\Exception;
 /**
  * Class NotificationService
  *
- * Handles email notifications for password expiry reminders, new device alerts,
- * and admin security alerts. Tracks sent notifications for dedup.
+ * Sends password expiry reminders, breach detection alerts, new-device
+ * alerts, and admin security alerts; tracks every send attempt — both
+ * successes and failures — in `passwordpolicy_notification_log`.
+ *
+ * **Audit invariant:** the log row write happens on BOTH branches of
+ * the `mailer->send()` outcome — a successful send writes
+ * `status = sent` with rendered subject + body; a failed send writes
+ * `status = failed` with `errorMessage`. The pre-Phase-F2 behavior
+ * (row only on success, failures only logged to the plugin log file)
+ * was a side-effect dedup substrate that pretended to be an audit
+ * table — operators couldn't see failures at all.
+ *
+ * **Dedup decoupled from row existence:** `_hasRecentNotification()`
+ * filters on `status = 'sent'`, so a failed-then-retried notification
+ * isn't suppressed by the original failed row. This matches operator
+ * intent — a failed send is something to retry, not something that
+ * blocks the next attempt.
+ *
+ * Capture is non-negotiable across editions — Lite installs already
+ * write rows for the surfaces they have (admin security alerts —
+ * Lite-eligible). The activity-surface CP screen is gated to Pro+
+ * via the existing Notifications subnav permission, but the table
+ * itself is populated everywhere.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -64,52 +88,38 @@ class NotificationService extends Component
             return;
         }
 
-        // Check dedup — only send once per expiry window
+        // Check dedup — only send once per expiry window. Filters on
+        // status='sent' so failed-then-retried doesn't suppress.
         if ($this->_hasRecentNotification($user->id, 'expiry_reminder')) {
             return;
         }
 
-        $siteId = $this->_resolveSiteIdForUser($user);
-        $template = PasswordPolicy::$plugin->getNotificationTemplates()
-            ->getTemplate('expiry-reminder', $siteId);
-
-        if ($template === null) {
-            Craft::warning(
-                "No expiry-reminder template found for user {$user->id} (siteId {$siteId})",
-                'password-policy',
-            );
-            return;
-        }
-
-        try {
-            $message = $this->composeFromTemplate($template, $user, [
-                'user' => $user,
+        $this->_dispatch(
+            user: $user,
+            type: 'expiry_reminder',
+            templateKey: 'expiry-reminder',
+            extraVars: [
                 'daysUntilExpiry' => $daysRemaining,
-                'siteName' => Craft::$app->getSites()->getSiteById($siteId)?->getName()
-                    ?? Craft::$app->getSystemName(),
-            ]);
-
-            $message->setTo($user->email)->send();
-
-            $this->_logNotification($user->id, 'expiry_reminder');
-        } catch (Throwable $e) {
-            Craft::error(
-                "Failed to send expiry reminder to user {$user->id}: " . $e->getMessage(),
-                'password-policy',
-            );
-        }
+            ],
+        );
     }
 
     /**
-     * Sends a `breach-detected` notification to a user whose password was
-     * just found in the HIBP breach database during login.
+     * Sends a `breach-detected` notification to a user whose password
+     * was just found in the HIBP breach database during login.
      *
-     * Pro-only — the listener that drives this method only registers on Pro,
-     * but the guard is duplicated here as defense-in-depth in case a future
-     * caller invokes the method directly.
+     * Pro-only — the listener that drives this method only registers
+     * on Pro, but the guard is duplicated here as defense-in-depth in
+     * case a future caller invokes the method directly.
+     *
+     * Dedup is handled by the listener (cache-based, 24h) — by the
+     * time we reach here, the same (user, prefix) hasn't notified
+     * within the last day. We still write a notification_log row so
+     * admins have a historical trail in the same place expiry-
+     * reminder logs land.
      *
      * @param User $user the user whose password matched
-     * @param \DateTime $detectedAt when the match was detected
+     * @param DateTime $detectedAt when the match was detected
      * @return void
      *
      * @throws RuntimeException when the plugin is running the Lite edition
@@ -117,7 +127,7 @@ class NotificationService extends Component
      * @author CraftPulse
      * @since 5.2.0
      */
-    public function sendBreachDetected(User $user, \DateTime $detectedAt): void
+    public function sendBreachDetected(User $user, DateTime $detectedAt): void
     {
         if (!PasswordPolicy::$plugin->getIsPro()) {
             throw new RuntimeException('HIBP-on-login notifications require the Pro edition.');
@@ -127,43 +137,14 @@ class NotificationService extends Component
             return;
         }
 
-        // Dedup is handled by the listener (cache-based, 24h) — by the time
-        // we reach here, the same (user, prefix) hasn't notified within the
-        // last day. We still write a notification_log row so admins have a
-        // historical trail in the same place expiry-reminder logs land.
-        $siteId = $this->_resolveSiteIdForUser($user);
-        $template = PasswordPolicy::$plugin->getNotificationTemplates()
-            ->getTemplate('breach-detected', $siteId);
-
-        if ($template === null) {
-            Craft::warning(
-                "No breach-detected template found for user {$user->id} (siteId {$siteId})",
-                'password-policy',
-            );
-            return;
-        }
-
-        try {
-            $message = $this->composeFromTemplate($template, $user, [
-                'user' => $user,
+        $this->_dispatch(
+            user: $user,
+            type: 'breach_detected',
+            templateKey: 'breach-detected',
+            extraVars: [
                 'detectedAt' => $detectedAt,
-                'siteName' => Craft::$app->getSites()->getSiteById($siteId)?->getName()
-                    ?? Craft::$app->getSystemName(),
-            ]);
-
-            $message->setTo($user->email)->send();
-
-            $this->_logNotification($user->id, 'breach_detected');
-        } catch (Throwable $e) {
-            // Privacy invariant: never include the plaintext / hash / bucket
-            // suffix in logs. The exception message can only originate from
-            // template rendering or mailer transport — neither carries
-            // password material — but we log only an opaque summary anyway.
-            Craft::error(
-                "Failed to send breach-detected notification to user {$user->id}: " . $e->getMessage(),
-                'password-policy',
-            );
-        }
+            ],
+        );
     }
 
     /**
@@ -183,23 +164,27 @@ class NotificationService extends Component
             return;
         }
 
-        try {
-            Craft::$app->getMailer()
-                ->composeFromKey('password-policy:new-device-alert', [
-                    'user' => $user,
-                    'deviceLabel' => $deviceLabel,
-                    'maskedIp' => $maskedIp,
-                ])
-                ->setTo($user->email)
-                ->send();
+        // `composeFromKey` path (mailer-templates.php) — distinct from
+        // the editable-templates surface used by expiry / breach.
+        // Subject + body capture is intentionally omitted for mailer-
+        // key sources: the rendered content lives inside the Symfony
+        // Message and isn't trivially extractable, and the operator-
+        // visibility value is low because these templates aren't
+        // admin-edited. Phase G adds new-device + admin-alert to the
+        // editable-templates surface; at that point this path moves
+        // to `_dispatch()` and gets full capture.
+        $message = Craft::$app->getMailer()->composeFromKey('password-policy:new-device-alert', [
+            'user' => $user,
+            'deviceLabel' => $deviceLabel,
+            'maskedIp' => $maskedIp,
+        ]);
 
-            $this->_logNotification($user->id, 'new_device');
-        } catch (\Throwable $e) {
-            Craft::error(
-                "Failed to send new device alert to user {$user->id}: " . $e->getMessage(),
-                'password-policy',
-            );
-        }
+        $this->_dispatchMailerKey(
+            userId: $user->id,
+            type: 'new_device',
+            recipient: $user->email,
+            sender: $message,
+        );
     }
 
     /**
@@ -226,11 +211,14 @@ class NotificationService extends Component
             return;
         }
 
-        // Dedup: no duplicate alerts for same event within 5 minutes
+        // Dedup: no duplicate alerts for same event within 5 minutes.
+        // Filters on status='sent' for the same reason as the expiry-
+        // reminder dedup — failed-then-retried shouldn't suppress.
         $recentCount = (new Query())
             ->from('{{%passwordpolicy_notification_log}}')
             ->where([
                 'notificationType' => 'admin_alert_' . $event,
+                'status' => NotificationStatus::Sent->value,
             ])
             ->andWhere(['>=', 'sentAt', Carbon::now('UTC')->subMinutes(5)->format('Y-m-d H:i:s')])
             ->count();
@@ -239,23 +227,78 @@ class NotificationService extends Component
             return;
         }
 
-        try {
-            Craft::$app->getMailer()
-                ->composeFromKey('password-policy:admin-security-alert', [
-                    'event' => $event,
-                    'context' => $context,
-                ])
-                ->setTo($email)
-                ->send();
+        $message = Craft::$app->getMailer()->composeFromKey('password-policy:admin-security-alert', [
+            'event' => $event,
+            'context' => $context,
+        ]);
 
-            // Log with userId=0 for admin alerts (no specific user)
-            $this->_logNotification(0, 'admin_alert_' . $event);
-        } catch (\Throwable $e) {
-            Craft::error(
-                "Failed to send admin security alert for {$event}: " . $e->getMessage(),
-                'password-policy',
-            );
+        // Log with userId=0 for admin alerts (no specific user).
+        $this->_dispatchMailerKey(
+            userId: 0,
+            type: 'admin_alert_' . $event,
+            recipient: $email,
+            sender: $message,
+        );
+    }
+
+    /**
+     * Re-sends a previously logged notification.
+     *
+     * Re-renders the template **fresh** from current state (admin may
+     * have edited the template since the original send) and writes a
+     * new row linked to the original via `resentFromId`. Bypasses the
+     * dedup gate — the admin's "Resend" click is an explicit override
+     * of the dedup-prevents-spam logic.
+     *
+     * Skips rows whose `notificationType` doesn't map to the editable-
+     * templates surface (e.g. `admin_alert_*` rows, `new_device`):
+     * those are mailer-key sources rather than DB-template sources,
+     * and re-rendering them requires the original event payload which
+     * we don't snapshot. Callers can detect this via the bool return.
+     *
+     * @param NotificationLogRecord $original
+     * @return bool true if the resend dispatched, false if the row's
+     *     type isn't resendable
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function resend(NotificationLogRecord $original): bool
+    {
+        $templateKey = self::_templateKeyForType($original->notificationType);
+
+        if ($templateKey === null) {
+            return false;
         }
+
+        $user = Craft::$app->getUsers()->getUserById($original->userId);
+
+        if ($user === null || $user->email === null) {
+            return false;
+        }
+
+        // Fresh render — no snapshot replay. If the admin edited the
+        // template since the original send, the resend reflects the
+        // current state.
+        $extraVars = match ($original->notificationType) {
+            'expiry_reminder' => [
+                'daysUntilExpiry' => $this->_estimateDaysUntilExpiry($user),
+            ],
+            'breach_detected' => [
+                'detectedAt' => new DateTime('now'),
+            ],
+            default => [],
+        };
+
+        $this->_dispatch(
+            user: $user,
+            type: $original->notificationType,
+            templateKey: $templateKey,
+            extraVars: $extraVars,
+            resentFromId: $original->id,
+        );
+
+        return true;
     }
 
     /**
@@ -290,9 +333,17 @@ class NotificationService extends Component
      * Public so the test-send web controller can use the same render
      * pipeline; `sendPasswordExpiryReminder()` calls this internally too.
      *
+     * Optionally captures the rendered subject + body strings into
+     * `$rendered['subject']` and `$rendered['body']` so the dispatch
+     * path can persist them on the notification log row without
+     * re-running Twig (`renderString()` has potential side effects in
+     * admin-edited templates — calling it twice per send is wasteful).
+     *
      * @param NotificationTemplateModel $template the template to render
      * @param User $user the recipient (used as `from` for elevated session)
      * @param array<string, mixed> $vars Twig render context
+     * @param array<string, string>|null $rendered out-param — populated
+     *     with `subject` + `body` rendered strings when not null
      * @return \craft\mail\Message
      *
      * @throws Throwable when Twig fails to render
@@ -300,12 +351,20 @@ class NotificationService extends Component
      * @author CraftPulse
      * @since 5.2.0
      */
-    public function composeFromTemplate(NotificationTemplateModel $template, User $user, array $vars): \craft\mail\Message
-    {
+    public function composeFromTemplate(
+        NotificationTemplateModel $template,
+        User $user,
+        array $vars,
+        ?array &$rendered = null,
+    ): \craft\mail\Message {
         $view = Craft::$app->getView();
 
         $subject = $view->renderString($template->subject, $vars);
         $body = $view->renderString($template->body, $vars);
+
+        if ($rendered !== null) {
+            $rendered = ['subject' => $subject, 'body' => $body];
+        }
 
         $mailer = Craft::$app->getMailer();
         $message = $mailer->compose()
@@ -337,7 +396,173 @@ class NotificationService extends Component
     // =========================================================================
 
     /**
-     * Checks if a recent notification of the given type was sent to the user.
+     * Shared dispatch path for editable-template-backed notifications
+     * (`expiry_reminder`, `breach_detected`). Resolves the per-user
+     * site, loads the template, renders subject + body, attempts the
+     * send, and writes a log row — `status = sent` on success,
+     * `status = failed` with the captured error message on
+     * `Throwable`.
+     *
+     * @param User $user
+     * @param string $type machine-key matching `notification_log.notificationType`
+     * @param string $templateKey notification-templates handle (e.g. `expiry-reminder`)
+     * @param array<string, mixed> $extraVars vars merged into the render context (besides `user` + `siteName`)
+     * @param int|null $resentFromId set when this dispatch is a re-send of an earlier row
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _dispatch(
+        User $user,
+        string $type,
+        string $templateKey,
+        array $extraVars = [],
+        ?int $resentFromId = null,
+    ): void {
+        $siteId = $this->_resolveSiteIdForUser($user);
+        $template = PasswordPolicy::$plugin->getNotificationTemplates()
+            ->getTemplate($templateKey, $siteId);
+
+        if ($template === null) {
+            // Missing-template is a config error, not a send failure —
+            // log and return without writing a notification_log row.
+            // Operator should fix the template before any further
+            // sends to this user fire.
+            Craft::warning(
+                "No {$templateKey} template found for user {$user->id} (siteId {$siteId})",
+                'password-policy',
+            );
+            return;
+        }
+
+        $rendered = [];
+
+        try {
+            $vars = array_merge([
+                'user' => $user,
+                'siteName' => Craft::$app->getSites()->getSiteById($siteId)?->getName()
+                    ?? Craft::$app->getSystemName(),
+            ], $extraVars);
+
+            // Render once via composeFromTemplate's out-param. Capturing
+            // the rendered strings outside the Symfony Message object
+            // is what lets us persist subject + body on the log row
+            // without re-running Twig (admin-edited templates may have
+            // side effects; double-rendering is also pure waste).
+            $message = $this->composeFromTemplate($template, $user, $vars, $rendered);
+
+            $message->setTo($user->email)->send();
+        } catch (Throwable $e) {
+            // Privacy invariant on the breach-detected path: the
+            // exception message can only originate from template
+            // rendering or mailer transport — neither carries
+            // password material — but we still log only an opaque
+            // summary at error level. The detailed message goes into
+            // the notification_log errorMessage column.
+            Craft::error(
+                "Failed to send {$type} notification to user {$user->id}: " . $e->getMessage(),
+                'password-policy',
+            );
+
+            $this->_logNotification(
+                userId: $user->id,
+                type: $type,
+                status: NotificationStatus::Failed,
+                recipient: $user->email,
+                siteId: $siteId,
+                subject: $rendered['subject'] ?? null,
+                body: $rendered['body'] ?? null,
+                errorMessage: $e->getMessage(),
+                resentFromId: $resentFromId,
+            );
+
+            return;
+        }
+
+        $this->_logNotification(
+            userId: $user->id,
+            type: $type,
+            status: NotificationStatus::Sent,
+            recipient: $user->email,
+            siteId: $siteId,
+            subject: $rendered['subject'] ?? '',
+            body: $rendered['body'] ?? '',
+            errorMessage: null,
+            resentFromId: $resentFromId,
+        );
+    }
+
+    /**
+     * Dispatch + log path for `composeFromKey` notifications (mailer-
+     * templates.php source). Subject + body capture is intentionally
+     * skipped — the rendered content lives inside the Symfony Message
+     * and isn't trivially extractable, and the operator-visibility
+     * value is low because these templates aren't admin-edited. The
+     * log row still records `status`, `recipientEmail`, and the
+     * `errorMessage` on failure — enough for the activity index to
+     * tell admins "the new-device alert went to alice@x.com on
+     * 2026-05-06" or "admin-alert send failed: connection refused."
+     *
+     * Phase G adds `new-device-alert` + `admin-security-alert` to
+     * the editable-templates surface; at that point those paths
+     * move to `_dispatch()` and gain full subject + body capture.
+     *
+     * @param int $userId user-scoped row (0 for admin alerts)
+     * @param string $type machine-key matching `notification_log.notificationType`
+     * @param string $recipient address the message goes to
+     * @param \craft\mail\Message $sender prepared mailer message
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _dispatchMailerKey(
+        int $userId,
+        string $type,
+        string $recipient,
+        \craft\mail\Message $sender,
+    ): void {
+        try {
+            $sender->setTo($recipient)->send();
+        } catch (Throwable $e) {
+            Craft::error(
+                "Failed to send {$type} notification (userId {$userId}): " . $e->getMessage(),
+                'password-policy',
+            );
+
+            $this->_logNotification(
+                userId: $userId,
+                type: $type,
+                status: NotificationStatus::Failed,
+                recipient: $recipient,
+                siteId: null,
+                subject: null,
+                body: null,
+                errorMessage: $e->getMessage(),
+                resentFromId: null,
+            );
+
+            return;
+        }
+
+        $this->_logNotification(
+            userId: $userId,
+            type: $type,
+            status: NotificationStatus::Sent,
+            recipient: $recipient,
+            siteId: null,
+            subject: null,
+            body: null,
+            errorMessage: null,
+            resentFromId: null,
+        );
+    }
+
+    /**
+     * Checks if a recent successful notification of the given type
+     * was sent to the user. Filters on `status = 'sent'` so failed
+     * sends don't suppress retries.
      *
      * @param int $userId
      * @param string $type
@@ -359,32 +584,59 @@ class NotificationService extends Component
             ->where([
                 'userId' => $userId,
                 'notificationType' => $type,
+                'status' => NotificationStatus::Sent->value,
             ])
             ->andWhere(['>=', 'sentAt', $threshold])
             ->exists();
     }
 
     /**
-     * Records a sent notification for dedup tracking.
+     * Inserts a notification log row. Wrapped in try/catch so a row-
+     * write failure during the failure path doesn't double-fault the
+     * caller — the worst case is operators don't see the failure on
+     * the activity index.
      *
      * @param int $userId
      * @param string $type
+     * @param NotificationStatus $status
+     * @param string|null $recipient
+     * @param int|null $siteId
+     * @param string|null $subject
+     * @param string|null $body
+     * @param string|null $errorMessage
+     * @param int|null $resentFromId
      * @return void
      *
      * @author CraftPulse
      * @since 5.2.0
      */
-    private function _logNotification(int $userId, string $type): void
-    {
+    private function _logNotification(
+        int $userId,
+        string $type,
+        NotificationStatus $status,
+        ?string $recipient,
+        ?int $siteId,
+        ?string $subject,
+        ?string $body,
+        ?string $errorMessage,
+        ?int $resentFromId,
+    ): void {
         try {
             Craft::$app->getDb()->createCommand()
                 ->insert('{{%passwordpolicy_notification_log}}', [
                     'userId' => $userId,
                     'notificationType' => $type,
+                    'status' => $status->value,
+                    'recipientEmail' => $recipient,
+                    'siteId' => $siteId,
+                    'subject' => $subject,
+                    'body' => $body,
+                    'errorMessage' => $errorMessage,
+                    'resentFromId' => $resentFromId,
                     'sentAt' => Carbon::now('UTC')->format('Y-m-d H:i:s'),
                 ])
                 ->execute();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             Craft::error(
                 "Failed to log notification: " . $e->getMessage(),
                 'password-policy',
@@ -421,5 +673,96 @@ class NotificationService extends Component
         }
 
         return $primarySiteId;
+    }
+
+    /**
+     * Estimates `daysUntilExpiry` for a re-rendered expiry reminder.
+     * Reads `users.lastPasswordChangeDate` directly (memory gap #9 —
+     * UserQuery doesn't select it) and subtracts from the configured
+     * expiry interval. Falls back to 0 when expiry isn't configured
+     * or the user has no recorded change — the resend admin can still
+     * fire the email; the operator-facing message stays sensible.
+     *
+     * @param User $user
+     * @return int days remaining (clamped at zero from below)
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _estimateDaysUntilExpiry(User $user): int
+    {
+        $settings = PasswordPolicy::$plugin->getSettings();
+
+        if ($settings->expiryAmount === null || $settings->expiryAmount <= 0) {
+            return 0;
+        }
+
+        $lastChangeRaw = (new Query())
+            ->select(['lastPasswordChangeDate'])
+            ->from(\craft\db\Table::USERS)
+            ->where(['id' => $user->id])
+            ->scalar();
+
+        if (!is_string($lastChangeRaw) || $lastChangeRaw === '') {
+            return 0;
+        }
+
+        try {
+            $lastChange = new DateTime($lastChangeRaw);
+        } catch (Throwable) {
+            return 0;
+        }
+
+        $spec = match ($settings->expiryPeriod) {
+            'day' => "P{$settings->expiryAmount}D",
+            'week' => "P{$settings->expiryAmount}W",
+            'month' => "P{$settings->expiryAmount}M",
+            'year' => "P{$settings->expiryAmount}Y",
+            default => null,
+        };
+
+        if ($spec === null) {
+            return 0;
+        }
+
+        try {
+            $expiresAt = (clone $lastChange)->add(new \DateInterval($spec));
+        } catch (Throwable) {
+            return 0;
+        }
+
+        $diff = (new DateTime('now'))->diff($expiresAt);
+
+        if ($diff->invert) {
+            return 0;
+        }
+
+        return (int)$diff->days;
+    }
+
+    // Static Methods
+    // =========================================================================
+
+    /**
+     * Returns the editable-templates handle for a given
+     * `notificationType` machine-key, or null when the type isn't
+     * resendable. Currently only the editable-template-driven types
+     * (`expiry_reminder`, `breach_detected`) are resendable; mailer-
+     * key-driven types (`new_device`, `admin_alert_*`) need the
+     * original event payload to re-render and aren't snapshotted.
+     *
+     * @param string $type
+     * @return string|null
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private static function _templateKeyForType(string $type): ?string
+    {
+        return match ($type) {
+            'expiry_reminder' => 'expiry-reminder',
+            'breach_detected' => 'breach-detected',
+            default => null,
+        };
     }
 }

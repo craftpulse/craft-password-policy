@@ -1,0 +1,158 @@
+{# Notifications activity index — paginated table of every send attempt
+ # (success and failure) the plugin's NotificationService recorded. Each
+ # row links to the detail screen; failed rows surface a Resend button.
+ #
+ # Variables:
+ #   - rows (NotificationLogRecord[])
+ #   - total (int)
+ #   - page (int) 1-indexed
+ #   - perPage (int)
+ #   - pageCount (int)
+ #   - filters (array<string, string>) — current filter values from query string
+ #   - knownTypes (string[]) — distinct notification_type values currently in the table
+ #   - statusOptions (array<string, string>) — value → label map for the status dropdown
+ #
+ # @author CraftPulse
+ # @since 5.2.0
+ #}
+
+{% requirePermission "pp:notification-templates-manage" %}
+
+{% extends "password-policy/_layouts/password-policy-cp.twig" %}
+
+{% set selectedSubnavItem = 'notification-activity' %}
+{% set title = 'Notification activity'|t('password-policy') %}
+
+{% import '_includes/forms.twig' as forms %}
+
+{% block content %}
+    <div class="readable">
+        <p>{{ "Every notification the plugin attempts to send is logged here — successful deliveries plus any send-time failures with the captured error. Resend re-renders the template fresh from current state and writes a new row linked to the original."|t('password-policy') }}</p>
+    </div>
+
+    <form method="get" action="{{ cpUrl('password-policy/notifications/activity') }}" class="pp-activity-filters">
+        <div class="flex flex-nowrap" style="gap: 8px; align-items: end; flex-wrap: wrap;">
+            {{ forms.selectField({
+                label: 'Type'|t('password-policy'),
+                id: 'filter-type',
+                name: 'type',
+                value: filters.notificationType,
+                options: [{ label: 'Any'|t('password-policy'), value: '' }]|merge(knownTypes|map(t => { label: t, value: t })),
+            }) }}
+
+            {{ forms.selectField({
+                label: 'Status'|t('password-policy'),
+                id: 'filter-status',
+                name: 'status',
+                value: filters.status,
+                options: [{ label: 'Any'|t('password-policy'), value: '' }]|merge(statusOptions|keys|map(k => { label: statusOptions[k], value: k })),
+            }) }}
+
+            {{ forms.textField({
+                label: 'User ID'|t('password-policy'),
+                id: 'filter-userId',
+                name: 'userId',
+                value: filters.userId,
+                size: 8,
+            }) }}
+
+            {{ forms.dateField({
+                label: 'From'|t('password-policy'),
+                id: 'filter-dateFrom',
+                name: 'dateFrom',
+                value: filters.dateFrom,
+            }) }}
+
+            {{ forms.dateField({
+                label: 'To'|t('password-policy'),
+                id: 'filter-dateTo',
+                name: 'dateTo',
+                value: filters.dateTo,
+            }) }}
+
+            <button type="submit" class="btn submit">{{ 'Filter'|t('password-policy') }}</button>
+
+            {% if filters.notificationType or filters.status or filters.userId or filters.dateFrom or filters.dateTo %}
+                <a href="{{ cpUrl('password-policy/notifications/activity') }}" class="btn">{{ 'Clear'|t('password-policy') }}</a>
+            {% endif %}
+        </div>
+    </form>
+
+    <hr>
+
+    {% if rows|length == 0 %}
+        <blockquote class="note">
+            {{ 'No notification activity matches the current filters.'|t('password-policy') }}
+        </blockquote>
+    {% else %}
+        <table class="data fullwidth pp-activity-table">
+            <thead>
+                <tr>
+                    <th scope="col">{{ 'Sent'|t('password-policy') }}</th>
+                    <th scope="col">{{ 'Status'|t('password-policy') }}</th>
+                    <th scope="col">{{ 'Type'|t('password-policy') }}</th>
+                    <th scope="col">{{ 'Recipient'|t('password-policy') }}</th>
+                    <th scope="col">{{ 'Subject'|t('password-policy') }}</th>
+                    <th scope="col"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                    {% set detailUrl = cpUrl('password-policy/notifications/activity/' ~ row.id) %}
+                    <tr>
+                        <td>
+                            <a href="{{ detailUrl }}">
+                                {{ row.sentAt|datetime('short') }}
+                            </a>
+                        </td>
+                        <td>
+                            {% if row.status == 'failed' %}
+                                <span class="status-label red">
+                                    <span class="status red"></span>
+                                    <span class="status-label-text">{{ 'Failed'|t('password-policy') }}</span>
+                                </span>
+                            {% else %}
+                                <span class="status-label green">
+                                    <span class="status green"></span>
+                                    <span class="status-label-text">{{ 'Sent'|t('password-policy') }}</span>
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td><code>{{ row.notificationType }}</code></td>
+                        <td>{{ row.recipientEmail ?? '—' }}</td>
+                        <td>
+                            <span class="pp-activity-subject" title="{{ row.subject ?? '' }}">
+                                {{ row.subject ? row.subject|slice(0, 80) ~ (row.subject|length > 80 ? '…' : '') : '—' }}
+                            </span>
+                        </td>
+                        <td class="thin">
+                            <a href="{{ detailUrl }}" class="btn small">{{ 'View'|t('password-policy') }}</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if pageCount > 1 %}
+            <div class="flex flex-nowrap" style="margin-top: 16px; gap: 8px; align-items: center;">
+                <span class="light">
+                    {{ 'Page {p} of {n} — {total} total'|t('password-policy', { p: page, n: pageCount, total: total }) }}
+                </span>
+
+                {% set queryBase = filters|filter(v => v != '') %}
+
+                {% if page > 1 %}
+                    <a class="btn" href="{{ cpUrl('password-policy/notifications/activity', queryBase|merge({ page: page - 1 })) }}">
+                        {{ '← Previous'|t('password-policy') }}
+                    </a>
+                {% endif %}
+
+                {% if page < pageCount %}
+                    <a class="btn" href="{{ cpUrl('password-policy/notifications/activity', queryBase|merge({ page: page + 1 })) }}">
+                        {{ 'Next →'|t('password-policy') }}
+                    </a>
+                {% endif %}
+            </div>
+        {% endif %}
+    {% endif %}
+{% endblock %}
