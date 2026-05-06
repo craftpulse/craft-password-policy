@@ -21,6 +21,20 @@ use craftpulse\passwordpolicy\services\UserIndexService;
 
 beforeEach(function() {
     $this->service = PasswordPolicy::$plugin->getUserIndex();
+    $this->settings = PasswordPolicy::$plugin->getSettings();
+    $this->originalExpiryAmount = $this->settings->expiryAmount;
+    $this->originalExpiryPeriod = $this->settings->expiryPeriod;
+
+    // Pin a benign expiry config so the daysUntilExpiry + expired
+    // sort options are present. The expiry-off case is a separate
+    // assertion below.
+    $this->settings->expiryAmount = 90;
+    $this->settings->expiryPeriod = 'day';
+});
+
+afterEach(function() {
+    $this->settings->expiryAmount = $this->originalExpiryAmount;
+    $this->settings->expiryPeriod = $this->originalExpiryPeriod;
 });
 
 // =============================================================================
@@ -85,4 +99,15 @@ it('returns null for unsortable columns', function() {
     ] as $attribute) {
         expect($this->service->getSortMapping($attribute))->toBeNull();
     }
+});
+
+it('drops the expiry-dependent sort options when expiry is not configured', function() {
+    $this->settings->expiryAmount = null;
+
+    $options = $this->service->getSortOptions();
+
+    expect(array_keys($options))->toEqual([
+        UserIndexService::ATTR_LAST_CHANGE,
+        UserIndexService::ATTR_RESET_REQUIRED,
+    ]);
 });

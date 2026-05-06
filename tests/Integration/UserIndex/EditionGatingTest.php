@@ -31,16 +31,28 @@ use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 beforeEach(function() {
     $this->plugin = PasswordPolicy::$plugin;
     $this->service = $this->plugin->getUserIndex();
+    $this->settings = $this->plugin->getSettings();
 
     $this->originalEdition = $this->plugin->edition;
     $this->originalCraftEdition = Craft::$app->edition;
     $this->originalAllowAdminChanges = Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
+    $this->originalExpiryAmount = $this->settings->expiryAmount;
+    $this->originalExpiryPeriod = $this->settings->expiryPeriod;
+
+    // Pin a benign expiry config so the daysUntilExpiry + expired
+    // columns register — `AttributeRegistrationTest` covers the
+    // expiry-off path exhaustively; this file focuses on the edition
+    // matrix without the expiry confound.
+    $this->settings->expiryAmount = 90;
+    $this->settings->expiryPeriod = 'day';
 });
 
 afterEach(function() {
     $this->plugin->edition = $this->originalEdition;
     Craft::$app->edition = $this->originalCraftEdition;
     Craft::$app->getConfig()->getGeneral()->allowAdminChanges = $this->originalAllowAdminChanges;
+    $this->settings->expiryAmount = $this->originalExpiryAmount;
+    $this->settings->expiryPeriod = $this->originalExpiryPeriod;
     $this->service->resetCache();
 });
 

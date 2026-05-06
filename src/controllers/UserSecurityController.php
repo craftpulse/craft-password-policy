@@ -11,44 +11,47 @@
 namespace craftpulse\passwordpolicy\controllers;
 
 use Craft;
+use craft\controllers\EditUserTrait;
 use craft\db\Query;
 use craft\db\Table;
 use craft\helpers\DateTimeHelper;
 use craft\web\Controller;
+use craft\web\CpScreenResponseBehavior;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
-use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
 /**
  * Class UserSecurityController
  *
- * Renders the standalone "Password Security" CP page for a single user
- * (`password-policy/users/<userId>/security`). The page is the read-only
- * surface that the half-built `_users/password-security.twig` template
- * was designed for: status snapshot, resolved policy summary, and the
- * "Force Password Reset" button which posts to the existing
- * `password-policy/retention/force-reset` endpoint.
+ * Renders the "Password Security" screen on the User edit experience
+ * (`password-policy/users/<userId>/security`). Status snapshot,
+ * resolved policy summary, and the "Force Password Reset" button which
+ * posts to the existing `password-policy/retention/force-reset`
+ * endpoint.
  *
- * The page is reachable two ways:
- *  1. Directly via the CP URL rule registered in
- *     {@see PasswordPolicy::_registerCpUrlRules()}.
- *  2. Via the "Password Security" link appended to the User edit
- *     screen sidebar by {@see PasswordPolicy::_registerUserEditTab()}
- *     using {@see \craft\base\Element::EVENT_DEFINE_SIDEBAR_HTML}.
+ * Uses Craft's {@see EditUserTrait} so the response shares the user-
+ * edit screen chrome — left-nav (Profile / Permissions / Addresses /
+ * Password Security), title, breadcrumbs, meta sidebar — with the
+ * native Craft user-edit screens. The Password Security entry is
+ * registered into the trait's `$screens` map by the plugin's listener
+ * on {@see \craft\controllers\UsersController::EVENT_DEFINE_EDIT_SCREENS}
+ * (see {@see PasswordPolicy::_registerUserEditScreen()}). Same screen
+ * key used here (`password-security`) and there.
  *
  * Permission gate: the caller needs either `pp:force-reset-passwords`
  * (Pro-tier action exposed on this page) or `pp:change-user-passwords`
- * (D3 admin-direct password change permission). Either grants visibility
- * — both permissions concern the same admin-on-user surface, and
- * splitting them at this level would surface a meaningless "you can see
- * the page but every action is greyed out" state.
+ * (D3 admin-direct password change permission). Either grants
+ * visibility — both permissions concern the same admin-on-user
+ * surface, and splitting them at this level would surface a
+ * meaningless "you can see the page but every action is greyed out"
+ * state.
  *
  * Read-only mode: the page still renders when
- * `allowAdminChanges = false` — read-only data (status, policy summary)
- * is fine to show. The template itself is responsible for the
- * `readOnlyNotice()` banner + disabling form controls.
+ * `allowAdminChanges = false` — read-only data (status, policy
+ * summary) is fine to show. The template itself is responsible for
+ * the `readOnlyNotice()` banner + disabling form controls.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -56,6 +59,8 @@ use yii\web\Response;
  */
 class UserSecurityController extends Controller
 {
+    use EditUserTrait;
+
     // Public Properties
     // =========================================================================
 
@@ -133,51 +138,53 @@ class UserSecurityController extends Controller
     }
 
     /**
-     * Renders the Password Security page for a single user.
+     * Renders the Password Security screen for a single user inside
+     * the User edit screen chrome (Profile / Permissions / Addresses
+     * / Password Security left nav, title, breadcrumbs, meta
+     * sidebar).
      *
-     * Loads the user, hydrates `lastPasswordChangeDate` directly from
-     * the users table (memory gap #9 — UserQuery doesn't select it),
-     * resolves the effective policy via `PolicyResolverService`, and
-     * derives the status flags the template renders against
-     * (`isExpired`, `neverChanged`, `policySource`).
+     * Loads the user via the trait's {@see EditUserTrait::editedUser()},
+     * hydrates `lastPasswordChangeDate` directly from the users table
+     * (memory gap #9 — UserQuery doesn't select it), resolves the
+     * effective policy via `PolicyResolverService`, and derives the
+     * status flags the template renders against (`isExpired`,
+     * `neverChanged`, `policySource`). Hands content to the response
+     * via `contentTemplate()` so the trait owns the surrounding
+     * chrome.
      *
-     * @param int $userId the user's element id
+     * @param int|null $userId the user's element id (null routes
+     *     through the trait to the current user — defensive; the URL
+     *     rule always includes a `userId` capture)
      * @return Response
-     *
-     * @throws NotFoundHttpException when no user exists with the given id
      *
      * @author CraftPulse
      * @since 5.2.0
      */
-    public function actionIndex(int $userId): Response
+    public function actionIndex(?int $userId = null): Response
     {
-        $user = Craft::$app->getUsers()->getUserById($userId);
-
-        if ($user === null) {
-            throw new NotFoundHttpException(
-                Craft::t('password-policy', 'User not found.')
-            );
-        }
-
+        $user = $this->editedUser($userId);
         $plugin = PasswordPolicy::$plugin;
 
-        // Memory gap #9 — `craft\elements\db\UserQuery::beforePrepare()`
-        // does NOT addSelect `lastPasswordChangeDate`, so the in-memory
-        // `$user->lastPasswordChangeDate` is always null regardless of
-        // the column value. Pull the column directly and pin it on the
+        // `craft\elements\db\UserQuery` doesn't `addSelect()` either
+        // `lastPasswordChangeDate` (memory gap #9) or
+        // `passwordResetRequired`, so the in-memory properties default
+        // (`null` and `false`). Pull both directly and pin them on the
         // element so the template's `user.lastPasswordChangeDate|date`
-        // resolves against real data.
-        $lastChangeRaw = (new Query())
-            ->select(['lastPasswordChangeDate'])
+        // and `user.passwordResetRequired` reads resolve against real
+        // data — without this the "reset requested" banner never
+        // surfaces and the Force Password Reset button always renders.
+        $row = (new Query())
+            ->select(['lastPasswordChangeDate', 'passwordResetRequired'])
             ->from(Table::USERS)
             ->where(['id' => $user->id])
-            ->scalar();
+            ->one();
 
-        $lastChange = $lastChangeRaw !== false
-            ? DateTimeHelper::toDateTime($lastChangeRaw) ?: null
+        $lastChange = ($row !== null && $row['lastPasswordChangeDate'] !== null)
+            ? DateTimeHelper::toDateTime($row['lastPasswordChangeDate']) ?: null
             : null;
 
         $user->lastPasswordChangeDate = $lastChange;
+        $user->passwordResetRequired = $row !== null && (bool)$row['passwordResetRequired'];
 
         $policy = $plugin->getPolicyResolver()->resolveForUser($user);
         $policySource = $this->_describePolicySource($user, $policy === $plugin->getSettings());
@@ -187,13 +194,18 @@ class UserSecurityController extends Controller
             && $lastChange !== null
             && $lastChange < $expiryThreshold;
 
-        return $this->renderTemplate('password-policy/_users/password-security', [
+        /** @var Response|CpScreenResponseBehavior $response */
+        $response = $this->asEditUserScreen($user, 'password-security');
+
+        $response->contentTemplate('password-policy/_users/password-security', [
             'user' => $user,
             'policy' => $policy,
             'policySource' => $policySource,
             'isExpired' => $isExpired,
             'neverChanged' => $lastChange === null,
         ]);
+
+        return $response;
     }
 
     // Private Methods
