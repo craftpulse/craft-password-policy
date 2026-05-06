@@ -14,12 +14,14 @@ use Craft;
 use craft\base\Element;
 use craft\base\Model;
 use craft\base\Plugin;
+use craft\controllers\UsersController;
 use craft\elements\conditions\users\UserCondition;
 use craft\elements\User;
 use craft\enums\CmsEdition;
 use craft\events\AuthenticateUserEvent;
 use craft\events\DefineAttributeHtmlEvent;
-use craft\events\DefineHtmlEvent;
+use craft\events\DefineEditUserScreensEvent;
+use craft\events\DefineMenuItemsEvent;
 use craft\events\DefineRulesEvent;
 use craft\events\ModelEvent;
 use craft\events\RegisterComponentTypesEvent;
@@ -34,7 +36,6 @@ use craft\events\TemplateEvent;
 use craft\events\UserGroupEvent;
 use craft\helpers\ArrayHelper;
 use craft\helpers\ElementHelper;
-use craft\helpers\Html;
 use craft\helpers\Json;
 use craft\helpers\UrlHelper;
 use craft\log\MonologTarget;
@@ -481,7 +482,7 @@ class PasswordPolicy extends Plugin
         // Settings visible in read-only mode too (admins can view active policy)
         if ($currentUser->can('pp:settings')) {
             $subNavs['settings'] = [
-                'label' => 'Settings',
+                'label' => Craft::t('password-policy', 'Settings'),
                 'url' => 'password-policy/settings',
             ];
         }
@@ -613,7 +614,8 @@ class PasswordPolicy extends Plugin
         $this->_registerUserPermissions();
         $this->_registerUtilities();
         $this->_registerUserIndexIntegration();
-        $this->_registerUserEditTab();
+        $this->_registerUserEditScreen();
+        $this->_registerUserEditActionMenu();
         $this->_registerGarbageCollection();
     }
 
@@ -1443,28 +1445,24 @@ class PasswordPolicy extends Plugin
             },
         );
 
-        // Bulk + single-user element actions on the Users index.
+        // Bulk element actions on the Users index. Bulk-friendly only:
         //
-        // `ForcePasswordReset` (Pro) — flips `passwordResetRequired` and
-        // pins an `AdminForceReset` pending reason. Bulk-friendly.
-        //
-        // `ChangeUserPassword` (all editions) — admin-direct password
-        // change with elevated session + per-policy validation. The
-        // action's modal trigger is single-user only (bulk-change-with-
-        // same-password is a security anti-pattern); the action's
-        // controller writes the new hash and the central history-write
-        // listener picks up the explicit `AuditContext::adminChange()`.
+        // `ForcePasswordReset` (Pro) — flips `passwordResetRequired`
+        // and pins an `AdminForceReset` pending reason. Idempotent at
+        // the user level; safe to apply across many rows.
         //
         // `SendPasswordResetEmail` (all editions) — pins a pending
         // `AdminForceReset` reason on user_state and sends Craft's
-        // standard reset email. Bulk-friendly. Distinct from
-        // `ForcePasswordReset`: this one mails the link, that one flags
-        // `passwordResetRequired`. Operators may use them together or
-        // separately depending on workflow.
+        // standard reset email. One email per row, no shared state
+        // between targets.
         //
-        // All three respect `allowAdminChanges = false` — the actions'
-        // own `getTriggerHtml()` returns null in read-only mode so the
-        // trigger never registers on the index.
+        // `ChangeUserPassword` is intentionally absent: applying the
+        // same password to N users is a security anti-pattern (one
+        // leak compromises all). It lives only on the per-user edit
+        // screen action menu (see {@see self::_registerUserEditActionMenu()}).
+        //
+        // Both registered actions respect `allowAdminChanges = false`
+        // via their own `getTriggerHtml()` short-circuits.
         Event::on(
             User::class,
             User::EVENT_REGISTER_ACTIONS,
@@ -1473,7 +1471,6 @@ class PasswordPolicy extends Plugin
                     $event->actions[] = ForcePasswordReset::class;
                 }
 
-                $event->actions[] = ChangeUserPassword::class;
                 $event->actions[] = SendPasswordResetEmail::class;
             },
         );
@@ -1555,26 +1552,25 @@ class PasswordPolicy extends Plugin
     }
 
     /**
-     * Registers the "Password Security" pointer on the User edit screen
-     * sidebar, gated on the same `pp:force-reset-passwords` /
+     * Registers the "Password Security" left-nav screen on the User
+     * edit experience, gated on the same `pp:force-reset-passwords` /
      * `pp:change-user-passwords` permission predicate the
-     * {@see UserSecurityController::beforeAction()} enforces. The
-     * pointer is a link block that targets the standalone CP page
-     * registered at `password-policy/users/<userId>/security`.
+     * {@see UserSecurityController::beforeAction()} enforces.
      *
-     * Why a sidebar link rather than a top-level tab — Craft 5 does
-     * not expose a public event for plugins to register top-level tabs
-     * on the User edit screen. Tabs are driven by the User's field
-     * layout (admin-editable) plus the controller-owned
-     * `CpScreenResponseBehavior::tabs()` slot. The closest idiomatic
-     * affordance plugins can hook into is
-     * `Element::EVENT_DEFINE_SIDEBAR_HTML`, which appends to the
-     * meta-fields column on the right of the edit screen. The link
-     * keeps discovery of the Password Security surface while honoring
-     * Craft's own UI ownership of the tab strip.
+     * Wired through `UsersController::EVENT_DEFINE_EDIT_SCREENS`
+     * (since Craft 5.0) — fired from `EditUserTrait::asEditUserScreen()`
+     * between the native screens (Profile, Permissions, Preferences,
+     * Addresses) and the auth screens (Password & Verification,
+     * Passkeys). The plugin-defined screen renders as a real left-nav
+     * item alongside Profile/Permissions/Addresses with no template
+     * hacks and no separate "go to standalone page" indirection.
+     *
+     * The standalone controller, URL rule, and template all stay
+     * unchanged from the prior sidebar-pointer iteration. Only the
+     * registration point changed.
      *
      * Read-only mode (`allowAdminChanges = false`) does NOT suppress
-     * the link — the linked page renders read-only data (status +
+     * the screen — the linked page renders read-only data (status +
      * resolved policy) which is fine to view; the page template
      * disables form controls via `readOnlyNotice()` + the `disabled`
      * attribute on the force-reset button.
@@ -1584,16 +1580,71 @@ class PasswordPolicy extends Plugin
      * @author CraftPulse
      * @since 5.2.0
      */
-    private function _registerUserEditTab(): void
+    private function _registerUserEditScreen(): void
     {
         Event::on(
-            User::class,
-            Element::EVENT_DEFINE_SIDEBAR_HTML,
-            static function(DefineHtmlEvent $event): void {
+            UsersController::class,
+            UsersController::EVENT_DEFINE_EDIT_SCREENS,
+            static function(DefineEditUserScreensEvent $event): void {
                 if (!UserSecurityController::callerHasViewPermission()) {
                     return;
                 }
 
+                $userId = $event->editedUser->id;
+
+                if ($userId === null) {
+                    return;
+                }
+
+                $event->screens['password-security'] = [
+                    'label' => Craft::t('password-policy', 'Password Security'),
+                    'url' => UrlHelper::cpUrl("password-policy/users/{$userId}/security"),
+                ];
+            },
+        );
+    }
+
+    /**
+     * Registers the per-user action-menu items shown in the "…"
+     * disclosure menu next to the Save button on the User edit screen.
+     * Hooks `Element::EVENT_DEFINE_ACTION_MENU_ITEMS` (since Craft 5.0)
+     * — a separate surface from the index bulk-action menu wired
+     * through `User::EVENT_REGISTER_ACTIONS`.
+     *
+     * Items registered:
+     *
+     *  - **Force password reset** (Pro, gated on `pp:force-reset-passwords`)
+     *    — POST to `password-policy/retention/force-reset` with the
+     *    target userId. Idempotent flip; admin users are silently
+     *    skipped server-side.
+     *  - **Send password reset email** (gated on `pp:change-user-passwords`)
+     *    — POST to `password-policy/user-password/send-reset-email`,
+     *    elevated session required (the controller's `beforeAction()`
+     *    enforces this; declaring it on the menu item lets Craft
+     *    pre-prompt for re-auth before firing the action).
+     *  - **Change password…** (gated on `pp:change-user-passwords`) —
+     *    JS-driven Garnish modal (the same modal the index trigger
+     *    used to surface; see {@see ChangeUserPassword::registerModalHelper()}).
+     *    Single-user only — bulk same-password changes are a security
+     *    anti-pattern.
+     *
+     * Read-only mode (`allowAdminChanges = false`) suppresses every
+     * item — admins can still navigate to the Password Security screen
+     * to view status, but can't write. Self-targeting also short-
+     * circuits — admins set their own password via the standard My
+     * Account screen, not this admin-on-user surface.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerUserEditActionMenu(): void
+    {
+        Event::on(
+            User::class,
+            Element::EVENT_DEFINE_ACTION_MENU_ITEMS,
+            function(DefineMenuItemsEvent $event): void {
                 /** @var User $user */
                 $user = $event->sender;
 
@@ -1601,20 +1652,78 @@ class PasswordPolicy extends Plugin
                     return;
                 }
 
-                $url = UrlHelper::cpUrl("password-policy/users/{$user->id}/security");
-                $label = Craft::t('password-policy', 'Password Security');
-                $description = Craft::t(
-                    'password-policy',
-                    'Review the user’s password status, resolved policy, and force-reset action.',
-                );
+                if (!Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
+                    return;
+                }
 
-                $event->html .= Html::tag(
-                    'fieldset',
-                    Html::tag('legend', $label, ['class' => 'h6']) .
-                    Html::tag('div', Html::a($label, $url, ['class' => 'go']), ['class' => 'flex']) .
-                    Html::tag('div', Html::encode($description), ['class' => 'light smalltext']),
-                    ['class' => 'meta read-only'],
-                );
+                $currentUser = Craft::$app->getUser()->getIdentity();
+
+                if ($currentUser === null || $currentUser->id === $user->id) {
+                    return;
+                }
+
+                $userId = $user->id;
+                $editScreenUrl = UrlHelper::cpUrl("users/{$userId}");
+
+                if ($this->getIsPro() && $currentUser->can('pp:force-reset-passwords')) {
+                    $event->items[] = [
+                        'icon' => 'asterisk',
+                        'label' => Craft::t('password-policy', 'Force password reset'),
+                        'action' => 'password-policy/retention/force-reset',
+                        'params' => ['userId' => $userId],
+                        'redirect' => $editScreenUrl,
+                        'confirm' => Craft::t(
+                            'password-policy',
+                            'Are you sure you want to force a password reset on this user’s next login?',
+                        ),
+                    ];
+                }
+
+                if ($currentUser->can('pp:change-user-passwords')) {
+                    $event->items[] = [
+                        'icon' => 'paper-plane',
+                        'label' => Craft::t('password-policy', 'Send password reset email'),
+                        'action' => 'password-policy/user-password/send-reset-email',
+                        'params' => ['userId' => $userId],
+                        'redirect' => $editScreenUrl,
+                        'requireElevatedSession' => true,
+                    ];
+
+                    $changeId = sprintf('pp-change-password-%s', mt_rand());
+                    $event->items[] = [
+                        'id' => $changeId,
+                        'icon' => 'key',
+                        'label' => Craft::t('password-policy', 'Change password…'),
+                    ];
+
+                    $view = Craft::$app->getView();
+                    ChangeUserPassword::registerModalHelper($view);
+
+                    $labels = ChangeUserPassword::modalLabels();
+                    $idJs = Json::encode($changeId);
+                    $userIdJs = Json::encode($userId);
+
+                    $view->registerJs(<<<JS
+(() => {
+    const btn = document.getElementById({$idJs});
+    if (!btn) {
+        return;
+    }
+    \$(btn).on('activate', () => {
+        Craft.PasswordPolicy.openChangePasswordModal({
+            userId: {$userIdJs},
+            actionUrl: {$labels['actionUrl']},
+            modalTitle: {$labels['modalTitle']},
+            newLabel: {$labels['newLabel']},
+            confirmLabel: {$labels['confirmLabel']},
+            submitLabel: {$labels['submitLabel']},
+            cancelLabel: {$labels['cancelLabel']},
+            genericError: {$labels['genericError']},
+        });
+    });
+})();
+JS);
+                }
             },
         );
     }

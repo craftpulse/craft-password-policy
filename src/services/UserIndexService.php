@@ -14,6 +14,8 @@ use Craft;
 use craft\db\Query;
 use craft\db\Table;
 use craft\elements\User;
+use craft\enums\Color;
+use craft\helpers\Cp;
 use craft\helpers\Html;
 use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\PasswordPolicy;
@@ -268,11 +270,23 @@ class UserIndexService extends Component
 
     /**
      * Returns the table-attribute registration array for
-     * `Element::EVENT_REGISTER_TABLE_ATTRIBUTES`. Edition gates apply —
-     * Lite installs get the six baseline columns, Pro installs add the
-     * breached column on every Craft edition, and Team or Pro Craft
-     * installs additionally get the policy-drift + applied-policies
-     * columns.
+     * `Element::EVENT_REGISTER_TABLE_ATTRIBUTES`. Three independent
+     * gates apply:
+     *
+     *  - **Plugin edition.** Lite installs get the four baseline
+     *    always-on columns plus the two expiry columns when expiry is
+     *    configured. Pro installs add the breached column on every
+     *    Craft edition. Team or Pro Craft installs additionally get
+     *    the policy-drift + applied-policies columns.
+     *  - **Craft edition.** Solo lacks user groups; the two policy
+     *    columns drop on Solo even when the plugin is Pro.
+     *  - **Expiry-configured.** `passwordpolicy_daysUntilExpiry` and
+     *    `passwordpolicy_expired` cannot meaningfully render when
+     *    `expiryAmount` is null/0 — the column would be empty for
+     *    every user. Drop both from the picker rather than register
+     *    columns that can never carry data. Operators who configure
+     *    expiry later get the columns back automatically on the next
+     *    request — registration is per-request, not cached.
      *
      * @return array<string, array<string, string>>
      *
@@ -284,12 +298,16 @@ class UserIndexService extends Component
         $plugin = PasswordPolicy::$plugin;
         $attributes = [
             self::ATTR_LAST_CHANGE => ['label' => Craft::t('password-policy', 'Last password change')],
-            self::ATTR_DAYS_UNTIL_EXPIRY => ['label' => Craft::t('password-policy', 'Days until expiry')],
-            self::ATTR_EXPIRED => ['label' => Craft::t('password-policy', 'Expired')],
-            self::ATTR_RESET_REQUIRED => ['label' => Craft::t('password-policy', 'Reset required')],
-            self::ATTR_STATUS => ['label' => Craft::t('password-policy', 'Password status')],
-            self::ATTR_LAST_CHANGE_REASON => ['label' => Craft::t('password-policy', 'Last change reason')],
         ];
+
+        if ($this->_getExpiryInterval() !== null) {
+            $attributes[self::ATTR_DAYS_UNTIL_EXPIRY] = ['label' => Craft::t('password-policy', 'Days until expiry')];
+            $attributes[self::ATTR_EXPIRED] = ['label' => Craft::t('password-policy', 'Expired')];
+        }
+
+        $attributes[self::ATTR_RESET_REQUIRED] = ['label' => Craft::t('password-policy', 'Reset required')];
+        $attributes[self::ATTR_STATUS] = ['label' => Craft::t('password-policy', 'Password status')];
+        $attributes[self::ATTR_LAST_CHANGE_REASON] = ['label' => Craft::t('password-policy', 'Last change reason')];
 
         if ($plugin->getIsPro()) {
             $attributes[self::ATTR_BREACHED] = ['label' => Craft::t('password-policy', 'Breached')];
@@ -308,7 +326,11 @@ class UserIndexService extends Component
      * Only the columns whose underlying expression is cheap to ORDER BY
      * are sortable — composite or subquery-based columns
      * (status, lastChangeReason, breached, policy*) are excluded so the
-     * Users index doesn't grow surprising query costs.
+     * Users index doesn't grow surprising query costs. Expiry-dependent
+     * sort entries are gated on the same expiry-configured predicate as
+     * {@see self::getAttributesForRegistration()} — sorting by a column
+     * that won't be registered would dangle a UI affordance pointing at
+     * nothing.
      *
      * @return array<string, string>
      *
@@ -317,12 +339,18 @@ class UserIndexService extends Component
      */
     public function getSortOptions(): array
     {
-        return [
+        $options = [
             self::ATTR_LAST_CHANGE => Craft::t('password-policy', 'Last password change'),
-            self::ATTR_DAYS_UNTIL_EXPIRY => Craft::t('password-policy', 'Days until expiry'),
-            self::ATTR_EXPIRED => Craft::t('password-policy', 'Expired'),
-            self::ATTR_RESET_REQUIRED => Craft::t('password-policy', 'Reset required'),
         ];
+
+        if ($this->_getExpiryInterval() !== null) {
+            $options[self::ATTR_DAYS_UNTIL_EXPIRY] = Craft::t('password-policy', 'Days until expiry');
+            $options[self::ATTR_EXPIRED] = Craft::t('password-policy', 'Expired');
+        }
+
+        $options[self::ATTR_RESET_REQUIRED] = Craft::t('password-policy', 'Reset required');
+
+        return $options;
     }
 
     /**
@@ -754,12 +782,12 @@ class UserIndexService extends Component
     }
 
     /**
-     * Renders the breached cell — yes/no badge with relative-date suffix
-     * when set. Distinct from the composite status badge in that this
-     * column has no recent-window gate; if `lastBreachDetectedAt` was
-     * ever set, it shows here. Operators want both: "what's the current
-     * incident state" (status badge) plus "what's their breach history"
-     * (this column).
+     * Renders the breached cell — red "Yes — {when}" pill when the
+     * user has a recorded breach detection, empty string when not.
+     * The column has no recent-window gate; if `lastBreachDetectedAt`
+     * was ever set, it shows here. Operators want both the current
+     * incident state (status badge) AND the historical record (this
+     * column).
      *
      * @param array<string, mixed> $cached
      * @return string
@@ -772,19 +800,26 @@ class UserIndexService extends Component
         $detectedAt = $cached['lastBreachAt'];
 
         if (!$detectedAt instanceof DateTime) {
-            return Html::tag('span', Craft::t('password-policy', 'No'), ['class' => 'status']);
+            return '';
         }
 
-        $relative = $this->_relativeTime($detectedAt);
-        $label = Craft::t('password-policy', 'Yes — {when}', ['when' => $relative]);
-
-        return Html::tag('span', $label, ['class' => 'status red']);
+        return Cp::statusLabelHtml([
+            'color' => Color::Red,
+            'label' => Craft::t('password-policy', 'Yes — {when}', [
+                'when' => $this->_relativeTime($detectedAt),
+            ]),
+        ]) ?? '';
     }
 
     /**
-     * Renders the days-until-expiry cell: numeric badge with traffic-
-     * light coloring (red < 0, yellow 0..7, green > 7), or a gray dash
-     * when no expiry policy is configured.
+     * Renders the days-until-expiry cell: pill with traffic-light
+     * coloring (red < 0, orange 0..7, green > 7) and the day count as
+     * label. Empty string when expiry isn't configured (the column
+     * shouldn't be registered in that case via
+     * {@see self::getAttributesForRegistration()}; this is a defensive
+     * fallback). When the user has never changed their password but
+     * expiry is configured, renders as red "Expired" — operationally
+     * the user is already past the threshold.
      *
      * @param array<string, mixed> $cached
      * @return string
@@ -795,22 +830,19 @@ class UserIndexService extends Component
     private function _renderDaysUntilExpiry(array $cached): string
     {
         $threshold = $this->_getExpiryThreshold();
+        $interval = $this->_getExpiryInterval();
 
-        if ($threshold === null) {
-            return Html::tag('span', '—', ['class' => 'light']);
+        if ($threshold === null || $interval === null) {
+            return '';
         }
 
         $lastChange = $cached['lastChange'];
 
         if (!$lastChange instanceof DateTime) {
-            // No password set yet — treat as already expired.
-            return Html::tag('span', Craft::t('password-policy', 'Expired'), ['class' => 'status red']);
-        }
-
-        $interval = $this->_getExpiryInterval();
-
-        if ($interval === null) {
-            return Html::tag('span', '—', ['class' => 'light']);
+            return Cp::statusLabelHtml([
+                'color' => Color::Red,
+                'label' => Craft::t('password-policy', 'Expired'),
+            ]) ?? '';
         }
 
         $expiresAt = (clone $lastChange)->add($interval);
@@ -818,17 +850,24 @@ class UserIndexService extends Component
         $diff = $now->diff($expiresAt);
         $days = (int)$diff->days * ($diff->invert ? -1 : 1);
 
-        $colorClass = match (true) {
-            $days < 0 => 'red',
-            $days <= 7 => 'orange',
-            default => 'green',
+        $color = match (true) {
+            $days < 0 => Color::Red,
+            $days <= 7 => Color::Orange,
+            default => Color::Green,
         };
 
-        return Html::tag('span', (string)$days, ['class' => "status {$colorClass}"]);
+        return Cp::statusLabelHtml([
+            'color' => $color,
+            'label' => (string)$days,
+        ]) ?? '';
     }
 
     /**
-     * Renders the expired cell: red "Expired" badge or muted "No".
+     * Renders the expired cell: red "Expired" pill when past the
+     * threshold (or when the user has never changed their password),
+     * empty string when within the threshold. Empty string when
+     * expiry isn't configured (the column is gated off via
+     * {@see self::getAttributesForRegistration()}; defensive fallback).
      *
      * @param array<string, mixed> $cached
      * @return string
@@ -841,26 +880,26 @@ class UserIndexService extends Component
         $threshold = $this->_getExpiryThreshold();
 
         if ($threshold === null) {
-            return Html::tag('span', '—', ['class' => 'light']);
+            return '';
         }
 
         $lastChange = $cached['lastChange'];
 
-        // No history + expiry configured == effectively expired
-        if (!$lastChange instanceof DateTime) {
-            return Html::tag('span', Craft::t('password-policy', 'Expired'), ['class' => 'status red']);
+        if (!$lastChange instanceof DateTime || $lastChange < $threshold) {
+            return Cp::statusLabelHtml([
+                'color' => Color::Red,
+                'label' => Craft::t('password-policy', 'Expired'),
+            ]) ?? '';
         }
 
-        if ($lastChange < $threshold) {
-            return Html::tag('span', Craft::t('password-policy', 'Expired'), ['class' => 'status red']);
-        }
-
-        return Html::tag('span', Craft::t('password-policy', 'No'), ['class' => 'status']);
+        return '';
     }
 
     /**
-     * Renders the applied-policies cell — comma-list of policy names, or
-     * a muted dash when the user has no policies applied.
+     * Renders the applied-policies cell — comma-list of policy names,
+     * or empty string when the user has no policies applied. Empty
+     * cells match Craft's native "Last Name" / "Email" no-data
+     * behaviour (no filler glyph).
      *
      * @param array<string, mixed> $cached
      * @return string
@@ -873,17 +912,16 @@ class UserIndexService extends Component
         $policies = $cached['appliedPolicies'];
 
         if (empty($policies)) {
-            return Html::tag('span', '—', ['class' => 'light']);
+            return '';
         }
 
         return Html::encode(implode(', ', $policies));
     }
 
     /**
-     * Renders the last password change cell — Craft datetime via
-     * `Cp::elementHtml` would be more native but introduces a dep on
-     * formatter context; a plain ISO-style date keeps the cell
-     * deterministic for tests and locale-correct via the formatter.
+     * Renders the last password change cell. Returns empty string when
+     * the user has never changed their password — matches Craft's
+     * native empty-cell convention for absent values.
      *
      * @param array<string, mixed> $cached
      * @return string
@@ -896,17 +934,16 @@ class UserIndexService extends Component
         $lastChange = $cached['lastChange'];
 
         if (!$lastChange instanceof DateTime) {
-            return Html::tag('span', Craft::t('password-policy', 'Never'), ['class' => 'light']);
+            return '';
         }
 
-        $formatted = Craft::$app->getFormatter()->asDatetime($lastChange, 'short');
-
-        return Html::tag('span', Html::encode($formatted));
+        return Html::encode(Craft::$app->getFormatter()->asDatetime($lastChange, 'short'));
     }
 
     /**
-     * Renders the last-change-reason cell using the enum's human label.
-     * Falls back to a muted dash when the user has no history yet.
+     * Renders the last-change-reason cell using the enum's human
+     * label. Empty string when no history exists — column carries the
+     * label only when there's something to label.
      *
      * @param array<string, mixed> $cached
      * @return string
@@ -919,18 +956,19 @@ class UserIndexService extends Component
         $reason = $cached['lastHistoryReason'];
 
         if (!$reason instanceof ChangeReason) {
-            return Html::tag('span', '—', ['class' => 'light']);
+            return '';
         }
 
         return Html::encode($reason->label());
     }
 
     /**
-     * Renders the policy-drift cell: yes/no badge with a clarifying
-     * suffix when drifted. The suffix uses raw policy IDs because
-     * resolving the snapshot ID's NAME is not always possible (the row
-     * may reference a since-deleted policy); the IDs are stable enough
-     * for an admin to recognise the change.
+     * Renders the policy-drift cell: orange pill with current/snapshot
+     * IDs when drifted, empty string when not. Snapshot IDs (rather
+     * than names) appear in the label because a drifted row may
+     * reference a since-deleted policy where no name is recoverable;
+     * the numeric IDs are stable enough for an admin to recognise the
+     * change.
      *
      * @param array<string, mixed> $cached
      * @return string
@@ -941,26 +979,30 @@ class UserIndexService extends Component
     private function _renderPolicyDrift(array $cached): string
     {
         if (!$this->_hasPolicyDrift($cached)) {
-            return Html::tag('span', Craft::t('password-policy', 'No'), ['class' => 'status']);
+            return '';
         }
 
-        $current = $cached['currentPolicyId'] ?? '—';
-        $snapshot = $cached['lastHistoryPolicy'] ?? '—';
-
-        $label = Craft::t(
-            'password-policy',
-            'Yes (current: {current}, was: {snapshot})',
-            [
-                'current' => $current,
-                'snapshot' => $snapshot,
-            ],
-        );
-
-        return Html::tag('span', $label, ['class' => 'status orange']);
+        return Cp::statusLabelHtml([
+            'color' => Color::Orange,
+            'label' => Craft::t(
+                'password-policy',
+                'Drifted (current: {current}, was: {snapshot})',
+                [
+                    'current' => $cached['currentPolicyId'] ?? '?',
+                    'snapshot' => $cached['lastHistoryPolicy'] ?? '?',
+                ],
+            ),
+        ]) ?? '';
     }
 
     /**
-     * Renders the reset-required cell: orange "Yes" badge or muted "No".
+     * Renders the reset-required cell: orange "Yes" pill when the
+     * user is flagged, empty string when not. The cell label is
+     * deliberately terse — the column header already says "Reset
+     * required," so the pill just confirms the boolean. Two-word
+     * pill labels wrap mid-pill in narrow columns; "Yes" stays on
+     * one line. The composite Status column uses the full "Reset
+     * required" label because that's its primary signal.
      *
      * @param array<string, mixed> $cached
      * @return string
@@ -970,18 +1012,21 @@ class UserIndexService extends Component
      */
     private function _renderResetRequired(array $cached): string
     {
-        if ($cached['passwordResetRequired']) {
-            return Html::tag('span', Craft::t('password-policy', 'Yes'), ['class' => 'status orange']);
+        if (!$cached['passwordResetRequired']) {
+            return '';
         }
 
-        return Html::tag('span', Craft::t('password-policy', 'No'), ['class' => 'status']);
+        return Cp::statusLabelHtml([
+            'color' => Color::Orange,
+            'label' => Craft::t('password-policy', 'Yes'),
+        ]) ?? '';
     }
 
     /**
-     * Renders the composite status cell using {@see self::getStatusForUser()}'s
-     * resolution. Each status maps to a distinct color and (where
-     * appropriate) an extra clarifying string — for the expiring state,
-     * the days-remaining count is appended.
+     * Renders the composite status cell using
+     * {@see self::getStatusForUser()}'s resolution. Each status maps
+     * to a distinct color via `Cp::statusLabelHtml()`; the expiring
+     * state appends a days-remaining count.
      *
      * @param User $user
      * @return string
@@ -993,49 +1038,31 @@ class UserIndexService extends Component
     {
         $status = $this->getStatusForUser($user);
 
-        return match ($status) {
-            self::STATUS_BREACHED => Html::tag(
-                'span',
-                Craft::t('password-policy', 'Breached'),
-                ['class' => 'status red'],
-            ),
-            self::STATUS_EXPIRED => Html::tag(
-                'span',
-                Craft::t('password-policy', 'Expired'),
-                ['class' => 'status red'],
-            ),
-            self::STATUS_RESET_REQUIRED => Html::tag(
-                'span',
-                Craft::t('password-policy', 'Reset required'),
-                ['class' => 'status orange'],
-            ),
-            self::STATUS_POLICY_DRIFT => Html::tag(
-                'span',
-                Craft::t('password-policy', 'Policy drift'),
-                ['class' => 'status orange'],
-            ),
-            self::STATUS_EXPIRING => $this->_renderExpiringStatus($user),
-            self::STATUS_NEVER_CHANGED => Html::tag(
-                'span',
-                Craft::t('password-policy', 'Never changed'),
-                ['class' => 'status'],
-            ),
+        [$color, $label] = match ($status) {
+            self::STATUS_BREACHED => [Color::Red, Craft::t('password-policy', 'Breached')],
+            self::STATUS_EXPIRED => [Color::Red, Craft::t('password-policy', 'Expired')],
+            self::STATUS_RESET_REQUIRED => [Color::Orange, Craft::t('password-policy', 'Reset required')],
+            self::STATUS_POLICY_DRIFT => [Color::Orange, Craft::t('password-policy', 'Policy drift')],
+            self::STATUS_EXPIRING => [Color::Orange, $this->_expiringStatusLabel($user)],
+            self::STATUS_NEVER_CHANGED => [Color::Gray, Craft::t('password-policy', 'Never changed')],
             // STATUS_OK + the defensive `default` covers the case where
             // `getStatusForUser()` is widened in the future without
             // updating this match — PHPStan otherwise flags the implicit
             // string-not-handled arm.
-            default => Html::tag(
-                'span',
-                Craft::t('password-policy', 'OK'),
-                ['class' => 'status green'],
-            ),
+            default => [Color::Green, Craft::t('password-policy', 'OK')],
         };
+
+        return Cp::statusLabelHtml([
+            'color' => $color,
+            'label' => $label,
+        ]) ?? '';
     }
 
     /**
-     * Renders the "expiring in N days" status with the day count baked
-     * into the label. Falls back to a generic label if the math can't
-     * compute (no expiry threshold or no last change date).
+     * Returns the label for the "expiring soon" composite status,
+     * baking in the day count when the math is computable. Falls back
+     * to a generic "Expiring" label when expiry threshold or last-
+     * change date are missing.
      *
      * @param User $user
      * @return string
@@ -1043,29 +1070,21 @@ class UserIndexService extends Component
      * @author CraftPulse
      * @since 5.2.0
      */
-    private function _renderExpiringStatus(User $user): string
+    private function _expiringStatusLabel(User $user): string
     {
         $cached = $this->_getCachedForUser((int)$user->id);
         $threshold = $this->_getExpiryThreshold();
         $lastChange = $cached['lastChange'];
 
         if ($threshold === null || !$lastChange instanceof DateTime) {
-            return Html::tag(
-                'span',
-                Craft::t('password-policy', 'Expiring'),
-                ['class' => 'status orange'],
-            );
+            return Craft::t('password-policy', 'Expiring');
         }
 
         $expiresAt = $threshold->getTimestamp() + (self::EXPIRING_SOON_DAYS * 86400);
         $remainingSeconds = max(0, $expiresAt - $lastChange->getTimestamp());
         $days = (int)floor($remainingSeconds / 86400);
 
-        return Html::tag(
-            'span',
-            Craft::t('password-policy', 'Expires in {days} days', ['days' => $days]),
-            ['class' => 'status orange'],
-        );
+        return Craft::t('password-policy', 'Expires in {days} days', ['days' => $days]);
     }
 
     /**

@@ -1,12 +1,15 @@
 <?php
 /**
  * Pest coverage for the per-cell HTML rendering surface of
- * `UserIndexService::renderAttributeHtml()`. Per memory rule
- * `feedback_native_callout_components.md` we render via Craft's
- * native `<span class="status">` / `<span class="status red">` /
- * etc. semantics rather than hand-rolled markup; the tests assert
- * structure (class names, key text) and avoid pinning exact strings
- * so locale- or formatter-driven cosmetic shifts don't churn fixtures.
+ * `UserIndexService::renderAttributeHtml()`. Renders via Craft's
+ * `Cp::statusLabelHtml()` helper (5.2.0+), which produces the
+ * canonical `<span class="status-label …">` pill markup used by
+ * Craft's own native columns. Empty / inapplicable states return
+ * an empty string — matching the native "Last Name" / "Email"
+ * convention rather than a `—` filler. Tests assert on the pill's
+ * `status-label <color>` class plus key label text and avoid
+ * pinning exact strings so locale- or formatter-driven cosmetic
+ * shifts don't churn fixtures.
  *
  * Each test seeds a deliberate user state via the existing factories,
  * preloads the cache, and asserts the rendered cell.
@@ -53,16 +56,14 @@ afterEach(function() {
 // Last change cell
 // =============================================================================
 
-it('renders the lastChange cell as "Never" when no password change is recorded', function() {
+it('renders an empty lastChange cell when no password change is recorded', function() {
     $user = UserFactory::admin();
     seedLastChange($user, null);
 
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_LAST_CHANGE);
 
-    expect($html)
-        ->toContain('class="light"')
-        ->and($html)->toContain('Never');
+    expect($html)->toBe('');
 });
 
 it('renders the lastChange cell as a formatted datetime when set', function() {
@@ -73,15 +74,16 @@ it('renders the lastChange cell as a formatted datetime when set', function() {
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_LAST_CHANGE);
 
-    expect($html)->toBeString()
-        ->and($html)->not->toContain('Never');
+    expect($html)
+        ->toBeString()
+        ->and($html)->not->toBe('');
 });
 
 // =============================================================================
 // Days until expiry cell
 // =============================================================================
 
-it('renders the daysUntilExpiry cell as a muted dash when expiry is not configured', function() {
+it('renders an empty daysUntilExpiry cell when expiry is not configured', function() {
     $user = UserFactory::admin();
     $this->settings->expiryAmount = null;
     seedLastChange($user, Carbon::now('UTC')->subDays(3));
@@ -89,8 +91,10 @@ it('renders the daysUntilExpiry cell as a muted dash when expiry is not configur
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_DAYS_UNTIL_EXPIRY);
 
-    expect($html)->toContain('—')
-        ->and($html)->toContain('class="light"');
+    // Defensive — the column itself shouldn't be registered when
+    // expiry is off (`getAttributesForRegistration()` drops it), but
+    // the renderer also returns empty as a fallback.
+    expect($html)->toBe('');
 });
 
 it('renders the daysUntilExpiry cell green when remaining days exceed seven', function() {
@@ -102,7 +106,7 @@ it('renders the daysUntilExpiry cell green when remaining days exceed seven', fu
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_DAYS_UNTIL_EXPIRY);
 
-    expect($html)->toContain('status green');
+    expect($html)->toContain('status-label green');
 });
 
 it('renders the daysUntilExpiry cell red when the password is past expiry', function() {
@@ -114,7 +118,7 @@ it('renders the daysUntilExpiry cell red when the password is past expiry', func
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_DAYS_UNTIL_EXPIRY);
 
-    expect($html)->toContain('status red');
+    expect($html)->toContain('status-label red');
 });
 
 it('renders the daysUntilExpiry cell orange within the seven-day soon-to-expire window', function() {
@@ -126,7 +130,7 @@ it('renders the daysUntilExpiry cell orange within the seven-day soon-to-expire 
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_DAYS_UNTIL_EXPIRY);
 
-    expect($html)->toContain('status orange');
+    expect($html)->toContain('status-label orange');
 });
 
 // =============================================================================
@@ -143,11 +147,11 @@ it('renders the expired cell as red Expired when past the threshold', function()
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_EXPIRED);
 
     expect($html)
-        ->toContain('status red')
+        ->toContain('status-label red')
         ->and($html)->toContain('Expired');
 });
 
-it('renders the expired cell as muted No when within the threshold', function() {
+it('renders an empty expired cell when within the threshold', function() {
     $user = UserFactory::admin();
     $this->settings->expiryAmount = 30;
     $this->settings->expiryPeriod = 'day';
@@ -156,10 +160,10 @@ it('renders the expired cell as muted No when within the threshold', function() 
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_EXPIRED);
 
-    expect($html)->toContain('No');
+    expect($html)->toBe('');
 });
 
-it('renders the expired cell as muted dash when expiry is not configured', function() {
+it('renders an empty expired cell when expiry is not configured', function() {
     $user = UserFactory::admin();
     $this->settings->expiryAmount = null;
     seedLastChange($user, Carbon::now('UTC')->subDays(60));
@@ -167,33 +171,36 @@ it('renders the expired cell as muted dash when expiry is not configured', funct
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_EXPIRED);
 
-    expect($html)->toContain('—');
+    expect($html)->toBe('');
 });
 
 // =============================================================================
 // Reset required cell
 // =============================================================================
 
-it('renders the resetRequired cell as orange Yes when set', function() {
+it('renders the resetRequired cell as an orange Yes pill when set', function() {
     $user = UserFactory::admin();
     seedResetRequired($user, true);
 
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_RESET_REQUIRED);
 
+    // Cell label is deliberately terse ("Yes" vs. the column header's
+    // "Reset required") so the pill stays on one line in the narrow
+    // column. Composite Status pill keeps the full label.
     expect($html)
-        ->toContain('status orange')
+        ->toContain('status-label orange')
         ->and($html)->toContain('Yes');
 });
 
-it('renders the resetRequired cell as muted No when not set', function() {
+it('renders an empty resetRequired cell when not set', function() {
     $user = UserFactory::admin();
     seedResetRequired($user, false);
 
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_RESET_REQUIRED);
 
-    expect($html)->toContain('No');
+    expect($html)->toBe('');
 });
 
 // =============================================================================
@@ -210,13 +217,13 @@ it('renders the lastChangeReason cell using the enum label when history exists',
     expect($html)->toContain('Admin forced reset');
 });
 
-it('renders the lastChangeReason cell as muted dash when no history exists', function() {
+it('renders an empty lastChangeReason cell when no history exists', function() {
     $user = UserFactory::admin();
 
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_LAST_CHANGE_REASON);
 
-    expect($html)->toContain('—');
+    expect($html)->toBe('');
 });
 
 // =============================================================================
@@ -233,7 +240,7 @@ it('renders the status cell as red Expired when past expiry', function() {
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_STATUS);
 
     expect($html)
-        ->toContain('status red')
+        ->toContain('status-label red')
         ->and($html)->toContain('Expired');
 });
 
@@ -247,7 +254,7 @@ it('renders the status cell as green OK when nothing applies', function() {
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_STATUS);
 
     expect($html)
-        ->toContain('status green')
+        ->toContain('status-label green')
         ->and($html)->toContain('OK');
 });
 

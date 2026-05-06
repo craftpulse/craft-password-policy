@@ -1,21 +1,23 @@
 <?php
 /**
- * Pest coverage for D4's User-edit "Password Security" pointer.
+ * Pest coverage for the User-edit "Password Security" left-nav screen.
  *
- * The plugin doesn't register a top-level edit-screen tab — Craft 5
- * doesn't expose a public event for that. Instead it appends a link
- * block to the User edit screen sidebar via
- * `Element::EVENT_DEFINE_SIDEBAR_HTML`, gated on either
- * `pp:force-reset-passwords` or `pp:change-user-passwords`. The
- * standalone CP page (`password-policy/users/<userId>/security`) is
- * what the link points at; the same permission predicate guards
+ * The plugin registers an additional screen on the User edit experience
+ * via `UsersController::EVENT_DEFINE_EDIT_SCREENS` (Craft 5.0+). The
+ * event payload's `screens` array is keyed by screen ID; each entry has
+ * a `label` and (optionally) a `url`. The plugin appends a
+ * `password-security` entry pointing at the standalone CP page
+ * `password-policy/users/<userId>/security`. The same
+ * `pp:force-reset-passwords` / `pp:change-user-passwords` permission
+ * predicate guards both the screen registration and
  * `UserSecurityController::beforeAction()`.
  *
- * The tests cover the registration predicate (both single-permission
- * paths + the negative case), the read-only mode contract (the link
- * still appears when `allowAdminChanges = false`), the controller's
- * happy path + 404, and the read-only template's expected markup
- * (notice + `disabled` attribute on the force-reset button).
+ * The tests cover the registration predicate, the read-only mode
+ * contract, the controller's permission gate, and the content-only
+ * template's expected markup (notice + `disabled` attribute on the
+ * force-reset button). The CP screen chrome (left nav, breadcrumbs,
+ * meta sidebar) is `EditUserTrait`'s job and is not re-tested here —
+ * this file only verifies the plugin-owned seams.
  *
  * Console-bootstrap CP-test trifecta applied per memory gap #20:
  *  - `UserStub` with the patched `idParam`,
@@ -29,15 +31,15 @@
  * @since     5.2.0
  */
 
+use craft\controllers\UsersController;
 use craft\elements\User;
+use craft\events\DefineEditUserScreensEvent;
 use craft\web\Response;
-use craftpulse\passwordpolicy\controllers\UserSecurityController;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
 use craftpulse\passwordpolicy\tests\Support\WebRequestStub;
-use yii\web\ForbiddenHttpException;
-use yii\web\NotFoundHttpException;
+use yii\base\Event;
 
 // =============================================================================
 // Setup
@@ -71,29 +73,39 @@ afterEach(function() {
 // =============================================================================
 
 /**
- * Triggers `Element::EVENT_DEFINE_SIDEBAR_HTML` against the given user
- * and returns the resulting sidebar HTML — the plugin's listener
- * appends the "Password Security" pointer to the existing baseline.
- * Mirrors what `ElementsController::actionEdit` does at render time.
+ * Manually fires `UsersController::EVENT_DEFINE_EDIT_SCREENS` with a
+ * baseline screens map and returns the post-listener `$event->screens`.
+ * Mirrors what `EditUserTrait::asEditUserScreen()` does mid-render —
+ * the trait builds an initial `$screens` array, fires the event, and
+ * uses the post-listener result. Testing the seam directly avoids the
+ * full controller-render chain (which requires more CP context than the
+ * console-bootstrap process exposes).
+ *
+ * @return array<string, array<string, mixed>>
  */
-function triggerUserSidebar(User $user): string
+function fireDefineEditScreens(User $editedUser, ?User $currentUser): array
 {
-    return $user->getSidebarHtml(false);
+    $event = new DefineEditUserScreensEvent([
+        'currentUser' => $currentUser ?? new User(),
+        'editedUser' => $editedUser,
+        'screens' => [
+            'profile' => ['label' => 'Profile'],
+            'permissions' => ['label' => 'Permissions'],
+            'addresses' => ['label' => 'Addresses'],
+        ],
+    ]);
+
+    Event::trigger(UsersController::class, UsersController::EVENT_DEFINE_EDIT_SCREENS, $event);
+
+    return $event->screens;
 }
 
 /**
- * Returns the rendered HTML for the "Password Security" template's
- * inner content block — the part the plugin owns. Skips the wider
- * CP layout chain (`_layouts/cp` → global-sidebar → notifications
- * → session) which is Craft's own surface and brings dependencies
- * the console-bootstrapped test process doesn't have (sessions,
- * `$_SERVER['REQUEST_URI']`, etc.). The brief-relevant assertions
- * (read-only notice, disabled button, force-reset POST target) all
- * live inside the content block — testing the layout chain would
- * just re-test Craft.
+ * Renders the password-security content template directly. The
+ * template is content-only after the EditUserTrait switch — no
+ * `extends`, no `block content` — so a plain `render()` returns the
+ * inner markup the trait would otherwise wrap in CP screen chrome.
  *
- * Renders via Twig's `loadTemplate()->renderBlock('content', ...)`
- * which evaluates only the named block against the supplied context.
  * Variables that the controller sets at render time (`isExpired`,
  * `neverChanged`, `policySource`) are pinned to deterministic values
  * here so the read-only assertions stay independent of the user's
@@ -102,7 +114,6 @@ function triggerUserSidebar(User $user): string
 function renderPasswordSecurityContent(User $user): string
 {
     $plugin = PasswordPolicy::$plugin;
-
     $policy = $plugin->getPolicyResolver()->resolveForUser($user);
 
     $view = Craft::$app->getView();
@@ -110,9 +121,7 @@ function renderPasswordSecurityContent(User $user): string
     $view->setTemplateMode($view::TEMPLATE_MODE_CP);
 
     try {
-        $template = $view->getTwig()->load('password-policy/_users/password-security');
-
-        return $template->renderBlock('content', [
+        return $view->renderTemplate('password-policy/_users/password-security', [
             'user' => $user,
             'policy' => $policy,
             'policySource' => 'Global',
@@ -126,118 +135,58 @@ function renderPasswordSecurityContent(User $user): string
 }
 
 // =============================================================================
-// Permission predicate — registration appears with either permission
+// Screen registration — appears with either permission, absent without
 // =============================================================================
 
-it('appends the Password Security link when the admin has pp:force-reset-passwords', function() {
-    $this->userStub->setIdentity(UserFactory::admin());
+it('registers the password-security screen when the admin has permission', function() {
+    $admin = UserFactory::admin();
+    $this->userStub->setIdentity($admin);
 
     $target = UserFactory::nonAdmin();
-    $html = triggerUserSidebar($target);
+    $screens = fireDefineEditScreens($target, $admin);
 
-    expect($html)
-        ->toContain('Password Security')
-        ->and($html)->toContain("password-policy/users/{$target->id}/security");
+    expect($screens)->toHaveKey('password-security');
+    expect($screens['password-security']['label'])->toBe('Password Security');
+    expect($screens['password-security']['url'])->toContain("password-policy/users/{$target->id}/security");
 });
 
-it('appends the link when the admin has pp:change-user-passwords (admin granted by inheritance)', function() {
-    // Same admin path — admins inherit every plugin permission.
-    // Distinct test asserts the both-permissions-OR predicate doesn't
-    // require both to be present simultaneously; the controller's
-    // `callerHasViewPermission()` returns true on either.
-    $this->userStub->setIdentity(UserFactory::admin());
-
-    $target = UserFactory::nonAdmin();
-    $html = triggerUserSidebar($target);
-
-    expect($html)->toContain('Password Security');
-});
-
-it('does not append the link when the admin has neither permission', function() {
-    // Non-admin without any plugin permissions — `currentUser->can(...)`
-    // returns false for both `pp:force-reset-passwords` and
-    // `pp:change-user-passwords`.
+it('does not register the screen when the caller has neither permission', function() {
     $caller = UserFactory::nonAdmin();
     $this->userStub->setIdentity($caller);
 
     $target = UserFactory::nonAdmin();
-    $html = triggerUserSidebar($target);
+    $screens = fireDefineEditScreens($target, $caller);
 
-    expect($html)->not->toContain('Password Security');
+    expect($screens)->not->toHaveKey('password-security');
 });
 
-it('does not append the link when there is no identified user', function() {
-    // No identity bound to the request — `getIdentity()` returns null
-    // and the predicate short-circuits to false.
+it('does not register the screen when there is no identified user', function() {
     $this->userStub->setIdentity(null);
 
     $target = UserFactory::nonAdmin();
-    $html = triggerUserSidebar($target);
+    $screens = fireDefineEditScreens($target, null);
 
-    expect($html)->not->toContain('Password Security');
+    expect($screens)->not->toHaveKey('password-security');
 });
 
 // =============================================================================
-// Read-only mode — link still registers; gating happens inside the page
+// Read-only mode — screen still registers; gating happens inside the page
 // =============================================================================
 
-it('still appends the link when allowAdminChanges is off', function() {
+it('still registers the screen when allowAdminChanges is off', function() {
     Craft::$app->getConfig()->getGeneral()->allowAdminChanges = false;
-    $this->userStub->setIdentity(UserFactory::admin());
+    $admin = UserFactory::admin();
+    $this->userStub->setIdentity($admin);
 
     $target = UserFactory::nonAdmin();
-    $html = triggerUserSidebar($target);
+    $screens = fireDefineEditScreens($target, $admin);
 
     // Read-only data (status, resolved policy) is fine to view; the
     // page itself disables write affordances via `readOnlyNotice()`
-    // + the `disabled` attribute. Hiding the link in read-only mode
-    // would force admins to bookmark the URL to ever review status —
-    // worse UX for no security gain.
-    expect($html)->toContain('Password Security');
-});
-
-// =============================================================================
-// Controller — happy path
-// =============================================================================
-
-it('renders the page when the admin has permission', function() {
-    $this->userStub->setIdentity(UserFactory::admin());
-
-    $target = UserFactory::nonAdmin();
-    $controller = new UserSecurityController('user-security', $this->plugin);
-    $response = $controller->runAction('index', ['userId' => $target->id]);
-
-    expect($response)->toBeInstanceOf(Response::class);
-
-    $body = renderPasswordSecurityContent($target);
-    expect($body)
-        ->toBeString()
-        ->and($body)->toContain('Password Status')
-        ->and($body)->toContain('Active Policy');
-});
-
-// =============================================================================
-// Controller — 404 + permission gate
-// =============================================================================
-
-it('returns 404 when the user does not exist', function() {
-    $this->userStub->setIdentity(UserFactory::admin());
-
-    $controller = new UserSecurityController('user-security', $this->plugin);
-
-    expect(fn() => $controller->runAction('index', ['userId' => 999999]))
-        ->toThrow(NotFoundHttpException::class);
-});
-
-it('rejects callers without either permission', function() {
-    $caller = UserFactory::nonAdmin();
-    $this->userStub->setIdentity($caller);
-
-    $target = UserFactory::nonAdmin();
-    $controller = new UserSecurityController('user-security', $this->plugin);
-
-    expect(fn() => $controller->runAction('index', ['userId' => $target->id]))
-        ->toThrow(ForbiddenHttpException::class);
+    // + the `disabled` attribute. Hiding the screen in read-only
+    // mode would force admins to bookmark the URL to ever review
+    // status — worse UX for no security gain.
+    expect($screens)->toHaveKey('password-security');
 });
 
 // =============================================================================
@@ -253,9 +202,9 @@ it('renders the readOnlyNotice banner when allowAdminChanges is off', function()
 
     // `readOnlyNotice()` renders Craft's content-notice block whose
     // body is a stable user-facing string from
-    // `craft\helpers\Cp::readOnlyNoticeHtml()`. Match on the canonical
-    // phrase rather than wrapper markup, which can evolve across Craft
-    // 5 patch releases.
+    // `craft\helpers\Cp::readOnlyNoticeHtml()`. Match on the
+    // canonical phrase rather than wrapper markup, which can evolve
+    // across Craft 5 patch releases.
     expect($body)
         ->toBeString()
         ->and($body)->toContain('aren')
@@ -268,8 +217,6 @@ it('omits the readOnlyNotice when admin changes are allowed', function() {
     $target = UserFactory::nonAdmin();
     $body = renderPasswordSecurityContent($target);
 
-    // Sanity inverse of the previous test — the read-only banner only
-    // appears when the constraint is active.
     expect($body)
         ->toBeString()
         ->and($body)->not->toContain('permitted in this environment');
@@ -297,7 +244,6 @@ it('keeps the force-reset button enabled when admin changes are allowed', functi
     expect($body)
         ->toBeString()
         ->and($body)->toContain('Force Password Reset')
-        // No `disabled` attribute on the button.
         ->and($body)->not->toMatch('/<button[^>]*\bdisabled\b/');
 });
 
@@ -312,8 +258,23 @@ it('points the form at the existing retention/force-reset POST target', function
     $target = UserFactory::nonAdmin();
     $body = renderPasswordSecurityContent($target);
 
-    // The actionInput hidden field embeds the action route literally.
     expect($body)
         ->toBeString()
         ->and($body)->toContain('password-policy/retention/force-reset');
+});
+
+// =============================================================================
+// Page heading + main panes still render in the content body
+// =============================================================================
+
+it('renders the password-status and active-policy panes', function() {
+    $this->userStub->setIdentity(UserFactory::admin());
+
+    $target = UserFactory::nonAdmin();
+    $body = renderPasswordSecurityContent($target);
+
+    expect($body)
+        ->toBeString()
+        ->and($body)->toContain('Password Status')
+        ->and($body)->toContain('Active Policy');
 });

@@ -21,18 +21,29 @@ use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\services\UserIndexService;
 
 // =============================================================================
-// Setup / teardown — restore plugin + Craft edition between scenarios
+// Setup / teardown — restore plugin + Craft edition + expiry config
 // =============================================================================
 
 beforeEach(function() {
     $this->plugin = PasswordPolicy::$plugin;
+    $this->settings = $this->plugin->getSettings();
     $this->originalPluginEdition = $this->plugin->edition;
     $this->originalCraftEdition = Craft::$app->edition;
+    $this->originalExpiryAmount = $this->settings->expiryAmount;
+    $this->originalExpiryPeriod = $this->settings->expiryPeriod;
+
+    // Pin a benign expiry config so the daysUntilExpiry + expired
+    // columns register. The expiry-off case is covered in its own
+    // test below.
+    $this->settings->expiryAmount = 90;
+    $this->settings->expiryPeriod = 'day';
 });
 
 afterEach(function() {
     $this->plugin->edition = $this->originalPluginEdition;
     Craft::$app->edition = $this->originalCraftEdition;
+    $this->settings->expiryAmount = $this->originalExpiryAmount;
+    $this->settings->expiryPeriod = $this->originalExpiryPeriod;
 });
 
 // =============================================================================
@@ -119,6 +130,42 @@ it('matches Pro behaviour on Enterprise + Pro Craft', function() {
     $attributes = $this->plugin->getUserIndex()->getAttributesForRegistration();
 
     expect($attributes)->toHaveCount(9);
+});
+
+// =============================================================================
+// Expiry-configured gate — drops daysUntilExpiry + expired when off
+// =============================================================================
+
+it('drops the expiry columns when expiryAmount is null', function() {
+    $this->plugin->edition = PasswordPolicy::EDITION_PRO;
+    Craft::$app->edition = CmsEdition::Pro;
+    $this->settings->expiryAmount = null;
+
+    $attributes = $this->plugin->getUserIndex()->getAttributesForRegistration();
+
+    expect($attributes)
+        ->not->toHaveKey(UserIndexService::ATTR_DAYS_UNTIL_EXPIRY)
+        ->and($attributes)->not->toHaveKey(UserIndexService::ATTR_EXPIRED)
+        // Status, reset-required, last-change, last-change-reason still
+        // register — those work without an expiry threshold (status
+        // resolves to never_changed/ok/breached/reset_required).
+        ->and($attributes)->toHaveKey(UserIndexService::ATTR_STATUS)
+        ->and($attributes)->toHaveKey(UserIndexService::ATTR_RESET_REQUIRED)
+        ->and($attributes)->toHaveKey(UserIndexService::ATTR_LAST_CHANGE)
+        ->and($attributes)->toHaveKey(UserIndexService::ATTR_LAST_CHANGE_REASON)
+        ->and($attributes)->toHaveCount(7);
+});
+
+it('drops the expiry columns on Lite when expiryAmount is null', function() {
+    $this->plugin->edition = PasswordPolicy::EDITION_LITE;
+    Craft::$app->edition = CmsEdition::Pro;
+    $this->settings->expiryAmount = null;
+
+    $attributes = $this->plugin->getUserIndex()->getAttributesForRegistration();
+
+    expect($attributes)->toHaveCount(4)
+        ->and($attributes)->not->toHaveKey(UserIndexService::ATTR_DAYS_UNTIL_EXPIRY)
+        ->and($attributes)->not->toHaveKey(UserIndexService::ATTR_EXPIRED);
 });
 
 // =============================================================================

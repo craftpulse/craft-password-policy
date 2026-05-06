@@ -57,15 +57,13 @@ afterEach(function() {
 // Breached cell
 // =============================================================================
 
-it('renders the breached cell as muted No when no detection has run', function() {
+it('renders an empty breached cell when no detection has run', function() {
     $user = UserFactory::admin();
 
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_BREACHED);
 
-    expect($html)
-        ->toContain('class="status"')
-        ->and($html)->toContain('No');
+    expect($html)->toBe('');
 });
 
 it('renders the breached cell red with a relative-time suffix when set', function() {
@@ -76,7 +74,7 @@ it('renders the breached cell red with a relative-time suffix when set', functio
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_BREACHED);
 
     expect($html)
-        ->toContain('status red')
+        ->toContain('status-label red')
         ->and($html)->toContain('Yes');
 });
 
@@ -89,14 +87,14 @@ it('still renders the breached cell red even after the 90-day recent window', fu
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_BREACHED);
 
-    expect($html)->toContain('status red');
+    expect($html)->toContain('status-label red');
 });
 
 // =============================================================================
 // Policy drift cell
 // =============================================================================
 
-it('renders the policy drift cell as muted No when snapshot matches current', function() {
+it('renders an empty policy drift cell when snapshot matches current', function() {
     $group = GroupFactory::create();
     $policy = PolicyFactory::nist([$group]);
 
@@ -108,9 +106,7 @@ it('renders the policy drift cell as muted No when snapshot matches current', fu
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_POLICY_DRIFT);
 
-    expect($html)
-        ->toContain('class="status"')
-        ->and($html)->toContain('No');
+    expect($html)->toBe('');
 });
 
 it('renders the policy drift cell orange when snapshot differs from current', function() {
@@ -127,7 +123,7 @@ it('renders the policy drift cell orange when snapshot differs from current', fu
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_POLICY_DRIFT);
 
-    expect($html)->toContain('status orange')
+    expect($html)->toContain('status-label orange')
         ->and($html)->toContain('current')
         ->and($html)->toContain((string)$policy->id);
 });
@@ -136,13 +132,13 @@ it('renders the policy drift cell orange when snapshot differs from current', fu
 // Applied policies cell
 // =============================================================================
 
-it('renders the applied policies cell as muted dash when user has no policies', function() {
+it('renders an empty applied policies cell when user has no policies', function() {
     $user = UserFactory::admin();
 
     $this->service->preloadForUsers([$user->id]);
     $html = $this->service->renderAttributeHtml($user, UserIndexService::ATTR_GROUP_POLICIES);
 
-    expect($html)->toContain('—');
+    expect($html)->toBe('');
 });
 
 it('renders the applied policies cell as a comma-separated name list', function() {
