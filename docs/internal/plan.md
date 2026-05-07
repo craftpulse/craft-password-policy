@@ -62,6 +62,52 @@ State legend: `active` = read now, `pending` = scheduled, `done` = built, `block
 
 - **Mailer-key SystemMessages registration missing for `password-policy:new-device-alert` + `password-policy:admin-security-alert`.** Both keys are called via `composeFromKey()` in `NotificationService` (lines 180, 235) but only `password-policy:audit-export-ready` (G10) is registered with `SystemMessages::EVENT_REGISTER_MESSAGES`. Practical effect: the F2 admin security alerts and HIBP-on-login new-device alerts deliver empty subject/body or the send fails outright (depending on Craft version). Not band-aided via a quick `EVENT_REGISTER_MESSAGES` row because the existing comments at `NotificationService.php:177-179` and `EmailDefaults.php:104` both target G12 for the proper fix: move both keys to the editable-templates path (`_dispatch()`) with per-site DB-stored templates seeded via `EmailDefaults::all()` + the propagation listener. A band-aid registration would be reverted in G12. **Surfaced 2026-05-07 during G10 review.** Resolution: G12.
 
+### Phase G post-review remediation (2026-05-07)
+
+Code review across the 9 Phase G commits (cf3e2f1 → 3dccebafa, 17K+ lines) surfaced 9 verified issues + 1 false positive (the reviewer claimed `AuditExportCompleteEvent` was missing from `events.md`; it's at line 402). Each finding manually verified against the cited file:line before logging here.
+
+**Step 1 — bundled fix-pack (next commit, ~80 lines, zero new functionality)**
+
+| ID | File:line | Fix |
+|---|---|---|
+| C1 | `SiemForwardJob.php:282-288` | Replace `throw new RuntimeException` inside `_recordRowOutcome()` catch with `Craft::error()` + `return`. Method's docblock declares "best-effort, never rethrown" — current code violates the contract and causes duplicate SIEM forwarding on retry. |
+| C2 | `AuditController.php:870` and `:262` | Replace `$query->all()` with `->batch(1000)` cursor. Production-scale audit logs OOM under `->all()`. |
+| C3 | `AuditExportController.php:306-327` | Drop the closure-as-stream pattern; use `return $this->asRaw($payload)` with `Content-Type` + `Content-Disposition` headers. Memory budget at the 1000-row sync threshold is fine. Closure currently returns `[true, true]` instead of `[string $data, bool $finished]`, so Yii echoes a stray `"1"` after the payload. |
+| I1 | `AuditLogService.php:161,172`; `AuditController.php:67,76`; `m260507_081852_RecomputeAuditLogChain.php:61,79` | Promote `GENESIS_PREVIOUS_HASH` + `CANONICAL_DATE_FORMAT` from triplicated `private const` to single `public const` on `AuditLogService`. Other two sites reference via class name. Drift between the three sites would silently invalidate every chain hash without test or static-analysis signal. |
+| I2 | `PolicyService.php:270` | `Carbon::now('UTC')->format('Y-m-d H:i:s')` instead of `new \DateTime()`. Server-local TZ on non-UTC servers stamps wrong; every other datetime write in the codebase uses Carbon UTC. |
+
+Verify gate: ECS + PHPStan + Pest (suite at 713 / 1618). No suite delta expected (fixes don't add tests; existing tests should continue to pass).
+
+**Step 2 — I5 architectural decision (after step 1, user choice required)**
+
+`AuditLogService::_hashUserIdentifier()` (line 603) uses `Craft::$app->getConfig()->getGeneral()->securityKey` as the HMAC secret. The privacy USP framing — "rotating the audit-PII key destroys historical correlation without breaking site security" — is not currently true; rotating `securityKey` also breaks session signing, security tokens, etc.
+
+Options:
+- **(a)** Add dedicated `auditPiiKey` (or `auditPiiSalt`) to `SettingsModel` + `config/password-policy.php`. Document key rotation as a privacy lever. Independent of `securityKey`. **Recommended.**
+- **(b)** Update USP / marketing text to reflect current behavior. No code change.
+- **(c)** Drop the keyed hash entirely; use a non-cryptographic correlation scheme (or no correlation).
+
+Decision pending. Step 2 commit shape depends on choice.
+
+**Step 3 — verify-then-decide on remaining findings**
+
+Items not yet verified in the code (reviewer claims, accuracy unverified):
+
+- **I4** — SIEM + Webhook `sendTestEvent()` race: `logEvent()` then `ORDER BY id DESC LIMIT 1` could pick a stale row if `logEvent()` fails silently. Fix: have `logEvent()` return the new row id.
+- **I6** — SIEM uses non-transparent newline framing instead of RFC 6587 octet-count framing. Interop concern only; not a current-correctness bug since plugin-produced syslog messages don't contain embedded LF.
+- **I7** — `SiemForwarderController::actionSendTest()` exposes raw `$e->getMessage()` to CP admin. Defense-in-depth concern.
+- **N1-N6** — six nice-to-have items (docblock-code mismatch on a non-existent cache, IPv4 hash without HMAC, RotateWebhookSecretJob warning on null, BlocklistService TOCTOU, permission flat-vs-nested convention, AuditExportController filename regenerated at serve time).
+
+For each: verify against current code → fix inline if real and small → file in `ideas.md` if real but post-5.2.0 → drop if false.
+
+**Step 4 — G12 (mailer-key regression resolution)**
+
+Move `new-device-alert` + `admin-security-alert` keys to the editable-templates path per the existing comments. Resolves the regression documented above.
+
+**Step 5 — G11 + G3** in some order. Phase G ends. Release prep (Phase H) starts.
+
+Skill-gap learnings from Phase G review (4 items: shared constants public-not-private; queue-job best-effort rethrow contract; HMAC vs bare hash for PII; Yii Response::$stream callable signature) are tracked outside this plan in the user's skill files.
+
 ---
 
 ## 2. Manual testing remaining
