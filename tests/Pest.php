@@ -31,6 +31,7 @@ uses(MigrationTestCase::class)->in('Integration/Migrations');
 uses(MultiSiteTestCase::class)->in('Integration/MultiSite');
 uses(TestCase::class)->in(
     'Integration/ConditionRules',
+    'Integration/Console',
     'Integration/Controllers',
     'Integration/Events',
     'Integration/Models',

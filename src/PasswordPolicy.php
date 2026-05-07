@@ -737,6 +737,12 @@ class PasswordPolicy extends Plugin
                         'pp:notification-templates-manage' => [
                             'label' => Craft::t('password-policy', 'Manage email notification templates.'),
                         ],
+                        'pp:audit-verify' => [
+                            'label' => Craft::t(
+                                'password-policy',
+                                'Run the audit-log verifier CLI. Auditor-grantable without full admin.',
+                            ),
+                        ],
                     ],
                 ];
             }
