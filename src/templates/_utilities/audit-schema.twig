@@ -1,0 +1,57 @@
+{# ============================================================================
+ # Audit Schema utility — auditor-facing render of the per-event PII
+ # allowlist registry.
+ #
+ # The registry is the codified privacy contract: for every event class,
+ # exactly which `details` keys the writer is permitted to persist on
+ # disk. Anything not listed is stripped at write time. Auditors reading
+ # this page see the complete privacy boundary in one place.
+ #
+ # Read-only by design. Edits to the registry happen in PHP source
+ # (`AuditLogService::ALLOWED_DETAILS_BY_EVENT`) so the contract is
+ # version-controlled, code-reviewed, and CI-tested — not editable by an
+ # admin user with utility access.
+ #
+ # @author    CraftPulse
+ # @since     5.2.0
+ # =========================================================================== #}
+
+<h1>{{ 'Audit event PII allowlist'|t('password-policy') }}</h1>
+
+<blockquote class="note">
+    <p>
+        {{ 'Every event class fired into the audit log is permitted exactly the detail keys listed below — anything outside this allowlist is stripped before the row is written. An event class without a registry entry drops the row entirely (fail-closed) and emits a warning on the password-policy log channel.'|t('password-policy') }}
+    </p>
+    <p>
+        {{ 'This contract lives in `AuditLogService::ALLOWED_DETAILS_BY_EVENT`. Changes are version-controlled and CI-enforced.'|t('password-policy') }}
+    </p>
+</blockquote>
+
+{% if registry is empty %}
+    <p>{{ 'No event classes are currently registered.'|t('password-policy') }}</p>
+{% else %}
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th scope="col">{{ 'Event class'|t('password-policy') }}</th>
+                <th scope="col">{{ 'Allowed detail keys'|t('password-policy') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for event, allowedKeys in registry %}
+                <tr>
+                    <td><code>{{ event }}</code></td>
+                    <td>
+                        {% if allowedKeys is empty %}
+                            <em>{{ '(none)'|t('password-policy') }}</em>
+                        {% else %}
+                            {% for key in allowedKeys %}
+                                <code>{{ key }}</code>{% if not loop.last %}, {% endif %}
+                            {% endfor %}
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endif %}

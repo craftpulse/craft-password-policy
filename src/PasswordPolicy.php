@@ -70,6 +70,7 @@ use craftpulse\passwordpolicy\models\AuditContext;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
 use craftpulse\passwordpolicy\services\ServicesTrait;
+use craftpulse\passwordpolicy\utilities\AuditSchemaUtility;
 use craftpulse\passwordpolicy\utilities\RetentionUtility;
 use craftpulse\passwordpolicy\variables\PasswordPolicyVariable;
 use Monolog\Formatter\LineFormatter;
@@ -737,6 +738,12 @@ class PasswordPolicy extends Plugin
                         'pp:notification-templates-manage' => [
                             'label' => Craft::t('password-policy', 'Manage email notification templates.'),
                         ],
+                        'pp:audit-view' => [
+                            'label' => Craft::t(
+                                'password-policy',
+                                'View audit log entries and the per-event PII allowlist registry. Auditor-grantable without full admin.',
+                            ),
+                        ],
                         'pp:audit-verify' => [
                             'label' => Craft::t(
                                 'password-policy',
@@ -762,6 +769,34 @@ class PasswordPolicy extends Plugin
             Event::on(Utilities::class, Utilities::EVENT_REGISTER_UTILITIES,
                 function(RegisterComponentTypesEvent $event) {
                     $event->types[] = RetentionUtility::class;
+                }
+            );
+        }
+
+        // Audit Schema utility — Enterprise-only auditor surface that
+        // renders `AuditLogService::ALLOWED_DETAILS_BY_EVENT` as a
+        // read-only privacy contract. Edition gate at registration time
+        // so Lite / Pro installs never see the utility class.
+        //
+        // Permission visibility: Craft's utilities index gates each
+        // utility on the `utility:<utility-id>` permission. The plugin
+        // additionally checks `pp:audit-view` here so an admin grant of
+        // that permission alone is sufficient (without also having to
+        // remember the utility-permission name); a user without
+        // `pp:audit-view` doesn't see the utility registered at all.
+        if ($this->getIsEnterprise()) {
+            Event::on(Utilities::class, Utilities::EVENT_REGISTER_UTILITIES,
+                function(RegisterComponentTypesEvent $event) {
+                    $currentUser = Craft::$app->getUser()->getIdentity();
+                    if ($currentUser === null) {
+                        return;
+                    }
+
+                    if (!$currentUser->admin && !$currentUser->can('pp:audit-view')) {
+                        return;
+                    }
+
+                    $event->types[] = AuditSchemaUtility::class;
                 }
             );
         }

@@ -57,6 +57,40 @@ use yii\base\Component;
  * / export — never to the underlying writes. See memory rule
  * `project_audit_capture_principle.md`.
  *
+ * Per-event PII allowlist (Phase G — G5)
+ * --------------------------------------
+ * Every event class fired through `logEvent()` MUST have a registry
+ * entry in `ALLOWED_DETAILS_BY_EVENT`. The registry is the codified
+ * privacy contract — for every event class an auditor can read exactly
+ * which `details` keys the writer is permitted to persist, and nothing
+ * outside that set will ever land on disk. Cross-referenced from
+ * `docs/user/features/audit-logging.md` so the contract is the
+ * customer-facing privacy-by-design statement.
+ *
+ * Enforcement is fail-closed: an event class without a registry entry
+ * triggers a Yii warning AND drops the row entirely. Both halves are
+ * intentional —
+ *
+ *  - silent-allow lets a typo'd event class string ("password_chnaged")
+ *    leak any payload shape the caller controls forever, undetected;
+ *  - silent-deny lets the same typo fall on the floor with no signal
+ *    a developer can debug against.
+ *
+ * The fail-closed `return` lands BEFORE the `enableAuditLog` feature-
+ * flag check on purpose. A missing registry entry is a programming
+ * error (developer added a new event class without registering it),
+ * and surfacing the warning regardless of whether audit logging is
+ * currently enabled is the only way that error reaches a maintainer
+ * before it reaches production. The dropped row is also fine in that
+ * shape: with no registry entry there's no canonical allowlist, so
+ * there's no coherent way to write the row anyway.
+ *
+ * The codebase-grep test in
+ * `tests/Integration/Services/AuditAllowlistRegistryTest.php` enforces
+ * the registry at test time — every `logEvent('<event>'` call site in
+ * `src/` must resolve to a registry key, otherwise CI fails before
+ * runtime ever sees the gap.
+ *
  * @author      CraftPulse
  * @package     PasswordPolicy
  * @since       5.2.0
@@ -83,21 +117,35 @@ class AuditLogService extends Component
     public const EVENT_AUDIT_CHAIN_ROTATED = 'auditChainRotated';
 
     /**
-     * Allowed keys in the details JSON column. Any key not on this list
-     * is silently stripped before database insertion.
+     * Per-event allowlist of detail keys. Every event class fired
+     * through `logEvent()` MUST have an entry here — see the class
+     * docblock's "Per-event PII allowlist" section for the fail-closed
+     * contract.
      *
-     * @var string[]
+     * The auditor reading this constant gets the complete privacy
+     * surface in one place: for each event class, exactly which keys
+     * the writer is permitted to persist. Anything not listed is
+     * stripped at write time. An event class not listed at all drops
+     * the row and warns.
+     *
+     * Edition: every event captures on every edition (`project_audit_
+     * capture_principle.md`). This registry is edition-independent.
+     *
+     * Public so the inspection surfaces (CLI `password-policy/audit/
+     * schema` and CP `AuditSchemaUtility`) can render it as auditor-
+     * facing static evidence — the contract lives in code, not in
+     * vendor documentation that can drift.
+     *
+     * @var array<string, string[]>
      */
-    private const ALLOWED_DETAIL_KEYS = [
-        'deviceLabel',
-        'groupId',
-        'groupName',
-        'reason',
-        'violationType',
-        'source',
-        'outcome',
-        'method',
-        'failMode',
+    public const ALLOWED_DETAILS_BY_EVENT = [
+        'account_locked' => ['source'],
+        'account_unlocked' => ['source'],
+        'breach_detected' => ['source'],
+        'hibp_breach_detected' => ['source', 'failMode'],
+        'hibp_check_failed' => ['source', 'failMode'],
+        'password_changed' => ['method', 'reason', 'source'],
+        'password_reset_forced' => ['reason', 'source'],
     ];
 
     /**
@@ -249,6 +297,27 @@ class AuditLogService extends Component
         ?string $source = null,
         ?int $changedByUserId = null,
     ): void {
+        // Fail-closed: an event class without a registry entry is a
+        // programming error (typo in the call site, or new event class
+        // shipped without registration). The warning fires BEFORE the
+        // `enableAuditLog` feature-flag check intentionally — the
+        // diagnostic must reach a maintainer regardless of whether the
+        // feature is currently on. The dropped row is fine: without a
+        // registry entry there's no canonical allowlist, so there's no
+        // coherent shape to persist.
+        if (!isset(self::ALLOWED_DETAILS_BY_EVENT[$event])) {
+            Craft::warning(
+                Craft::t(
+                    'password-policy',
+                    "Audit event '{event}' fired without a registry entry — row dropped (fail-closed). Add the event class to AuditLogService::ALLOWED_DETAILS_BY_EVENT before firing.",
+                    ['event' => $event],
+                ),
+                'password-policy',
+            );
+
+            return;
+        }
+
         $settings = PasswordPolicy::$plugin->getSettings();
 
         if (!$settings->enableAuditLog) {
@@ -256,12 +325,14 @@ class AuditLogService extends Component
         }
 
         try {
-            // Runtime-enforced detail allowlist
+            // Per-event allowlist — keys not declared for this event
+            // class are stripped before insertion.
+            $allowedKeys = self::ALLOWED_DETAILS_BY_EVENT[$event];
             $filteredDetails = null;
             if ($details !== null) {
                 $filteredDetails = array_intersect_key(
                     $details,
-                    array_flip(self::ALLOWED_DETAIL_KEYS),
+                    array_flip($allowedKeys),
                 );
 
                 if (empty($filteredDetails)) {

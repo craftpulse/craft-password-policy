@@ -78,9 +78,9 @@ it('fires AuditChainRotatedEvent when the prune deletes rows but leaves a head',
 
     // Seed three chained rows. We'll back-date the first two to make the
     // prune drop them, leaving row 3 as the new chain head.
-    $service->logEvent(userId: null, event: 'old_one');
-    $service->logEvent(userId: null, event: 'old_two');
-    $service->logEvent(userId: null, event: 'recent_three');
+    $service->logEvent(userId: null, event: 'password_changed');
+    $service->logEvent(userId: null, event: 'account_locked');
+    $service->logEvent(userId: null, event: 'account_unlocked');
 
     $rows = (new \craft\db\Query())
         ->from('{{%passwordpolicy_audit_log}}')
@@ -120,7 +120,7 @@ it('fires AuditChainRotatedEvent when the prune deletes rows but leaves a head',
 it('does not fire when the prune deletes zero rows', function() {
     $service = $this->plugin->getAuditLog();
 
-    $service->logEvent(userId: null, event: 'recent_only');
+    $service->logEvent(userId: null, event: 'password_changed');
 
     $captured = null;
     Event::on(
@@ -144,8 +144,8 @@ it('does not fire when the prune deletes zero rows', function() {
 it('does not fire when the prune emptied the table', function() {
     $service = $this->plugin->getAuditLog();
 
-    $service->logEvent(userId: null, event: 'old_only_one');
-    $service->logEvent(userId: null, event: 'old_only_two');
+    $service->logEvent(userId: null, event: 'password_changed');
+    $service->logEvent(userId: null, event: 'account_locked');
 
     $rows = (new \craft\db\Query())
         ->from('{{%passwordpolicy_audit_log}}')
