@@ -1,0 +1,212 @@
+{# SIEM forwarder edit — content template for asCpScreen() #}
+{# @var forwarder \craftpulse\passwordpolicy\models\SiemForwarderModel #}
+{# @var isNew bool #}
+{# @var readOnly bool #}
+
+{% import '_includes/forms.twig' as forms %}
+
+{% if not isNew %}
+    {{ hiddenInput('forwarderId', forwarder.id) }}
+{% endif %}
+
+{# =========================================================================
+   General — name, host, port, protocol, enabled
+   ========================================================================= #}
+
+<div id="general">
+    {{ forms.textField({
+        first: true,
+        label: 'Name'|t('app'),
+        instructions: 'Optional display label. Defaults to "host:port" when empty.'|t('password-policy'),
+        id: 'name',
+        name: 'name',
+        value: forwarder.name,
+        autofocus: true,
+        errors: forwarder.getErrors('name'),
+        disabled: readOnly,
+    }) }}
+
+    {{ forms.textField({
+        label: 'Host'|t('password-policy'),
+        instructions: 'The destination hostname or IP for the SIEM endpoint.'|t('password-policy'),
+        id: 'host',
+        name: 'host',
+        value: forwarder.host,
+        required: true,
+        errors: forwarder.getErrors('host'),
+        disabled: readOnly,
+    }) }}
+
+    {{ forms.textField({
+        label: 'Port'|t('password-policy'),
+        instructions: 'The destination port. Defaults to {default} (RFC 5425 / IANA syslog-over-TLS).'|t('password-policy', { default: 6514 }),
+        id: 'port',
+        name: 'port',
+        type: 'number',
+        value: forwarder.port,
+        inputAttributes: { style: 'width: 8rem', min: 1, max: 65535 },
+        required: true,
+        errors: forwarder.getErrors('port'),
+        disabled: readOnly,
+    }) }}
+
+    {{ forms.selectField({
+        label: 'Protocol'|t('password-policy'),
+        instructions: 'Only syslog-over-TLS is supported in this release. Webhook delivery ships separately.'|t('password-policy'),
+        id: 'protocol',
+        name: 'protocol',
+        options: [
+            { label: 'syslog-TLS'|t('password-policy'), value: 'syslog-tls' },
+        ],
+        value: forwarder.protocol,
+        errors: forwarder.getErrors('protocol'),
+        disabled: readOnly,
+    }) }}
+
+    {{ forms.lightswitchField({
+        label: 'Enabled'|t('app'),
+        instructions: 'Disabled forwarders are skipped by the queue job entirely. Distinct from circuit-open, which is automatic and self-recovering.'|t('password-policy'),
+        id: 'enabled',
+        name: 'enabled',
+        on: forwarder.enabled,
+        disabled: readOnly,
+    }) }}
+</div>
+
+<hr>
+
+{# =========================================================================
+   TLS — verify + CA bundle
+   ========================================================================= #}
+
+<div id="tls">
+    <h2>{{ 'TLS'|t('password-policy') }}</h2>
+
+    {{ forms.lightswitchField({
+        label: 'Verify TLS certificate'|t('password-policy'),
+        instructions: 'Require the SIEM endpoint’s certificate chain to verify against the system trust store (or the bundled CA below). Default on. Turn off only when terminating against a self-signed endpoint that you trust by network path.'|t('password-policy'),
+        id: 'tlsCertVerify',
+        name: 'tlsCertVerify',
+        on: forwarder.tlsCertVerify,
+        disabled: readOnly,
+    }) }}
+
+    {{ forms.autosuggestField({
+        label: 'Custom CA bundle path'|t('password-policy'),
+        instructions: 'Path to a PEM-format CA bundle for verifying the endpoint. Supports env variables (e.g. <code>$PP_SIEM_CA_BUNDLE</code>). Leave empty to use the system trust store.'|t('password-policy'),
+        id: 'tlsCaBundlePath',
+        name: 'tlsCaBundlePath',
+        value: forwarder.tlsCaBundlePath,
+        suggestEnvVars: true,
+        errors: forwarder.getErrors('tlsCaBundlePath'),
+        disabled: readOnly,
+    }) }}
+</div>
+
+<hr>
+
+{# =========================================================================
+   Eligibility — per-forwarder event-class allowlist override
+   ========================================================================= #}
+
+<div id="eligibility">
+    <h2>{{ 'Eligibility'|t('password-policy') }}</h2>
+
+    {% set eventClassesValue = forwarder.eventClasses ? forwarder.eventClasses|join(', ') : '' %}
+    {{ forms.textField({
+        label: 'Event class allowlist'|t('password-policy'),
+        instructions: 'Comma-separated list of audit-log streams this forwarder receives. Leave empty to use the global setting (currently: <code>audit_log</code>). The only supported stream in this release is <code>audit_log</code>; <code>notification_log</code> is reserved for a future release.'|t('password-policy'),
+        id: 'eventClasses',
+        name: 'eventClasses',
+        value: eventClassesValue,
+        class: 'code',
+        autocorrect: false,
+        autocapitalize: false,
+        disabled: readOnly,
+    }) }}
+</div>
+
+{# =========================================================================
+   Circuit status — visible for non-new forwarders only
+   ========================================================================= #}
+
+{% if not isNew %}
+    <hr>
+    <div id="circuit">
+        <h2>{{ 'Circuit breaker'|t('password-policy') }}</h2>
+
+        <div class="readable">
+            {% if forwarder.circuitOpenAt is null %}
+                <blockquote class="note tip">
+                    <p>
+                        <strong>{{ 'Circuit closed.'|t('password-policy') }}</strong>
+                        {{ 'No consecutive failures recorded — forwarder is healthy.'|t('password-policy') }}
+                    </p>
+                </blockquote>
+            {% else %}
+                <blockquote class="note warning">
+                    <p>
+                        <strong>{{ 'Circuit open.'|t('password-policy') }}</strong>
+                        {{ "{n, plural, =1{One consecutive failure} other{# consecutive failures}} since {since}."|t('password-policy', {
+                            n: forwarder.consecutiveFailures,
+                            since: forwarder.circuitOpenAt|datetime,
+                        }) }}
+                        {{ "Forwarder will half-open after the configured cooldown elapses; the next forward attempt is the probe."|t('password-policy') }}
+                    </p>
+                </blockquote>
+            {% endif %}
+
+            {% if not readOnly %}
+                <div class="flex">
+                    <form method="post" accept-charset="UTF-8">
+                        {{ csrfInput() }}
+                        {{ redirectInput("password-policy/siem/#{forwarder.id}") }}
+                        <input type="hidden" name="action" value="password-policy/siem-forwarder/reset-circuit">
+                        <input type="hidden" name="forwarderId" value="{{ forwarder.id }}">
+                        <button type="submit" class="btn">{{ 'Reset circuit'|t('password-policy') }}</button>
+                    </form>
+
+                    <button type="button" class="btn submit" id="pp-siem-send-test">
+                        {{ 'Send test event'|t('password-policy') }}
+                    </button>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if not readOnly %}
+        {% js %}
+        (function() {
+            var btn = document.getElementById('pp-siem-send-test');
+            if (!btn) return;
+
+            btn.addEventListener('click', function() {
+                btn.disabled = true;
+
+                var formData = new FormData();
+                formData.append(Craft.csrfTokenName, Craft.csrfTokenValue);
+                formData.append('forwarderId', {{ forwarder.id|json_encode|raw }});
+
+                fetch(Craft.getActionUrl('password-policy/siem-forwarder/send-test'), {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData,
+                }).then(function(r) { return r.json().then(function(j) { return { ok: r.ok, json: j }; }); })
+                  .then(function(payload) {
+                      var msg = (payload.json && (payload.json.message || payload.json.error))
+                          || {{ "Test event response received."|t('password-policy')|json_encode|raw }};
+                      if (payload.ok && payload.json && payload.json.message) {
+                          Craft.cp.displayNotice(payload.json.message);
+                      } else {
+                          Craft.cp.displayError(msg);
+                      }
+                  })
+                  .catch(function() {
+                      Craft.cp.displayError({{ "Couldn’t send the test event."|t('password-policy')|json_encode|raw }});
+                  })
+                  .finally(function() { btn.disabled = false; });
+            });
+        })();
+        {% endjs %}
+    {% endif %}
+{% endif %}

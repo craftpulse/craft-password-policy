@@ -1,0 +1,106 @@
+{# SIEM forwarders — Enterprise CP index. Lists every registered
+   forwarder with circuit-breaker status pills + per-row send-test +
+   reset-circuit affordances. Edition-gated upstream — by the time the
+   route resolves the controller has already enforced Enterprise. #}
+{# @var forwarders \craftpulse\passwordpolicy\models\SiemForwarderModel[] #}
+{# @var readOnly bool #}
+
+{% requirePermission "pp:siem-manage" %}
+
+{% extends "password-policy/_layouts/password-policy-cp.twig" %}
+{% import '_includes/forms.twig' as forms %}
+
+{% set selectedSubnavItem = 'siem-forwarders' %}
+{% set title = 'SIEM forwarders'|t('password-policy') %}
+{% set pluginName = 'Password Policy' %}
+{% set docTitle = "#{pluginName} - #{title}" %}
+{% set crumbs = [
+    { label: pluginName, url: cpUrl('password-policy') },
+] %}
+
+{% block actionButton %}
+    {% if not readOnly %}
+        <a href="{{ cpUrl('password-policy/siem/new') }}" class="btn submit add icon">
+            {{ 'New forwarder'|t('password-policy') }}
+        </a>
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    {% if readOnly %}
+        {{ readOnlyNotice() }}
+    {% endif %}
+
+    <div class="readable">
+        <p>
+            {{ "Audit-log rows are forwarded to every active SIEM endpoint over syslog-TLS in RFC 5424 framing. Forwarder failures never block the originating audit write — the queue retries unforwarded rows on the next pass."|t('password-policy') }}
+        </p>
+    </div>
+
+    {% if forwarders|length == 0 %}
+        <blockquote class="note tip">
+            <p>
+                <strong>{{ 'No forwarders yet.'|t('password-policy') }}</strong>
+                {{ 'Click "New forwarder" to register a syslog-over-TLS endpoint.'|t('password-policy') }}
+            </p>
+        </blockquote>
+    {% else %}
+        <div class="tableview">
+            <table class="data fullwidth collapsible">
+                <thead>
+                    <tr>
+                        <th scope="col">{{ 'Name'|t('app') }}</th>
+                        <th scope="col">{{ 'Endpoint'|t('password-policy') }}</th>
+                        <th scope="col">{{ 'Protocol'|t('password-policy') }}</th>
+                        <th scope="col">{{ 'Status'|t('app') }}</th>
+                        <th scope="col">{{ 'Circuit'|t('password-policy') }}</th>
+                        <th scope="col" class="thin"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for forwarder in forwarders %}
+                        {% set displayName = forwarder.name ?: "#{forwarder.host}:#{forwarder.port}" %}
+                        {% set editUrl = cpUrl("password-policy/siem/#{forwarder.id}") %}
+
+                        {# Circuit pill — green=clean, yellow=half-open
+                           (past cooldown, awaiting probe), red=open. #}
+                        {% if forwarder.circuitOpenAt is null %}
+                            {% set circuitLabel = 'Closed'|t('password-policy') %}
+                            {% set circuitColor = 'green' %}
+                        {% else %}
+                            {% set circuitLabel = "Open ({n} {n, plural, =1{failure} other{failures}})"|t('password-policy', { n: forwarder.consecutiveFailures }) %}
+                            {% set circuitColor = 'red' %}
+                        {% endif %}
+
+                        <tr>
+                            <td>
+                                <a href="{{ editUrl }}">{{ displayName }}</a>
+                            </td>
+                            <td class="code">{{ forwarder.host }}:{{ forwarder.port }}</td>
+                            <td>{{ forwarder.protocol }}</td>
+                            <td>
+                                {% set enabledColor = forwarder.enabled ? 'green' : 'grey' %}
+                                {% set enabledLabel = forwarder.enabled ? 'Enabled'|t('app') : 'Disabled'|t('app') %}
+                                <span class="status-label {{ enabledColor }}">
+                                    <span class="status {{ enabledColor }}"></span>
+                                    <span class="status-label-text">{{ enabledLabel }}</span>
+                                </span>
+                            </td>
+                            <td>
+                                <span class="status-label {{ circuitColor }}">
+                                    <span class="status {{ circuitColor }}"></span>
+                                    <span class="status-label-text">{{ circuitLabel }}</span>
+                                </span>
+                            </td>
+                            <td class="thin">
+                                <a href="{{ editUrl }}" class="btn small" data-icon="edit">
+                                    {{ 'Edit'|t('app') }}
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+{% endblock %}
