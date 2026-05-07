@@ -135,12 +135,24 @@ class Install extends Migration
             'details' => $this->json(),
             'ipHash' => $this->string(),
             'userIdentifier' => $this->string(),
+            // Hash-chain columns. No DB-level default on fresh installs —
+            // the chain-aware `AuditLogService::logEvent()` populates both
+            // on insert from the genesis row onwards. The default `'0'`
+            // exists only on the upgrade migration
+            // (m260507_081201_AddRowHashAndPreviousHashToAuditLog) where
+            // legacy rows need a placeholder before the recompute pass.
+            'rowHash' => $this->char(64)->notNull(),
+            'previousHash' => $this->char(64)->notNull(),
+            // Consumed by the G8 SIEM forwarder. NULL = unforwarded.
+            'forwardedAt' => $this->dateTime()->null(),
+            'forwardAttempts' => $this->integer()->notNull()->defaultValue(0),
             'dateCreated' => $this->dateTime()->notNull(),
             'uid' => $this->uid(),
         ]);
 
         $this->createIndex(null, '{{%passwordpolicy_audit_log}}', ['userId'], false);
         $this->createIndex(null, '{{%passwordpolicy_audit_log}}', ['event', 'dateCreated'], false);
+        $this->createIndex(null, '{{%passwordpolicy_audit_log}}', ['forwardedAt'], false);
         $this->addForeignKey(null, '{{%passwordpolicy_audit_log}}', ['userId'], Table::USERS, ['id'], 'SET NULL', null);
         $this->addForeignKey(null, '{{%passwordpolicy_audit_log}}', ['changedByUserId'], Table::USERS, ['id'], 'SET NULL', null);
     }

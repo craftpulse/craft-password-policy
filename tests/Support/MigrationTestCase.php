@@ -156,6 +156,9 @@ abstract class MigrationTestCase extends TestCase
             'm260430_170841_AddNotificationTemplatesTable',
             'm260501_140131_AddBreachDetectedNotificationDefaults',
             'm260502_214932_AddAuditShapeToPasswordHistory',
+            'm260506_174529_AddNotificationLogActivityColumns',
+            'm260507_081201_AddRowHashAndPreviousHashToAuditLog',
+            'm260507_081852_RecomputeAuditLogChain',
         ];
 
         $existingHistory = $migrator->getMigrationHistory();

@@ -179,6 +179,48 @@ Event::on(
 
 ---
 
+## `AuditChainRotatedEvent`
+
+**FQ class:** `craftpulse\passwordpolicy\events\AuditChainRotatedEvent`
+**Edition:** Enterprise
+**Triggered by:** `AuditLogService::EVENT_AUDIT_CHAIN_ROTATED`
+**When:** After `AuditLogService::purgeOldEntries()` deletes one or more audit-log rows AND at least one row remains. The plugin's hash-chained audit log walks SHA-256 forward — when the retention prune drops rows from the head, the new first surviving row's `previousHash` legitimately references a now-deleted row, and consumers (verifier, SIEM forwarder, off-site archive) need a hook to record the rotation boundary. Skipped entirely when the prune deleted zero rows OR emptied the table.
+
+### Payload
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `$startId` | `int` | The `id` of the new first surviving row. Verifiers walking the chain after this rotation must begin at this id. |
+| `$startRowHash` | `string` | The `rowHash` (hex SHA-256) of the new first surviving row. Pair with `$startId` for the verifier-facing anchor. |
+| `$endId` | `int` | The highest `id` deleted in this prune. Pair with `$endRowHash` to anchor an off-site archive of the rows that just left the database. |
+| `$endRowHash` | `string` | The `rowHash` of the LAST surviving row at prune time — the chain head that the new first row's `previousHash` references when both still exist. When the prune left exactly one row, `$endRowHash === $startRowHash`. |
+| `$rotatedAt` | `\DateTime` | Server-UTC timestamp of the rotation. |
+
+### Example listener
+
+```php
+use yii\base\Event;
+use craftpulse\passwordpolicy\events\AuditChainRotatedEvent;
+use craftpulse\passwordpolicy\services\AuditLogService;
+
+Event::on(
+    AuditLogService::class,
+    AuditLogService::EVENT_AUDIT_CHAIN_ROTATED,
+    function(AuditChainRotatedEvent $event) {
+        // Pin the rotation in your compliance dashboard. Auditors
+        // walking the chain after this point start at $event->startId
+        // with $event->startRowHash as the verified anchor.
+        Craft::info(
+            "Audit chain rotated: deleted up to id {$event->endId}, "
+            . "new head id {$event->startId} (rowHash {$event->startRowHash}).",
+            'compliance-mirror',
+        );
+    },
+);
+```
+
+---
+
 ## Subscribing to events
 
 All examples above use Yii's standard `Event::on(class, name, callback)` pattern. Listeners are typically registered in your module's `init()` method:
