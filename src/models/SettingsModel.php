@@ -408,6 +408,23 @@ class SettingsModel extends Model
      */
     public int $webhookSecretGracePeriodHours = 24;
 
+    /**
+     * @var string|null filesystem handle the audit-log export job
+     *     writes through (G10). `null` (the default) falls back to
+     *     local `@runtime/password-policy/exports/` storage. A string
+     *     handle resolves through `Craft::$app->getFs()->getFilesystemByHandle()`
+     *     so admins can target an S3 bucket or any FsInterface
+     *     adapter for defense-in-depth on huge dumps.
+     *
+     * 5.2.0 verifies the local-fallback path end-to-end. Cloud
+     * adapters work in theory because the contract goes through the
+     * FsInterface, but smoke-testing every adapter is out of scope
+     * — operators verify their own adapter on first use.
+     *
+     * @since 5.2.0
+     */
+    public ?string $auditExportFilesystem = null;
+
     // Public Methods
     // =========================================================================
 

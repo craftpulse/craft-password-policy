@@ -1,0 +1,75 @@
+{# ============================================================================
+ # Audit Export utility — Enterprise operator surface for triggering
+ # audit-log exports.
+ #
+ # Submits to `password-policy/audit-export/export`. The controller
+ # short-circuits to a synchronous stream when the date range is small
+ # AND the row count is small (< 30 days AND < 1000 rows); otherwise
+ # enqueues `AuditExportJob` and emails the requesting admin a one-time-
+ # use download link.
+ #
+ # Edition gate is enforced upstream — the utility doesn't register on
+ # Lite / Pro, and the controller's `beforeAction()` rejects bookmarked
+ # URLs after a downgrade.
+ #
+ # @var auditExportFilesystem string|null
+ #
+ # @author    CraftPulse
+ # @since     5.2.0
+ # =========================================================================== #}
+
+{% requirePermission "pp:audit-export" %}
+
+{% import '_includes/forms.twig' as forms %}
+
+<h1>{{ 'Audit log export'|t('password-policy') }}</h1>
+
+<blockquote class="note">
+    <p>
+        {{ 'Exports are filesystem-backed and served via a one-time-use download link. Small ranges stream directly; larger ranges queue and notify the requesting admin via email when the file is ready.'|t('password-policy') }}
+    </p>
+    {% if auditExportFilesystem %}
+        <p>
+            {{ 'Exports route through the {handle} filesystem.'|t('password-policy', { handle: '<code>' ~ auditExportFilesystem ~ '</code>' })|raw }}
+        </p>
+    {% else %}
+        <p>
+            {{ 'Exports write to the local <code>@runtime/password-policy/exports/</code> directory. Set <code>auditExportFilesystem</code> in plugin settings to route through a Craft filesystem (e.g. an S3 bucket) for defense-in-depth on huge dumps.'|t('password-policy')|raw }}
+        </p>
+    {% endif %}
+</blockquote>
+
+<form method="post" action="" accept-charset="UTF-8">
+    {{ csrfInput() }}
+    {{ actionInput('password-policy/audit-export/export') }}
+    {{ redirectInput('utilities/pp-audit-export') }}
+
+    {{ forms.textField({
+        label: 'Days to include'|t('password-policy'),
+        instructions: 'Number of days back from now to include in the export. Default 7 days.'|t('password-policy'),
+        id: 'days',
+        name: 'days',
+        type: 'number',
+        min: 1,
+        value: 7,
+        required: true,
+    }) }}
+
+    {{ forms.radioGroupField({
+        label: 'Format'|t('password-policy'),
+        instructions: 'CSV is spreadsheet-friendly. JSONL (one canonical-JSON line per row) is the auditor-evidence format — the bytes match the chain-canonical bytes the writer hashed.'|t('password-policy'),
+        id: 'format',
+        name: 'format',
+        options: [
+            { label: 'CSV'|t('password-policy'), value: 'csv' },
+            { label: 'JSONL (newline-delimited JSON)'|t('password-policy'), value: 'jsonl' },
+        ],
+        value: 'csv',
+    }) }}
+
+    <div class="buttons">
+        <button type="submit" class="btn submit">
+            {{ 'Export'|t('password-policy') }}
+        </button>
+    </div>
+</form>
