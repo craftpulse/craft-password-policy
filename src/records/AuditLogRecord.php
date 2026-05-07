@@ -24,6 +24,10 @@ use craft\db\ActiveRecord;
  * @property array|null $details
  * @property string|null $ipHash
  * @property string|null $userIdentifier
+ * @property string $rowHash
+ * @property string $previousHash
+ * @property \DateTime|null $forwardedAt
+ * @property int $forwardAttempts
  * @property \DateTime $dateCreated
  * @property string $uid
  *
