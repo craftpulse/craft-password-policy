@@ -4,8 +4,11 @@
 {# @var assignedGroupIds int[] #}
 {# @var globalSettings \craftpulse\passwordpolicy\models\SettingsModel #}
 {# @var isPro bool #}
+{# @var isEnterprise bool #}
 {# @var isNew bool #}
 {# @var readOnly bool #}
+{# @var showCustomBlocklist bool #}
+{# @var customBlocklistRows array #}
 
 {% import '_includes/forms.twig' as forms %}
 {% from 'password-policy/_policies/_macros' import overrideWarning, inheritsGlobal, expiryDisplay %}
@@ -267,6 +270,49 @@
         errors: policy.getErrors('expiryAmount')|merge(policy.getErrors('expiryPeriod')),
     }, expiryInput) }}
 </div>
+
+{# =========================================================================
+   Custom blocklist — Enterprise-only per-policy custom words (G6)
+   ========================================================================= #}
+
+{% if showCustomBlocklist %}
+    <div id="customBlocklist" class="hidden">
+        <blockquote class="note tip">
+            <p>
+                {{ "Words added here are blocked only for users this policy applies to. For plugin-wide custom words, see the {link} subnav."|t('password-policy', {
+                    link: tag('a', {
+                        href: url('password-policy/blocklist'),
+                        text: 'Blocklist'|t('password-policy'),
+                    }),
+                })|raw }}
+            </p>
+        </blockquote>
+
+        {% set tableRows = {} %}
+        {% for w in customBlocklistRows %}
+            {% set tableRows = tableRows|merge({ (w.id): { word: w.word } }) %}
+        {% endfor %}
+
+        {{ forms.editableTableField({
+            label: 'Custom words'|t('password-policy'),
+            instructions: 'Block these words in addition to the bundled common-password list and the plugin-wide custom list, scoped to this policy. Stored lowercase; case-insensitive at validation time.'|t('password-policy'),
+            name: 'customBlocklist',
+            cols: {
+                word: {
+                    heading: 'Word'|t('password-policy'),
+                    type: 'singleline',
+                    code: true,
+                },
+            },
+            rows: tableRows,
+            addRowLabel: 'Add a word'|t('password-policy'),
+            allowAdd: not readOnly,
+            allowDelete: not readOnly,
+            allowReorder: false,
+            static: readOnly,
+        }) }}
+    </div>
+{% endif %}
 
 {# =========================================================================
    CSS — rule table styling (matches webhook plugin look)

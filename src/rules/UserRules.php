@@ -135,13 +135,25 @@ class UserRules
             ];
         }
 
-        // Common password blocklist (Pro+)
+        // Common password blocklist (Pro+).
+        //
+        // Enterprise resolves the user's applicable policy IDs and passes
+        // them to the validator so per-policy custom blocklist entries
+        // (G6) can filter into the merged set. Pro/Lite leave `policyIds`
+        // null — the validator falls back to global-only matching, which
+        // is the pre-G6 behavior.
         if ($isPro && $settings->checkCommonPasswords) {
-            $rules[] = [
+            $config = [
                 ['password', 'newPassword'],
                 CommonPasswordValidator::class,
                 'skipOnError' => false,
             ];
+
+            if ($plugin->getIsEnterprise() && $user !== null) {
+                $config['policyIds'] = self::_resolveUserPolicyIds($user);
+            }
+
+            $rules[] = $config;
         }
 
         // HIBP check (after content rules — external API call, slower)
@@ -163,5 +175,45 @@ class UserRules
         }
 
         return $rules;
+    }
+
+    // Private Methods
+    // =========================================================================
+
+    /**
+     * Resolves the policy IDs that apply to the given user, ordered by
+     * `sortOrder ASC`. Empty when per-group policies are disabled or the
+     * user has no group-policy match — the validator then sees only
+     * global blocklist rows (`policyId IS NULL`), preserving the pre-G6
+     * behavior on Enterprise installs that haven't authored any per-
+     * policy custom entries yet.
+     *
+     * @param User $user the user being validated
+     * @return int[] the policy IDs the validator should scope to
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private static function _resolveUserPolicyIds(User $user): array
+    {
+        $plugin = PasswordPolicy::$plugin;
+
+        if (!$plugin->getSettings()->enablePerGroupPolicies) {
+            return [];
+        }
+
+        $groups = $user->getGroups();
+
+        if (empty($groups)) {
+            return [];
+        }
+
+        $groupIds = array_map(fn($g) => (int)$g->id, $groups);
+        $policies = $plugin->getPolicies()->getPoliciesForGroupIds($groupIds);
+
+        return array_values(array_filter(array_map(
+            fn($policy) => $policy->id !== null ? (int)$policy->id : null,
+            $policies,
+        )));
     }
 }

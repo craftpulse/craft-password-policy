@@ -11,14 +11,25 @@
 namespace craftpulse\passwordpolicy\validators;
 
 use Craft;
-use craft\db\Query;
+use craftpulse\passwordpolicy\PasswordPolicy;
 use yii\validators\Validator;
 
 /**
  * Class CommonPasswordValidator
  *
  * Validates passwords against the blocklist table (common + custom entries).
- * Uses a cached hash map for O(1) runtime lookups.
+ *
+ * Reads the cached full-table projection from `BlocklistService` once per
+ * request, then filters the result against `$policyIds` so each call only
+ * sees the rows in scope for the user being validated:
+ *
+ *  - `policyIds = null` (default): global rows only (`policyId IS NULL`).
+ *    Used for Pro/Lite installs and for any caller that doesn't resolve
+ *    a target user (e.g. the front-end registration form).
+ *  - `policyIds = [int, ...]`: global rows + the per-policy rows tagged
+ *    with any of those IDs. Used by Enterprise installs, populated by
+ *    `UserRules::defineRules()` and `ValidationController::actionValidate()`
+ *    via `PolicyResolverService`.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -26,22 +37,26 @@ use yii\validators\Validator;
  */
 class CommonPasswordValidator extends Validator
 {
-    // Const Properties
+    // Public Properties
     // =========================================================================
 
     /**
-     * Cache key for the blocklist word→source map.
+     * Policy IDs the validator should consider per-policy blocklist rows for.
      *
-     * @var string
-     */
-    private const CACHE_KEY = 'passwordpolicy_blocklist_word_sources';
-
-    /**
-     * Cache duration in seconds (1 hour).
+     * `null` is the legacy / Pro / Lite default — only global rows
+     * (`policyId IS NULL`) match. An array (potentially empty) opts into
+     * per-policy filtering: an empty array still matches global rows but
+     * never any per-policy rows. Populated by `UserRules` and the AJAX
+     * validation endpoint after resolving the target user via
+     * `PolicyResolverService`. Yii populates the property from validator
+     * config (`['policyIds' => $ids]`) before `init()`.
      *
-     * @var int
+     * @var int[]|null
+     *
+     * @author CraftPulse
+     * @since 5.2.0
      */
-    private const CACHE_DURATION = 3600;
+    public ?array $policyIds = null;
 
     // Public Methods
     // =========================================================================
@@ -55,15 +70,21 @@ class CommonPasswordValidator extends Validator
     public function validateValue($value): ?array
     {
         $word = strtolower(trim($value));
-        $blocklist = $this->_getBlocklist();
+        $blocklist = $this->_getScopedBlocklist();
 
         if (!isset($blocklist[$word])) {
             return null;
         }
 
         $message = $blocklist[$word] === 'custom'
-            ? Craft::t('password-policy', 'This password is blocked. Please choose a different one.')
-            : Craft::t('password-policy', 'This password is too common. Please choose a more unique password.');
+            ? Craft::t(
+                'password-policy',
+                'This password is blocked. Please choose a different one.',
+            )
+            : Craft::t(
+                'password-policy',
+                'This password is too common. Please choose a more unique password.',
+            );
 
         return [$message, []];
     }
@@ -72,35 +93,23 @@ class CommonPasswordValidator extends Validator
     // =========================================================================
 
     /**
-     * Returns the cached blocklist as a hash map of word → source for O(1)
-     * lookups with source-aware error messages.
+     * Returns the blocklist projection scoped to `$this->policyIds`.
+     *
+     * Delegates to `BlocklistService::getWordsForPolicies()` (single
+     * cached read of the full table, in-memory filter on policyId)
+     * instead of holding its own cache key — the per-validator
+     * filter shape would fragment cache space across N-policy
+     * combinations.
      *
      * @return array<string, string> word → source ('common' | 'custom')
      *
      * @author CraftPulse
      * @since 5.2.0
      */
-    private function _getBlocklist(): array
+    private function _getScopedBlocklist(): array
     {
-        $cache = Craft::$app->getCache();
-        $blocklist = $cache->get(self::CACHE_KEY);
-
-        if ($blocklist !== false) {
-            return $blocklist;
-        }
-
-        $rows = (new Query())
-            ->select(['word', 'source'])
-            ->from('{{%passwordpolicy_blocklist}}')
-            ->all();
-
-        $blocklist = [];
-        foreach ($rows as $row) {
-            $blocklist[$row['word']] = $row['source'];
-        }
-
-        $cache->set(self::CACHE_KEY, $blocklist, self::CACHE_DURATION);
-
-        return $blocklist;
+        return PasswordPolicy::$plugin->getBlocklist()->getWordsForPolicies(
+            $this->policyIds ?? [],
+        );
     }
 }

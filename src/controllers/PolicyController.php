@@ -143,6 +143,39 @@ class PolicyController extends Controller
         $allGroups = Craft::$app->getUserGroups()->getAllGroups();
         $assignedGroupIds = $policy->getGroupIds();
         $globalSettings = $plugin->getSettings();
+        $isEnterprise = $plugin->getIsEnterprise();
+
+        // The per-policy custom blocklist tab (G6) only renders on
+        // Enterprise installs AND only after the policy exists — the
+        // EditableTable rows key off `policy.id` and a brand-new policy
+        // has no id yet. New-policy admins save first, then re-open to
+        // add per-policy words.
+        $showCustomBlocklist = $isEnterprise && !$isNew;
+        $customBlocklistRows = $showCustomBlocklist
+            ? $plugin->getBlocklist()->getCustomWordsForPolicy((int)$policy->id)
+            : [];
+
+        $tabs = [
+            'general' => [
+                'label' => Craft::t('password-policy', 'General'),
+                'url' => '#general',
+            ],
+            'rules' => [
+                'label' => Craft::t('password-policy', 'Rules'),
+                'url' => '#rules',
+            ],
+            'lifecycle' => [
+                'label' => Craft::t('password-policy', 'Lifecycle'),
+                'url' => '#lifecycle',
+            ],
+        ];
+
+        if ($showCustomBlocklist) {
+            $tabs['customBlocklist'] = [
+                'label' => Craft::t('password-policy', 'Custom blocklist'),
+                'url' => '#customBlocklist',
+            ];
+        }
 
         $response = $this->asCpScreen()
             ->title($isNew ? Craft::t('password-policy', 'New Policy') : $policy->name)
@@ -155,28 +188,18 @@ class PolicyController extends Controller
                 Craft::t('password-policy', 'Policies'),
                 'password-policy/policies',
             )
-            ->tabs([
-                'general' => [
-                    'label' => Craft::t('password-policy', 'General'),
-                    'url' => '#general',
-                ],
-                'rules' => [
-                    'label' => Craft::t('password-policy', 'Rules'),
-                    'url' => '#rules',
-                ],
-                'lifecycle' => [
-                    'label' => Craft::t('password-policy', 'Lifecycle'),
-                    'url' => '#lifecycle',
-                ],
-            ])
+            ->tabs($tabs)
             ->contentTemplate('password-policy/_policies/_edit', [
                 'policy' => $policy,
                 'allGroups' => $allGroups,
                 'assignedGroupIds' => $assignedGroupIds,
                 'globalSettings' => $globalSettings,
                 'isPro' => $plugin->getIsPro(),
+                'isEnterprise' => $isEnterprise,
                 'isNew' => $isNew,
                 'readOnly' => $this->_readOnly,
+                'showCustomBlocklist' => $showCustomBlocklist,
+                'customBlocklistRows' => $customBlocklistRows,
             ]);
 
         if (!$this->_readOnly) {
@@ -234,6 +257,17 @@ class PolicyController extends Controller
 
         $plugin = PasswordPolicy::$plugin;
 
+        // Edition strip (G6): the per-policy custom blocklist editor is
+        // Enterprise-only and the tab doesn't render on Pro/Lite. The
+        // strip below is the second line — even crafted POSTs carrying
+        // `customBlocklist[...]` payloads don't survive on a sub-edition
+        // install. This must stay BEFORE any read of the payload, no
+        // exceptions.
+        $rawCustomBlocklist = null;
+        if ($plugin->getIsEnterprise()) {
+            $rawCustomBlocklist = (array)$request->getBodyParam('customBlocklist', []);
+        }
+
         if ($policyId) {
             $policy = $plugin->getPolicies()->getPolicyById((int)$policyId);
             if ($policy === null) {
@@ -257,12 +291,29 @@ class PolicyController extends Controller
         $groupIds = (array)$request->getBodyParam('groupIds', []);
         $groupIds = array_values(array_filter($groupIds, fn($id) => $id !== '' && $id !== null));
 
-        if (!$plugin->getPolicies()->savePolicy($policy, $groupIds)) {
-            return $this->asModelFailure(
-                $policy,
-                Craft::t('password-policy', "Couldn't save policy."),
-                'policy',
-            );
+        // Wrap the policy save and the per-policy blocklist diff in a
+        // single transaction so a partial failure can't leave orphan
+        // blocklist rows pointing at a half-saved policy.
+        $transaction = Craft::$app->getDb()->beginTransaction();
+
+        try {
+            if (!$plugin->getPolicies()->savePolicy($policy, $groupIds)) {
+                $transaction->rollBack();
+                return $this->asModelFailure(
+                    $policy,
+                    Craft::t('password-policy', "Couldn't save policy."),
+                    'policy',
+                );
+            }
+
+            if ($rawCustomBlocklist !== null && $policy->id !== null) {
+                $this->_syncCustomBlocklist((int)$policy->id, $rawCustomBlocklist);
+            }
+
+            $transaction->commit();
+        } catch (\Throwable $e) {
+            $transaction->rollBack();
+            throw $e;
         }
 
         $globalSettings = $plugin->getSettings();
@@ -338,6 +389,62 @@ class PolicyController extends Controller
 
     // Private Methods
     // =========================================================================
+
+    /**
+     * Diffs the submitted EditableTable payload against the existing per-
+     * policy custom blocklist rows and applies the delta.
+     *
+     * Numeric `rowId` keys are existing rows the admin kept; non-numeric
+     * keys (`new1`, `new2`, …) are rows added in this edit. Existing IDs
+     * that don't appear in the payload are deletions. Mirrors the global
+     * `BlocklistController::actionSaveCustom` pattern so the two editors
+     * stay behaviourally identical.
+     *
+     * @param int $policyId the policy whose per-policy entries we're syncing
+     * @param array<int|string, array{word?: string}> $rows the raw EditableTable POST payload
+     * @return void
+     *
+     * @throws \yii\db\Exception
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _syncCustomBlocklist(int $policyId, array $rows): void
+    {
+        $blocklist = PasswordPolicy::$plugin->getBlocklist();
+
+        $existing = [];
+        foreach ($blocklist->getCustomWordsForPolicy($policyId) as $row) {
+            $existing[(int)$row['id']] = strtolower((string)$row['word']);
+        }
+
+        $keepIds = [];
+        $newWords = [];
+
+        foreach ($rows as $rowId => $row) {
+            $word = strtolower(trim((string)($row['word'] ?? '')));
+            if ($word === '') {
+                continue;
+            }
+
+            // Numeric rowId + word matches the stored value → no-op, keep
+            // the row. Anything else is an insert; the old ID falls out
+            // of `$keepIds` and gets deleted in the diff below.
+            if (is_numeric($rowId) && ($existing[(int)$rowId] ?? null) === $word) {
+                $keepIds[] = (int)$rowId;
+            } else {
+                $newWords[] = $word;
+            }
+        }
+
+        foreach (array_diff(array_keys($existing), $keepIds) as $idToRemove) {
+            $blocklist->removeCustomWord($idToRemove);
+        }
+
+        foreach ($newWords as $word) {
+            $blocklist->addCustomWord($word, $policyId);
+        }
+    }
 
     /**
      * Normalizes raw POST settings into typed values for the PolicyModel.

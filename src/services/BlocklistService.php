@@ -13,7 +13,9 @@ namespace craftpulse\passwordpolicy\services;
 use Carbon\Carbon;
 use Craft;
 use craft\db\Query;
+use craftpulse\passwordpolicy\PasswordPolicy;
 use DateTime;
+use InvalidArgumentException;
 use yii\base\Component;
 use yii\db\Exception;
 
@@ -34,9 +36,27 @@ class BlocklistService extends Component
     // =========================================================================
 
     /**
+     * Legacy validator cache key — `[word => source]` map.
+     *
+     * Held by callers that pre-date the per-policy editor (G6) and read
+     * the simple word→source shape. Cleared alongside the full cache.
+     *
      * @var string
      */
     private const CACHE_KEY = 'passwordpolicy_blocklist_word_sources';
+
+    /**
+     * Full-table cache key — `[word => ['source' => ..., 'policyId' => ...]]`.
+     *
+     * Loaded once per request by `CommonPasswordValidator`, which then
+     * filters in-memory against the validator's `policyIds` config. Single
+     * key avoids N-policy-combination cache fragmentation; the full
+     * blocklist (~10k common + custom + per-policy rows) fetches faster
+     * than maintaining per-policy-set keys with their own invalidation.
+     *
+     * @var string
+     */
+    private const CACHE_KEY_FULL = 'pp:blocklist:full';
 
     // Public Methods
     // =========================================================================
@@ -108,15 +128,33 @@ class BlocklistService extends Component
     /**
      * Adds a custom word to the blocklist.
      *
-     * @param string $word
-     * @return bool Whether the word was added (false if duplicate)
+     * `$policyId === null` (default) writes a global custom row that every
+     * policy's `checkCommonPasswords` rule sees. `$policyId !== null` scopes
+     * the entry to that named policy — the validator only sees it when the
+     * user's resolved policy set includes that id. The `policyId` column
+     * shipped in P1.11 alongside a CASCADE FK on the policies table; per-
+     * policy rows are deleted automatically when the policy is removed.
+     *
+     * The schema enforces a single unique index on `word`, so the same
+     * word can exist EITHER as a global entry OR as a per-policy entry,
+     * never both. Duplicate detection runs against any existing row with
+     * the same word regardless of policyId — admins who scope a word to
+     * a policy and later try to add it globally see the duplicate-noop
+     * return value. The `#[\SensitiveParameter]` attribute keeps `$word`
+     * out of stack traces; admin-entered blocklist tokens are commonly
+     * drawn from the same pool as real passwords.
+     *
+     * @param string $word the word to block (case-insensitive)
+     * @param int|null $policyId the policy ID to scope the entry to, or null for global
+     * @return bool whether the word was added (false if duplicate)
      *
      * @throws Exception
+     * @throws InvalidArgumentException when `$policyId` references a non-existent policy
      *
      * @author CraftPulse
      * @since 5.2.0
      */
-    public function addCustomWord(string $word): bool
+    public function addCustomWord(#[\SensitiveParameter] string $word, ?int $policyId = null): bool
     {
         $word = strtolower(trim($word));
 
@@ -124,7 +162,14 @@ class BlocklistService extends Component
             return false;
         }
 
-        // Check for duplicates
+        if ($policyId !== null && PasswordPolicy::$plugin->getPolicies()->getPolicyById($policyId) === null) {
+            throw new InvalidArgumentException(
+                "Cannot add custom blocklist word: policy {$policyId} does not exist.",
+            );
+        }
+
+        // Word column carries a single-column unique index — `word` is
+        // globally unique across every (source, policyId) combination.
         $exists = (new Query())
             ->from('{{%passwordpolicy_blocklist}}')
             ->where(['word' => $word])
@@ -138,6 +183,7 @@ class BlocklistService extends Component
             ->insert('{{%passwordpolicy_blocklist}}', [
                 'word' => $word,
                 'source' => 'custom',
+                'policyId' => $policyId,
                 'dateCreated' => Carbon::now('UTC')->format('Y-m-d H:i:s'),
             ])
             ->execute();
@@ -201,9 +247,12 @@ class BlocklistService extends Component
     }
 
     /**
-     * Returns every custom blocklist row (no pagination), ordered by word ASC.
-     * Used by the EditableTable editor which renders the full set on one
-     * screen for in-place editing.
+     * Returns every global custom blocklist row (no pagination), ordered
+     * by word ASC. Used by the global EditableTable editor which renders
+     * the full set on one screen for in-place editing.
+     *
+     * Per-policy entries (`policyId IS NOT NULL`) are excluded — they
+     * belong to the per-policy editor on the policy edit screen.
      *
      * @return array<int, array<string, mixed>>
      *
@@ -214,9 +263,93 @@ class BlocklistService extends Component
     {
         return (new Query())
             ->from('{{%passwordpolicy_blocklist}}')
-            ->where(['source' => 'custom'])
+            ->where([
+                'source' => 'custom',
+                'policyId' => null,
+            ])
             ->orderBy(['word' => SORT_ASC])
             ->all();
+    }
+
+    /**
+     * Returns the custom blocklist rows scoped to the given policy ID,
+     * ordered by word ASC. Used by the Enterprise per-policy EditableTable
+     * editor (G6) and by the controller's diff-on-save path to compute
+     * which existing rows belong to the current edit.
+     *
+     * Global entries (`policyId IS NULL`) are NOT included — those are
+     * managed by the top-level Blocklist subnav, not the per-policy tab.
+     *
+     * @param int $policyId the policy ID to scope the lookup to
+     * @return array<int, array<string, mixed>>
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getCustomWordsForPolicy(int $policyId): array
+    {
+        return (new Query())
+            ->from('{{%passwordpolicy_blocklist}}')
+            ->where([
+                'source' => 'custom',
+                'policyId' => $policyId,
+            ])
+            ->orderBy(['word' => SORT_ASC])
+            ->all();
+    }
+
+    /**
+     * Returns the merged blocklist for the given policy as a `[word => source]`
+     * map. Always includes global rows (`policyId IS NULL`). When `$policyId`
+     * is non-null, also includes that policy's per-policy rows.
+     *
+     * Words are unique table-wide (single-column unique index) so the
+     * map never holds collisions — every word is either global or
+     * scoped to exactly one policy.
+     *
+     * @param int|null $policyId the policy ID to scope the lookup to, or null for global only
+     * @return array<string, string> word → source ('common' | 'custom')
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getWordsForPolicy(?int $policyId): array
+    {
+        return $this->getWordsForPolicies($policyId === null ? [] : [$policyId]);
+    }
+
+    /**
+     * Returns the merged blocklist for the given policy IDs as a
+     * `[word => source]` map. Always includes global rows. Convenience for
+     * users resolved to multiple policies — `PolicyResolverService` returns
+     * a multi-policy set when per-group policies are enabled and a user
+     * belongs to overlapping groups.
+     *
+     * Reads through the full-table cache once and filters in-memory; the
+     * cache shape is `[word => ['source' => ..., 'policyId' => ...]]` so
+     * filtering doesn't require a second DB round-trip.
+     *
+     * @param int[] $policyIds the policy IDs to scope the lookup to (empty = global only)
+     * @return array<string, string> word → source ('common' | 'custom')
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getWordsForPolicies(array $policyIds): array
+    {
+        $full = $this->_getFullBlocklist();
+        $allowed = array_flip(array_map('intval', $policyIds));
+        $merged = [];
+
+        foreach ($full as $word => $row) {
+            // Global rows always pass; per-policy rows pass only when
+            // their policyId is in the allowed set.
+            if ($row['policyId'] === null || isset($allowed[$row['policyId']])) {
+                $merged[$word] = $row['source'];
+            }
+        }
+
+        return $merged;
     }
 
     /**
@@ -313,7 +446,14 @@ class BlocklistService extends Component
     }
 
     /**
-     * Invalidates the cached blocklist word set.
+     * Invalidates every cached blocklist projection.
+     *
+     * Both the legacy validator key (`CACHE_KEY`, owned by the cache
+     * primer in `CommonPasswordValidator::_getBlocklist()`) and the full-
+     * table key (`CACHE_KEY_FULL`, used for the per-policy filter path)
+     * are dropped. Mutations call this from `addCustomWord` /
+     * `removeCustomWord` / `seedCommonPasswords` so the next read sees
+     * the fresh row set.
      *
      * @return void
      *
@@ -322,6 +462,52 @@ class BlocklistService extends Component
      */
     public function clearCache(): void
     {
-        Craft::$app->getCache()->delete(self::CACHE_KEY);
+        $cache = Craft::$app->getCache();
+        $cache->delete(self::CACHE_KEY);
+        $cache->delete(self::CACHE_KEY_FULL);
+    }
+
+    // Private Methods
+    // =========================================================================
+
+    /**
+     * Returns the full blocklist as `[word => ['source' => ..., 'policyId' => ...]]`,
+     * cached for an hour. Reused by `getWordsForPolicy()` and
+     * `getWordsForPolicies()` so per-policy filters never hit the DB
+     * after the first call in a request.
+     *
+     * @return array<string, array{source: string, policyId: int|null}>
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _getFullBlocklist(): array
+    {
+        $cache = Craft::$app->getCache();
+        $cached = $cache->get(self::CACHE_KEY_FULL);
+
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $rows = (new Query())
+            ->select(['word', 'source', 'policyId'])
+            ->from('{{%passwordpolicy_blocklist}}')
+            ->all();
+
+        // The unique index on `word` guarantees one row per word; the
+        // map can be built in a single pass with no precedence logic.
+        $full = [];
+        foreach ($rows as $row) {
+            $full[(string)$row['word']] = [
+                'source' => (string)$row['source'],
+                'policyId' => $row['policyId'] !== null ? (int)$row['policyId'] : null,
+            ];
+        }
+
+        // 1 hour TTL matches the legacy validator cache.
+        $cache->set(self::CACHE_KEY_FULL, $full, 3600);
+
+        return $full;
     }
 }
