@@ -103,17 +103,16 @@ it('returns null for words not in the blocklist', function() {
 });
 
 // =============================================================================
-// policyId scoping — current behavior codification
+// policyId scoping (G6) — default validator filters out per-policy rows
 // =============================================================================
 
-it('matches a custom row regardless of its policyId value', function() {
-    // P1.11 shipped the policyId column for future Phase G per-policy
-    // scoping. The current 5.2.0 Pro path always writes NULL and the
-    // validator does not filter on policyId at all — every row in
-    // `{{%passwordpolicy_blocklist}}` is part of the cached map. Codifying
-    // the current behavior so the next refactor (Phase G's per-policy
-    // editor) is aware that this test must change when policyId scoping
-    // lands.
+it('matches global custom rows but ignores per-policy rows by default', function() {
+    // G6 inverts the pre-G6 contract: the validator no longer matches
+    // every row in `{{%passwordpolicy_blocklist}}`. With `policyIds = null`
+    // (the default — used by Pro/Lite installs and any caller that hasn't
+    // resolved a target user), only global rows (`policyId IS NULL`) are
+    // visible. Per-policy rows surface only when the validator config
+    // includes that policy id.
     $policy = \craftpulse\passwordpolicy\tests\Support\Factories\PolicyFactory::custom([
         'minLength' => 12,
     ]);
@@ -122,23 +121,28 @@ it('matches a custom row regardless of its policyId value', function() {
     BlocklistFactory::customWord('scoped', $policy->id);
 
     expect($this->validator->validateValue('global'))->not->toBeNull()
-        ->and($this->validator->validateValue('scoped'))->not->toBeNull();
+        ->and($this->validator->validateValue('scoped'))->toBeNull();
 });
 
 // =============================================================================
-// Cache lifecycle — entries are read once per request and cached
+// Cache lifecycle — full-table projection cached and invalidated by writes
 // =============================================================================
 
-it('caches the blocklist after the first read', function() {
+it('caches the full blocklist projection after the first read', function() {
     BlocklistFactory::commonWord('cached');
 
-    // First call populates the cache.
+    // First call populates the cache. Service-level cache key is shared
+    // between every per-policy filter combination — single key, in-memory
+    // filter on read.
     $this->validator->validateValue('cached');
 
-    expect(\Craft::$app->getCache()->get('passwordpolicy_blocklist_word_sources'))
+    $cached = \Craft::$app->getCache()->get('pp:blocklist:full');
+
+    expect($cached)
         ->not->toBeFalse()
-        ->and(\Craft::$app->getCache()->get('passwordpolicy_blocklist_word_sources'))
-        ->toHaveKey('cached');
+        ->toBeArray()
+        ->toHaveKey('cached')
+        ->and($cached['cached'])->toMatchArray(['source' => 'common', 'policyId' => null]);
 });
 
 it('reflects new rows after the cache is cleared', function() {

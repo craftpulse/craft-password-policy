@@ -144,9 +144,18 @@ class ValidationController extends Controller
             ];
         }
 
-        // Common passwords (Pro)
+        // Common passwords (Pro).
+        //
+        // Enterprise resolves the user's policy IDs and scopes the
+        // validator to global + per-policy entries (G6). Pro/Lite — and
+        // anonymous Enterprise requests — leave `policyIds` null, which
+        // collapses to global-only matching. We never trust anonymous
+        // POST to identify a user; the per-policy filter only applies
+        // when an authenticated identity is present in the session.
         if ($isPro && $settings->checkCommonPasswords) {
-            $validator = new CommonPasswordValidator();
+            $validator = new CommonPasswordValidator([
+                'policyIds' => $this->_resolvePolicyIdsForRequest($user),
+            ]);
             $rules[] = [
                 'key' => 'common',
                 'pass' => $validator->validateValue($password) === null,
@@ -277,6 +286,57 @@ class ValidationController extends Controller
             'common' => 'blocklist',
             default => $key,
         };
+    }
+
+    /**
+     * Resolves the policy IDs that scope the per-policy custom blocklist
+     * (G6) for this request.
+     *
+     * Authenticated Enterprise requests resolve via `PolicyResolverService`
+     * — the validator then sees global rows + the authenticated user's
+     * applicable per-policy rows. Anonymous requests, Pro/Lite installs,
+     * and authenticated requests where per-group policies are disabled
+     * all return `null` (global only).
+     *
+     * Anonymous requests intentionally ignore any `groups[]` POST param
+     * for blocklist scoping. Honoring it would let an attacker probe
+     * which words a target group's policy has registered as custom by
+     * varying the submitted group handle and observing the per-rule
+     * pass/fail bits in the response.
+     *
+     * @param User $user the temp/identity user from `_buildTempUser`
+     * @return int[]|null policy IDs to scope to, or null for global only
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _resolvePolicyIdsForRequest(User $user): ?array
+    {
+        $plugin = PasswordPolicy::$plugin;
+
+        if (!$plugin->getIsEnterprise()) {
+            return null;
+        }
+
+        if (!$plugin->getSettings()->enablePerGroupPolicies) {
+            return null;
+        }
+
+        // Per-policy filter only when a real authenticated identity backs
+        // the request. Anonymous "group preview" callers (whose temp user
+        // has no id) drop through to null — global rows only.
+        if ($user->id === null) {
+            return null;
+        }
+
+        $policies = $plugin->getPolicies()->getPoliciesForGroupIds(
+            array_map(fn($g) => (int)$g->id, $user->getGroups()),
+        );
+
+        return array_values(array_filter(array_map(
+            fn($policy) => $policy->id !== null ? (int)$policy->id : null,
+            $policies,
+        )));
     }
 
     /**
