@@ -15,6 +15,8 @@ use craft\db\Query;
 use craft\helpers\Json;
 use craft\helpers\StringHelper;
 use craftpulse\passwordpolicy\models\PolicyModel;
+use craftpulse\passwordpolicy\PasswordPolicy;
+use Throwable;
 use yii\base\Component;
 use yii\db\Exception;
 
@@ -22,6 +24,27 @@ use yii\db\Exception;
  * Class PolicyService
  *
  * Manages CRUD operations for named password policies.
+ *
+ * Audit capture (Phase G — G4)
+ * ----------------------------
+ * On a successful UPDATE, `savePolicy()` fires the `policy_changed`
+ * audit event with a structured `{field: {old, new}}` diff covering
+ * top-level columns (`name`, `handle`, `preset`, `sortOrder`), every
+ * settings-array key the model exposes, and group assignments
+ * (`groupIds`). Unchanged fields are omitted; INSERT-path saves do
+ * not fire (a future `policy_created` event is out of scope for G4).
+ *
+ * Capture is inline rather than event-driven on purpose. PolicyService
+ * has one write path in 5.2.0 — introducing
+ * `EVENT_BEFORE_SAVE_POLICY` / `EVENT_AFTER_SAVE_POLICY` solely to
+ * bridge a same-class scratch property would be ceremony for no
+ * cross-class consumer. The audit `logEvent()` call is wrapped in
+ * try/catch because the parent transaction is already committed —
+ * an audit failure must never unwind a saved policy.
+ *
+ * Maps to ISO 27002 A.5.37, SOC 2 CC8.1, and NIS2 Article 21(2)(e)
+ * change-management evidence — auditors reading the audit log can
+ * reconstruct who changed which policy field when.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -149,6 +172,14 @@ class PolicyService extends Component
             return false;
         }
 
+        // Capture pre-save state for the `policy_changed` audit diff.
+        // Only meaningful on the UPDATE branch; INSERTs have nothing to
+        // diff against. Resolve before the transaction so the audit
+        // payload reflects the on-disk row as it existed coming in.
+        $isUpdate = $policy->id !== null;
+        $existing = $isUpdate ? $this->getPolicyById((int)$policy->id) : null;
+        $existingGroupIds = $isUpdate ? $this->_loadGroupIdsForPolicy((int)$policy->id) : [];
+
         $db = Craft::$app->getDb();
         $transaction = $db->beginTransaction();
 
@@ -203,6 +234,22 @@ class PolicyService extends Component
         } catch (\Throwable $e) {
             $transaction->rollBack();
             throw $e;
+        }
+
+        // Audit diff fires AFTER commit — never unwind a saved policy
+        // because of a downstream audit-write hiccup. INSERTs are out
+        // of scope for G4 (no `policy_created` event class).
+        if ($isUpdate && $existing !== null) {
+            $diff = $this->_buildPolicyDiff(
+                existing: $existing,
+                existingGroupIds: $existingGroupIds,
+                updated: $policy,
+                updatedGroupIds: array_map(static fn($id): int => (int)$id, $groupIds),
+            );
+
+            if (!empty($diff)) {
+                $this->_logPolicyChanged($policy, $diff);
+            }
         }
 
         return true;
@@ -268,6 +315,92 @@ class PolicyService extends Component
     // =========================================================================
 
     /**
+     * Builds the field-level `{field: {old, new}}` diff for the
+     * `policy_changed` audit event.
+     *
+     * Compared surfaces:
+     *
+     *  - Top-level columns: `name`, `handle`, `preset`, `sortOrder`.
+     *  - Every key in `PolicyModel::settingsFields()` — sourced from
+     *    the model's `getSettingsArray()` so null (inherit) values
+     *    are normalised on both sides of the comparison.
+     *  - `groupIds` — the assigned-groups junction. Sorted (numeric
+     *    ascending) before comparison; group order is not semantic.
+     *    When changed, emits the FULL old + new arrays so the auditor
+     *    sees the assignment as a unit, not a sequence of add/remove
+     *    deltas.
+     *
+     * Boolean tri-state settings (`?bool`) emit `null` / `true` /
+     * `false` literally — no coercion. JSON canonicalisation in the
+     * audit row preserves these as the auditor needs them.
+     *
+     * Unchanged fields are omitted entirely; an empty diff means the
+     * caller should skip the audit write (no-op save).
+     *
+     * @param PolicyModel $existing the on-disk policy as it was before save
+     * @param int[] $existingGroupIds the on-disk junction-row group IDs
+     * @param PolicyModel $updated the in-memory policy that just landed
+     * @param int[] $updatedGroupIds the group IDs the caller passed in
+     * @return array<string, array{old: mixed, new: mixed}>
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _buildPolicyDiff(
+        PolicyModel $existing,
+        array $existingGroupIds,
+        PolicyModel $updated,
+        array $updatedGroupIds,
+    ): array {
+        $diff = [];
+
+        // Top-level columns. `sortOrder` is cast to int on both sides
+        // because the in-memory model can carry a string sortOrder
+        // pulled from a form submission while the hydrated record is
+        // already int-cast.
+        $topLevel = [
+            'name' => [$existing->name, $updated->name],
+            'handle' => [$existing->handle, $updated->handle],
+            'preset' => [$existing->preset, $updated->preset],
+            'sortOrder' => [(int)$existing->sortOrder, (int)$updated->sortOrder],
+        ];
+
+        foreach ($topLevel as $field => [$old, $new]) {
+            if ($old !== $new) {
+                $diff[$field] = ['old' => $old, 'new' => $new];
+            }
+        }
+
+        // Settings array — every field in `PolicyModel::settingsFields()`.
+        // Use `getSettingsArray()` to normalise null (inherit) values:
+        // `getSettingsArray()` omits nulls, so we walk the canonical
+        // settingsFields() list and pull each value via property access
+        // to capture explicit nulls in the diff.
+        foreach (PolicyModel::settingsFields() as $field) {
+            $oldValue = $existing->{$field};
+            $newValue = $updated->{$field};
+
+            if ($oldValue !== $newValue) {
+                $diff[$field] = ['old' => $oldValue, 'new' => $newValue];
+            }
+        }
+
+        // Group assignments. Sort both ascending — group order is not
+        // semantic, swapping rows around in the junction table should
+        // not produce a diff.
+        $oldGroupIds = array_map(static fn($id): int => (int)$id, $existingGroupIds);
+        $newGroupIds = array_map(static fn($id): int => (int)$id, $updatedGroupIds);
+        sort($oldGroupIds, SORT_NUMERIC);
+        sort($newGroupIds, SORT_NUMERIC);
+
+        if ($oldGroupIds !== $newGroupIds) {
+            $diff['groupIds'] = ['old' => $oldGroupIds, 'new' => $newGroupIds];
+        }
+
+        return $diff;
+    }
+
+    /**
      * Hydrates a PolicyModel from a database row.
      *
      * @param array $row the database row
@@ -304,5 +437,71 @@ class PolicyService extends Component
         }
 
         return $model;
+    }
+
+    /**
+     * Returns the user-group IDs currently assigned to the given policy
+     * via the `passwordpolicy_policy_groups` junction table.
+     *
+     * Inlined into the audit diff path rather than reusing
+     * `PolicyModel::getGroupIds()` so we don't accidentally hit the
+     * model's `_groups` cache during the in-flight save.
+     *
+     * @param int $policyId the policy ID
+     * @return int[]
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _loadGroupIdsForPolicy(int $policyId): array
+    {
+        return array_map(
+            static fn($id): int => (int)$id,
+            (new Query())
+                ->select(['groupId'])
+                ->from('{{%passwordpolicy_policy_groups}}')
+                ->where(['policyId' => $policyId])
+                ->column(),
+        );
+    }
+
+    /**
+     * Fires the `policy_changed` audit event for a successful UPDATE.
+     *
+     * Wrapped in try/catch — the parent `savePolicy()` transaction is
+     * already committed at this point, and an audit-write failure must
+     * never unwind a saved policy. AuditLogService internally fail-safes
+     * its own writes, but the wrapping catch is belt-and-braces against
+     * any future change to that contract.
+     *
+     * `userId` is null because the event subject is the policy itself,
+     * not a user. The audit row's `changedByUserId` is auto-resolved
+     * from the current admin context inside `AuditLogService::logEvent()`.
+     *
+     * @param PolicyModel $policy the policy that was just saved
+     * @param array<string, array{old: mixed, new: mixed}> $diff the field-level diff
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _logPolicyChanged(PolicyModel $policy, array $diff): void
+    {
+        try {
+            PasswordPolicy::$plugin->getAuditLog()->logEvent(
+                userId: null,
+                event: 'policy_changed',
+                details: [
+                    'diff' => $diff,
+                    'policyId' => (int)$policy->id,
+                    'policyName' => $policy->name,
+                ],
+            );
+        } catch (Throwable $e) {
+            Craft::error(
+                'Failed to write policy_changed audit event: ' . $e->getMessage(),
+                'password-policy',
+            );
+        }
     }
 }

@@ -146,6 +146,7 @@ class AuditLogService extends Component
         'hibp_check_failed' => ['source', 'failMode'],
         'password_changed' => ['method', 'reason', 'source'],
         'password_reset_forced' => ['reason', 'source'],
+        'policy_changed' => ['diff', 'policyId', 'policyName'],
     ];
 
     /**
