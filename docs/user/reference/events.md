@@ -221,6 +221,71 @@ Event::on(
 
 ---
 
+## `PolicySaveEvent`
+
+**FQ class:** `craftpulse\passwordpolicy\events\PolicySaveEvent`
+**Edition:** Lite (free for the ecosystem)
+**Triggered by:** `PolicyService::EVENT_BEFORE_SAVE_POLICY` and `PolicyService::EVENT_AFTER_SAVE_POLICY`
+**When:** Around the policy-save lifecycle in `PolicyService::savePolicy()`. The same event class is shared between the two phases — listeners distinguish by which constant they subscribed to and (where it matters) by `$isNew`.
+
+- **`EVENT_BEFORE_SAVE_POLICY`** fires after the policy validates but BEFORE any DB I/O. Listeners may amend `$event->policy` (the amended model is what gets persisted) or flip `$event->isValid = false` to abort the save. When a listener vetoes, `savePolicy()` returns `false` and no row is written.
+- **`EVENT_AFTER_SAVE_POLICY`** fires after the transaction commits but BEFORE the inline `policy_changed` audit-diff capture. The save is final at this point — listeners cannot abort, the `$isValid` flag is inherited from `\yii\base\ModelEvent` but meaningless after-the-fact. Does NOT fire on validation failure, on a BEFORE-veto, or when the transaction rolled back.
+
+### Payload
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `$policy` | `craftpulse\passwordpolicy\models\PolicyModel` | The policy being saved. Mutable on BEFORE — a listener may amend fields and the amended model is what `savePolicy()` will persist. On AFTER, the model reflects the just-committed state (`id` populated for INSERTs, `dateUpdated` refreshed). |
+| `$groupIds` | `int[]` | The user-group IDs the caller passed in. Mutable on BEFORE; mutation has no downstream effect on AFTER (the junction-table sync has already run). |
+| `$isNew` | `bool` | `true` when the save is an INSERT, `false` when it's an UPDATE. The flag reflects the pre-save shape of the policy and stays stable across BEFORE and AFTER for a single save call — even though `policy->id` will be populated by AFTER for INSERTs, `$isNew` still reads `true`. |
+| `$isValid` | `bool` | Inherited from `\yii\base\ModelEvent`, defaults to `true`. On BEFORE, a listener flips it to `false` to abort the save. On AFTER, the flag is inherited but meaningless — the save is already committed. |
+
+### Example listener — veto saves below an org-wide minimum
+
+A hypothetical compliance plugin enforcing "no policy on this site may set `minLength` below 12":
+
+```php
+use yii\base\Event;
+use craftpulse\passwordpolicy\events\PolicySaveEvent;
+use craftpulse\passwordpolicy\services\PolicyService;
+
+Event::on(
+    PolicyService::class,
+    PolicyService::EVENT_BEFORE_SAVE_POLICY,
+    function(PolicySaveEvent $event) {
+        if ($event->policy->minLength !== null && (int)$event->policy->minLength < 12) {
+            $event->policy->addError(
+                'minLength',
+                'Policy minLength must be at least 12 (org-wide compliance rule).',
+            );
+            $event->isValid = false;
+        }
+    },
+);
+```
+
+### Example listener — mirror saves to a custom audit channel
+
+```php
+use yii\base\Event;
+use craftpulse\passwordpolicy\events\PolicySaveEvent;
+use craftpulse\passwordpolicy\services\PolicyService;
+
+Event::on(
+    PolicyService::class,
+    PolicyService::EVENT_AFTER_SAVE_POLICY,
+    function(PolicySaveEvent $event) {
+        $verb = $event->isNew ? 'created' : 'updated';
+        Craft::info(
+            "Policy {$verb}: {$event->policy->handle} (id {$event->policy->id})",
+            'compliance-mirror',
+        );
+    },
+);
+```
+
+---
+
 ## Subscribing to events
 
 All examples above use Yii's standard `Event::on(class, name, callback)` pattern. Listeners are typically registered in your module's `init()` method:

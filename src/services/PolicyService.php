@@ -14,6 +14,7 @@ use Craft;
 use craft\db\Query;
 use craft\helpers\Json;
 use craft\helpers\StringHelper;
+use craftpulse\passwordpolicy\events\PolicySaveEvent;
 use craftpulse\passwordpolicy\models\PolicyModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use Throwable;
@@ -34,17 +35,28 @@ use yii\db\Exception;
  * (`groupIds`). Unchanged fields are omitted; INSERT-path saves do
  * not fire (a future `policy_created` event is out of scope for G4).
  *
- * Capture is inline rather than event-driven on purpose. PolicyService
- * has one write path in 5.2.0 — introducing
- * `EVENT_BEFORE_SAVE_POLICY` / `EVENT_AFTER_SAVE_POLICY` solely to
- * bridge a same-class scratch property would be ceremony for no
- * cross-class consumer. The audit `logEvent()` call is wrapped in
- * try/catch because the parent transaction is already committed —
- * an audit failure must never unwind a saved policy.
+ * Capture is inline rather than event-driven on purpose: G4 needs the
+ * pre-save state captured before the transaction, and an after-save
+ * listener would have to either re-query (wasteful) or rely on the
+ * event payload carrying pre-state (couples the event to one consumer's
+ * needs). The inline path serves G4 cleanly. The audit `logEvent()`
+ * call is wrapped in try/catch because the parent transaction is
+ * already committed — an audit failure must never unwind a saved policy.
  *
  * Maps to ISO 27002 A.5.37, SOC 2 CC8.1, and NIS2 Article 21(2)(e)
  * change-management evidence — auditors reading the audit log can
  * reconstruct who changed which policy field when.
+ *
+ * Extension seam
+ * --------------
+ * `EVENT_BEFORE_SAVE_POLICY` and `EVENT_AFTER_SAVE_POLICY` are the
+ * public extension surface for third-party listeners (external audit
+ * mirroring, custom validation veto, CRM/SIEM sync). They run parallel
+ * to the inline G4 capture above — BEFORE fires before any DB I/O so
+ * vetoers short-circuit cheaply; AFTER fires after `commit()` and
+ * before the inline G4 audit-diff so external listeners observe the
+ * save before the audit row is written. See `events/PolicySaveEvent.php`
+ * for the veto contract and `$isNew` semantics.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -52,6 +64,62 @@ use yii\db\Exception;
  */
 class PolicyService extends Component
 {
+    // Const Properties
+    // =========================================================================
+
+    /**
+     * Fired by `savePolicy()` AFTER the policy validates but BEFORE any DB
+     * I/O — pre-save state capture, the transaction, and the junction-table
+     * sync all happen downstream of this event.
+     *
+     * Listeners may amend `$event->policy` (the amended model is what gets
+     * persisted) or flip `$event->isValid = false` to abort the save. When
+     * a listener vetoes, `savePolicy()` returns `false` and no row is
+     * written. The event matches the canonical Craft / Yii idiom
+     * (`Element::EVENT_BEFORE_SAVE`) — `ModelEvent::$isValid` defaults to
+     * `true` and the listener flips it to `false` to abort.
+     *
+     * Does NOT fire when `$policy->validate()` rejects the model — the
+     * event surface is reserved for valid-shape policies. Listeners that
+     * want to add validation rules should listen on `Model::EVENT_AFTER_VALIDATE`
+     * on `PolicyModel` directly, not on this seam.
+     *
+     * @event PolicySaveEvent
+     *
+     * @since 5.2.0
+     */
+    public const EVENT_BEFORE_SAVE_POLICY = 'beforeSavePolicy';
+
+    /**
+     * Fired by `savePolicy()` AFTER the transaction successfully commits.
+     * Listeners observe the canonical "policy saved" moment — the row is
+     * on disk, the junction-table sync is done, and `$event->policy->id`
+     * is populated (even on the INSERT path, where it was null when
+     * `EVENT_BEFORE_SAVE_POLICY` fired).
+     *
+     * Does NOT fire on:
+     *   - validation failure (`$policy->validate()` returned false),
+     *   - veto on `EVENT_BEFORE_SAVE_POLICY` (listener set `isValid = false`),
+     *   - transaction rollback (a `\Throwable` thrown inside the write path).
+     *
+     * Branch on `$event->isNew` to distinguish "newly created" from
+     * "updated existing" — the flag reflects the pre-save shape and stays
+     * stable across before/after.
+     *
+     * Fires BEFORE the inline `policy_changed` audit-diff capture (G4),
+     * so external listeners observe the save before the audit row is
+     * written. An audit-write hiccup downstream cannot starve a registered
+     * external listener.
+     *
+     * The `$isValid` flag is inherited from `ModelEvent` but meaningless
+     * here — the save is already committed, listeners cannot abort it.
+     *
+     * @event PolicySaveEvent
+     *
+     * @since 5.2.0
+     */
+    public const EVENT_AFTER_SAVE_POLICY = 'afterSavePolicy';
+
     // Public Methods
     // =========================================================================
 
@@ -172,6 +240,21 @@ class PolicyService extends Component
             return false;
         }
 
+        // External extension seam — listeners may amend `$event->policy`
+        // or flip `$event->isValid = false` to abort the save before any
+        // DB I/O occurs. Vetoers short-circuit cheaply; the
+        // pre-save-state capture below runs only when the event survives.
+        $beforeEvent = new PolicySaveEvent([
+            'policy' => $policy,
+            'groupIds' => $groupIds,
+            'isNew' => $policy->id === null,
+        ]);
+        $this->trigger(self::EVENT_BEFORE_SAVE_POLICY, $beforeEvent);
+
+        if (!$beforeEvent->isValid) {
+            return false;
+        }
+
         // Capture pre-save state for the `policy_changed` audit diff.
         // Only meaningful on the UPDATE branch; INSERTs have nothing to
         // diff against. Resolve before the transaction so the audit
@@ -235,6 +318,19 @@ class PolicyService extends Component
             $transaction->rollBack();
             throw $e;
         }
+
+        // External extension seam — fires AFTER the commit (so listeners
+        // observe the canonical "policy saved" moment) and BEFORE the
+        // inline G4 audit-diff capture (so an audit-write hiccup downstream
+        // cannot starve a registered external listener). `$isUpdate` was
+        // captured before the INSERT branch flipped `$policy->id`, so
+        // `isNew` correctly reflects the pre-save shape.
+        $afterEvent = new PolicySaveEvent([
+            'policy' => $policy,
+            'groupIds' => $groupIds,
+            'isNew' => !$isUpdate,
+        ]);
+        $this->trigger(self::EVENT_AFTER_SAVE_POLICY, $afterEvent);
 
         // Audit diff fires AFTER commit — never unwind a saved policy
         // because of a downstream audit-write hiccup. INSERTs are out
