@@ -97,7 +97,11 @@ class AuditController extends Controller
     public int $days = 365;
 
     /**
-     * @var string export format: csv or json
+     * @var string export format: `csv`, `jsonl`, or `json`. `csv` and
+     *     `jsonl` are the streaming-friendly formats — `jsonl` matches
+     *     the queued-job format byte-for-byte. `json` emits a single
+     *     mega-array; preserved for backwards compatibility but emits
+     *     a deprecation hint and may be removed in 5.3.
      */
     public string $format = 'csv';
 
@@ -105,6 +109,21 @@ class AuditController extends Controller
      * @var bool whether to include user email in export
      */
     public bool $includeUserDetails = false;
+
+    /**
+     * @var bool when `true`, `actionExport` enqueues an `AuditExportJob`
+     *     and writes the file to the configured filesystem (or local
+     *     `@runtime` fallback). When `false` (the default — preserved
+     *     for SIEM-piping operators), writes the export to stdout.
+     *
+     * Console invocation bypasses the edition gate; the plan is that
+     * shell access is itself a privileged operation and CI pipelines
+     * shouldn't have to authenticate as a CP admin to run a verifier
+     * or export.
+     *
+     * @since 5.2.0
+     */
+    public bool $queue = false;
 
     /**
      * @var int|null start row id (inclusive) for `verify`. Unset means
@@ -153,6 +172,7 @@ class AuditController extends Controller
             $options[] = 'format';
             $options[] = 'days';
             $options[] = 'includeUserDetails';
+            $options[] = 'queue';
         }
 
         if ($actionID === 'verify') {
@@ -189,10 +209,35 @@ class AuditController extends Controller
     }
 
     /**
-     * Exports audit log entries to stdout.
+     * Exports audit log entries.
      *
-     * Output defaults to stdout for secure piping to your SIEM or
-     * log aggregation system.
+     * Two modes:
+     *
+     *  - **stdout** (default) — prints rows in the requested format to
+     *    stdout for secure piping to a SIEM or log aggregation system.
+     *    Preserved as the default to keep the existing SIEM-piping
+     *    contract intact.
+     *  - **`--queue`** — enqueues an `AuditExportJob` (G10) which
+     *    writes the file to the configured filesystem (or local
+     *    `@runtime` fallback) and emits a one-time-use download token
+     *    on completion. Surfaces the token on stdout so CI pipelines
+     *    can capture it for follow-up download steps.
+     *
+     * Format flags:
+     *
+     *  - `csv` — default. Spreadsheet-friendly comma-separated rows.
+     *  - `jsonl` — newline-delimited JSON. Matches the queued-job
+     *    format byte-for-byte; downstream tooling (`jq`, `pandas`,
+     *    SIEM ingest) parses each line as an independent JSON
+     *    document.
+     *  - `json` — single mega-array. Preserved for backwards
+     *    compatibility with the 5.2.0-alpha tooling; emits a
+     *    deprecation hint and may be removed in 5.3. Use `jsonl`.
+     *
+     * Console invocation bypasses the `pp:audit-export` permission
+     * gate (consistent with `actionVerify` — operators with shell
+     * access have already passed any meaningful gate, and CI pipelines
+     * need to inspect the table without a CP user identity).
      *
      * @return int
      *
@@ -201,6 +246,10 @@ class AuditController extends Controller
      */
     public function actionExport(): int
     {
+        if ($this->queue) {
+            return $this->_exportViaQueue();
+        }
+
         $threshold = Carbon::now('UTC')->subDays($this->days)->format('Y-m-d H:i:s');
 
         $query = (new Query())
@@ -235,6 +284,7 @@ class AuditController extends Controller
         }
 
         match ($this->format) {
+            'jsonl' => $this->_exportJsonl($entries),
             'json' => $this->_exportJson($entries),
             default => $this->_exportCsv($entries),
         };
@@ -569,7 +619,9 @@ class AuditController extends Controller
     }
 
     /**
-     * Outputs entries as JSON to stdout.
+     * Outputs entries as a single JSON mega-array to stdout. Emits a
+     * deprecation hint pointing operators at `--format=jsonl` — the
+     * single-array shape doesn't stream and may be removed in 5.3.
      *
      * @param array $entries
      * @return void
@@ -579,7 +631,91 @@ class AuditController extends Controller
      */
     private function _exportJson(array $entries): void
     {
+        $this->stderr(
+            "Deprecated: --format=json emits a single mega-array that doesn't stream. "
+            . "Use --format=jsonl (newline-delimited JSON) for streaming-friendly output. "
+            . "The single-array shape may be removed in 5.3.\n",
+        );
+
         $this->stdout(Json::encode($entries, JSON_PRETTY_PRINT) . "\n");
+    }
+
+    /**
+     * Outputs entries as JSON Lines (one JSON object per line) to
+     * stdout. Matches the queued-job format byte-for-byte —
+     * downstream tooling that consumes the queued export's bytes can
+     * pipe stdin through identical parsing logic.
+     *
+     * @param array<int, array<string, mixed>> $entries
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _exportJsonl(array $entries): void
+    {
+        foreach ($entries as $entry) {
+            $this->stdout(Json::encode(
+                $entry,
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+            ) . "\n");
+        }
+    }
+
+    /**
+     * Enqueues an `AuditExportJob` and prints the download token to
+     * stdout. CI pipelines capture the token to drive a follow-up
+     * download step; operators tail the email for the same link.
+     *
+     * Edition gate: this path requires Enterprise (the underlying
+     * job's queue picker also gates on it, but we want a fast
+     * console-side error rather than a job that silently no-ops on
+     * Lite/Pro). Console invocation bypasses the `pp:audit-export`
+     * permission gate — see the action's main docblock.
+     *
+     * @return int
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _exportViaQueue(): int
+    {
+        if (!PasswordPolicy::$plugin->getIsEnterprise()) {
+            $this->stderr(
+                "Audit-log export via --queue requires the Enterprise edition.\n",
+            );
+
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        $format = $this->format === 'jsonl' ? 'jsonl' : 'csv';
+
+        if ($this->format === 'json') {
+            $this->stderr(
+                "Deprecated: --format=json is not supported with --queue. "
+                . "Falling back to csv. Use --format=jsonl for streaming output.\n",
+            );
+        }
+
+        $token = \Craft::$app->getSecurity()->generateRandomString(64);
+        $admin = \Craft::$app->getUser()->getIdentity();
+
+        $job = new \craftpulse\passwordpolicy\jobs\AuditExportJob();
+        $job->daysFilter = $this->days;
+        $job->format = $format;
+        $job->filesystemHandle = PasswordPolicy::$plugin->getSettings()->auditExportFilesystem;
+        $job->requestedById = $admin?->id ?? 0;
+        $job->token = $token;
+
+        \craft\helpers\Queue::push($job);
+
+        $downloadPath = 'password-policy/audit-export/download/' . $token;
+
+        $this->stdout("Export queued.\n");
+        $this->stdout("Token: {$token}\n");
+        $this->stdout("Download via: /admin/{$downloadPath}\n");
+
+        return ExitCode::OK;
     }
 
     /**

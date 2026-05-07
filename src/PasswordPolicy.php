@@ -29,6 +29,7 @@ use craft\events\RegisterConditionRulesEvent;
 use craft\events\RegisterElementActionsEvent;
 use craft\events\RegisterElementSortOptionsEvent;
 use craft\events\RegisterElementTableAttributesEvent;
+use craft\events\RegisterEmailMessagesEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
 use craft\events\SiteEvent;
@@ -41,6 +42,7 @@ use craft\helpers\UrlHelper;
 use craft\log\MonologTarget;
 use craft\services\Gc;
 use craft\services\Sites;
+use craft\services\SystemMessages;
 use craft\services\UserGroups;
 use craft\services\UserPermissions;
 use craft\services\Users;
@@ -70,6 +72,7 @@ use craftpulse\passwordpolicy\models\AuditContext;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
 use craftpulse\passwordpolicy\services\ServicesTrait;
+use craftpulse\passwordpolicy\utilities\AuditExportUtility;
 use craftpulse\passwordpolicy\utilities\AuditSchemaUtility;
 use craftpulse\passwordpolicy\utilities\RetentionUtility;
 use craftpulse\passwordpolicy\variables\PasswordPolicyVariable;
@@ -670,6 +673,7 @@ class PasswordPolicy extends Plugin
         $this->_registerUserEditScreen();
         $this->_registerUserEditActionMenu();
         $this->_registerGarbageCollection();
+        $this->_registerSystemMessages();
     }
 
     /**
@@ -735,6 +739,8 @@ class PasswordPolicy extends Plugin
                         'password-policy/webhooks' => 'password-policy/webhook-endpoint/index',
                         'password-policy/webhooks/new' => 'password-policy/webhook-endpoint/edit',
                         'password-policy/webhooks/<endpointId:\d+>' => 'password-policy/webhook-endpoint/edit',
+                        'password-policy/audit-export/export' => 'password-policy/audit-export/export',
+                        'password-policy/audit-export/download/<token:[A-Za-z0-9_\-]+>' => 'password-policy/audit-export/download',
                         'password-policy/user-password/change' => 'password-policy/user-password/change',
                         'password-policy/user-password/send-reset-email' => 'password-policy/user-password/send-reset-email',
                         'password-policy/users/<userId:\d+>/security' => 'password-policy/user-security/index',
@@ -821,6 +827,22 @@ class PasswordPolicy extends Plugin
                             'Manage HTTP webhook endpoints for audit-log delivery.',
                         ),
                     ];
+
+                    // Audit-log export is an Enterprise-only write-side
+                    // privilege — produces durable artifacts capable of
+                    // leaving the host (operators download to forward
+                    // off-site to evidence systems). Top-level (NOT
+                    // nested under `pp:audit-view`) — read access is a
+                    // separate decision from the bulk-export decision,
+                    // and an auditor with `pp:audit-view` shouldn't be
+                    // able to dump the whole table without an explicit
+                    // additional grant.
+                    $permissions['pp:audit-export'] = [
+                        'label' => Craft::t(
+                            'password-policy',
+                            'Trigger audit-log exports (CP utility + CLI). Produces a downloadable file capable of leaving the host — separate from view access.',
+                        ),
+                    ];
                 }
 
                 $event->permissions[] = [
@@ -872,6 +894,28 @@ class PasswordPolicy extends Plugin
                     }
 
                     $event->types[] = AuditSchemaUtility::class;
+                }
+            );
+
+            // Audit Export utility (G10) — same edition gate as
+            // AuditSchemaUtility but a separate permission
+            // (`pp:audit-export`). Export is a write-side privilege
+            // (produces durable artifacts capable of leaving the host),
+            // distinct from `pp:audit-view`'s read access — an auditor
+            // grantee with the view permission alone shouldn't see the
+            // utility because they can't usefully use it.
+            Event::on(Utilities::class, Utilities::EVENT_REGISTER_UTILITIES,
+                function(RegisterComponentTypesEvent $event) {
+                    $currentUser = Craft::$app->getUser()->getIdentity();
+                    if ($currentUser === null) {
+                        return;
+                    }
+
+                    if (!$currentUser->admin && !$currentUser->can('pp:audit-export')) {
+                        return;
+                    }
+
+                    $event->types[] = AuditExportUtility::class;
                 }
             );
         }
@@ -1278,6 +1322,65 @@ class PasswordPolicy extends Plugin
                         'password-policy',
                     );
                 }
+            },
+        );
+    }
+
+    /**
+     * Registers plugin-managed system mailer messages so callers can
+     * compose them via `Craft::$app->getMailer()->composeFromKey()`.
+     *
+     * Currently the only key registered here is `password-policy:audit-
+     * export-ready` (G10) — the one-time-link email sent to the
+     * requesting admin when an `AuditExportJob` finishes. The body is
+     * an inline Twig string with token substitution; the System
+     * Messages utility renders it editable for admins on Craft Pro+
+     * licenses, but the default copy ships in this registration so a
+     * fresh install works without any editorial step.
+     *
+     * Other plugin notification flows (`expiry-reminder`, `breach-
+     * detected`) use the editable-templates surface
+     * (`passwordpolicy_notification_templates`) instead, which gives
+     * admins per-site override + activity logging at the cost of
+     * additional DB plumbing. Phase G's audit export deliberately
+     * uses the simpler `composeFromKey` path because the email isn't
+     * something operators typically need to brand or translate at
+     * the per-site level — defer to 5.3 if that changes.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerSystemMessages(): void
+    {
+        Event::on(
+            SystemMessages::class,
+            SystemMessages::EVENT_REGISTER_MESSAGES,
+            static function(RegisterEmailMessagesEvent $event): void {
+                $event->messages[] = [
+                    'key' => 'password-policy:audit-export-ready',
+                    'heading' => Craft::t(
+                        'password-policy',
+                        'When an audit-log export finishes',
+                    ),
+                    'subject' => Craft::t(
+                        'password-policy',
+                        'Your audit log export is ready',
+                    ),
+                    'body' => Craft::t(
+                        'password-policy',
+                        "Your audit log export is ready to download.\n\n"
+                        . "**Download:** [{{ downloadUrl }}]({{ downloadUrl }})\n\n"
+                        . "**Format:** {{ format }}\n"
+                        . "**Rows:** {{ rowCount }}\n"
+                        . "**Expires:** {{ expiresAt|datetime }}\n\n"
+                        . 'The download link is one-time-use — clicking it serves the file '
+                        . 'and immediately invalidates the link. Re-export from the CP utility '
+                        . 'or `password-policy/audit/export --queue` console command if you '
+                        . 'need another copy.',
+                    ),
+                ];
             },
         );
     }

@@ -399,6 +399,54 @@ Event::on(
 
 ---
 
+## `AuditExportCompleteEvent`
+
+**FQ class:** `craftpulse\passwordpolicy\events\AuditExportCompleteEvent`
+**Edition:** Enterprise
+**Triggered by:** `AuditExportJob::EVENT_AUDIT_EXPORT_COMPLETE`
+**When:** After `AuditExportJob` finishes writing every batch and the file is fully materialised. Listeners observe the completion — the export decision was made earlier (operator triggered the utility or `password-policy/audit/export --queue` console command); by the time this fires, the file already exists, the one-time-use download token is cached, and the email notification is on its way to the requesting admin.
+
+### Payload
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `$token` | `string` | The 64-char URL-safe random token. Doubles as the filename and the cache-key suffix. |
+| `$filePath` | `string` | Absolute filesystem path (local fallback) or filesystem-relative path (when a custom FsInterface handle is configured). |
+| `$format` | `string` | Output format — `csv` or `jsonl`. |
+| `$rowCount` | `int` | The number of rows written to the export. Includes every row in the configured date window. |
+| `$requestedById` | `int` | The userId of the admin who requested the export. |
+| `$expiresAt` | `\DateTime` | UTC timestamp when the one-time-use download token expires. After this point the download URL returns 404. |
+
+> The event payload intentionally does NOT include the file contents. Listeners that want the rows themselves dispatch their own filesystem read against `$filePath` — that decision is theirs, and keeping the bytes out of the event keeps the path narrow for listeners that only need the operational signal (off-site mirroring, compliance dashboards, audit-trail-of-exports tracking).
+
+### Example listener — mirror export operations to a SIEM
+
+```php
+use yii\base\Event;
+use craftpulse\passwordpolicy\events\AuditExportCompleteEvent;
+use craftpulse\passwordpolicy\jobs\AuditExportJob;
+
+Event::on(
+    AuditExportJob::class,
+    AuditExportJob::EVENT_AUDIT_EXPORT_COMPLETE,
+    function(AuditExportCompleteEvent $event) {
+        Craft::info(
+            sprintf(
+                'Audit export %s by user %d: %d rows in %s, expires %s',
+                $event->token,
+                $event->requestedById,
+                $event->rowCount,
+                $event->format,
+                $event->expiresAt->format('c'),
+            ),
+            'audit-export-mirror',
+        );
+    },
+);
+```
+
+---
+
 ## Future events
 
 These are scheduled for v5.3 / Phase G but documented here so you can plan around them:
