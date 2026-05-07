@@ -214,7 +214,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '2.6.0';
+    public string $schemaVersion = '2.7.0';
 
     /**
      * @var bool
@@ -509,6 +509,19 @@ class PasswordPolicy extends Plugin
             ];
         }
 
+        // SIEM forwarders subnav (Enterprise) — sits between Notifications
+        // and Settings. Forwarders are a delivery channel for the audit
+        // log; placing them under the Notifications neighborhood matches
+        // the operator's mental model of "where do delivery configs
+        // live?" Edition + permission gated; both must clear before the
+        // entry registers.
+        if ($this->getIsEnterprise() && $currentUser->can('pp:siem-manage')) {
+            $subNavs['siem-forwarders'] = [
+                'label' => Craft::t('password-policy', 'SIEM forwarders'),
+                'url' => 'password-policy/siem',
+            ];
+        }
+
         // Settings visible in read-only mode too (admins can view active policy)
         if ($currentUser->can('pp:settings')) {
             $subNavs['settings'] = [
@@ -706,6 +719,9 @@ class PasswordPolicy extends Plugin
                         'password-policy/notifications/<key:[\w\-]+>' => 'password-policy/notification-template/edit',
                         'password-policy/notifications/<key:[\w\-]+>/save' => 'password-policy/notification-template/save',
                         'password-policy/notifications/<key:[\w\-]+>/test-send' => 'password-policy/notification-template/test-send',
+                        'password-policy/siem' => 'password-policy/siem-forwarder/index',
+                        'password-policy/siem/new' => 'password-policy/siem-forwarder/edit',
+                        'password-policy/siem/<forwarderId:\d+>' => 'password-policy/siem-forwarder/edit',
                         'password-policy/user-password/change' => 'password-policy/user-password/change',
                         'password-policy/user-password/send-reset-email' => 'password-policy/user-password/send-reset-email',
                         'password-policy/users/<userId:\d+>/security' => 'password-policy/user-security/index',
@@ -728,45 +744,62 @@ class PasswordPolicy extends Plugin
     {
         Event::on(UserPermissions::class, UserPermissions::EVENT_REGISTER_PERMISSIONS,
             function(RegisterUserPermissionsEvent $event) {
-                $event->permissions[] = [
-                    'heading' => 'Password Policy',
-                    'permissions' => [
-                        'pp:settings' => [
-                            'label' => Craft::t('password-policy', 'Manage plugin settings.'),
-                        ],
-                        'pp:force-reset-passwords' => [
-                            'label' => Craft::t('password-policy', 'Force reset passwords retention access.'),
-                        ],
-                        'pp:change-user-passwords' => [
-                            'label' => Craft::t(
-                                'password-policy',
-                                'Change another user’s password and send password reset emails.',
-                            ),
-                        ],
-                        'pp:blocklist-view' => [
-                            'label' => Craft::t('password-policy', 'View password blocklist.'),
-                            'nested' => [
-                                'pp:blocklist-manage' => [
-                                    'label' => Craft::t('password-policy', 'Manage password blocklist.'),
-                                ],
+                $permissions = [
+                    'pp:settings' => [
+                        'label' => Craft::t('password-policy', 'Manage plugin settings.'),
+                    ],
+                    'pp:force-reset-passwords' => [
+                        'label' => Craft::t('password-policy', 'Force reset passwords retention access.'),
+                    ],
+                    'pp:change-user-passwords' => [
+                        'label' => Craft::t(
+                            'password-policy',
+                            'Change another user’s password and send password reset emails.',
+                        ),
+                    ],
+                    'pp:blocklist-view' => [
+                        'label' => Craft::t('password-policy', 'View password blocklist.'),
+                        'nested' => [
+                            'pp:blocklist-manage' => [
+                                'label' => Craft::t('password-policy', 'Manage password blocklist.'),
                             ],
                         ],
-                        'pp:notification-templates-manage' => [
-                            'label' => Craft::t('password-policy', 'Manage email notification templates.'),
-                        ],
-                        'pp:audit-view' => [
-                            'label' => Craft::t(
-                                'password-policy',
-                                'View audit log entries and the per-event PII allowlist registry. Auditor-grantable without full admin.',
-                            ),
-                        ],
-                        'pp:audit-verify' => [
-                            'label' => Craft::t(
-                                'password-policy',
-                                'Run the audit-log verifier CLI. Auditor-grantable without full admin.',
-                            ),
-                        ],
                     ],
+                    'pp:notification-templates-manage' => [
+                        'label' => Craft::t('password-policy', 'Manage email notification templates.'),
+                    ],
+                    'pp:audit-view' => [
+                        'label' => Craft::t(
+                            'password-policy',
+                            'View audit log entries and the per-event PII allowlist registry. Auditor-grantable without full admin.',
+                        ),
+                    ],
+                    'pp:audit-verify' => [
+                        'label' => Craft::t(
+                            'password-policy',
+                            'Run the audit-log verifier CLI. Auditor-grantable without full admin.',
+                        ),
+                    ],
+                ];
+
+                // SIEM forwarder management is an Enterprise-only write
+                // surface. Edition-gate at registration so a Pro or
+                // Lite admin's permissions screen never lists a
+                // permission they can't usefully grant. Top-level
+                // (not nested) — SIEM management is independent of
+                // `pp:audit-view`'s read surface.
+                if ($this->getIsEnterprise()) {
+                    $permissions['pp:siem-manage'] = [
+                        'label' => Craft::t(
+                            'password-policy',
+                            'Manage SIEM forwarders for audit-log delivery.',
+                        ),
+                    ];
+                }
+
+                $event->permissions[] = [
+                    'heading' => 'Password Policy',
+                    'permissions' => $permissions,
                 ];
             }
         );

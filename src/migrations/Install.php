@@ -48,6 +48,7 @@ class Install extends Migration
         $this->_createNotificationTemplatesTable();
         $this->_createUserStateTable();
         $this->_createAlertCooldownsTable();
+        $this->_createSiemForwardersTable();
         $this->_seedNotificationTemplateDefaults();
 
         return true;
@@ -60,6 +61,7 @@ class Install extends Migration
      */
     public function safeDown(): bool
     {
+        $this->dropTableIfExists('{{%passwordpolicy_siem_forwarders}}');
         $this->dropTableIfExists('{{%passwordpolicy_alert_cooldowns}}');
         $this->dropTableIfExists('{{%passwordpolicy_user_state}}');
         $this->dropTableIfExists('{{%passwordpolicy_notification_templates}}');
@@ -441,6 +443,51 @@ class Install extends Migration
         // prefix scan and the index can serve the >= range from the
         // last column.
         $this->createIndex(null, $table, ['eventClass', 'cooldownKey', 'firedAt'], false);
+    }
+
+    /**
+     * Creates the SIEM forwarders table — the registry of syslog-over-TLS
+     * endpoints the plugin forwards audit-log rows to (G8). Mirror of
+     * {@see m260507_132250_AddSiemForwardersTable}; that migration runs on
+     * upgrade-from-2.6 sites, this private method runs on fresh installs.
+     *
+     * Capture is universal across editions; the forwarder *registry* is
+     * exposure (Enterprise-only CP surface). The table exists empty on
+     * Lite / Pro and that's the correct state per
+     * `project_audit_capture_principle.md`.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _createSiemForwardersTable(): void
+    {
+        $table = '{{%passwordpolicy_siem_forwarders}}';
+
+        if ($this->db->tableExists($table)) {
+            return;
+        }
+
+        $this->createTable($table, [
+            'id' => $this->primaryKey(),
+            'name' => $this->string()->null(),
+            'protocol' => $this->string(32)->notNull()->defaultValue('syslog-tls'),
+            'host' => $this->string()->notNull(),
+            'port' => $this->integer()->notNull(),
+            'tlsCertVerify' => $this->boolean()->notNull()->defaultValue(true),
+            'tlsCaBundlePath' => $this->string()->null(),
+            'eventClasses' => $this->json()->null(),
+            'enabled' => $this->boolean()->notNull()->defaultValue(true),
+            'circuitOpenAt' => $this->dateTime()->null(),
+            'consecutiveFailures' => $this->integer()->notNull()->defaultValue(0),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid' => $this->uid(),
+        ]);
+
+        $this->createIndex(null, $table, ['enabled'], false);
+        $this->createIndex(null, $table, ['circuitOpenAt'], false);
     }
 
     /**

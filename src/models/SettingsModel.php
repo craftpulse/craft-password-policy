@@ -335,6 +335,38 @@ class SettingsModel extends Model
      */
     public array $alertCooldowns = [];
 
+    /**
+     * @var array<int, string> the table streams the SIEM forwarders
+     *     pull from (G8). Default `['audit_log']` — the only stream
+     *     supported in 5.2.0. The shape is forward-compatible:
+     *     `notification_log` joins as a 5.3 expansion without a schema
+     *     migration. Per-forwarder overrides on
+     *     `passwordpolicy_siem_forwarders.eventClasses` win when set.
+     *
+     * @since 5.2.0
+     */
+    public array $siemForwardEventClasses = ['audit_log'];
+
+    /**
+     * @var int seconds — the per-forwarder circuit-breaker cooldown
+     *     window after the consecutive-failure threshold opens it
+     *     (G8). Forwarders past this window enter half-open state; the
+     *     next forward attempt is the probe.
+     *
+     * @since 5.2.0
+     */
+    public int $siemCircuitCooldownSeconds = 300;
+
+    /**
+     * @var int the consecutive-failure count that opens a forwarder's
+     *     circuit (G8). Failures count both transient (timeout) and
+     *     terminal (TLS handshake) errors; a single success resets the
+     *     counter.
+     *
+     * @since 5.2.0
+     */
+    public int $siemCircuitFailureThreshold = 5;
+
     // Public Methods
     // =========================================================================
 

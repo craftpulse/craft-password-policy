@@ -33,6 +33,7 @@ use yii\base\InvalidConfigException;
  * @property RegistrationService $registration
  * @property RetentionService $retention
  * @property SecurityService $security
+ * @property SiemService $siem
  * @property StrengthService $strength
  * @property UserIndexService $userIndex
  * @property UserStateService $userState
@@ -68,6 +69,7 @@ trait ServicesTrait
                 'registration' => RegistrationService::class,
                 'retention' => RetentionService::class,
                 'security' => SecurityService::class,
+                'siem' => SiemService::class,
                 'strength' => StrengthService::class,
                 'userIndex' => UserIndexService::class,
                 'userState' => UserStateService::class,
@@ -298,6 +300,21 @@ trait ServicesTrait
     public function getSecurity(): SecurityService
     {
         return $this->get('security');
+    }
+
+    /**
+     * Returns the SIEM forwarder service.
+     *
+     * @return SiemService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getSiem(): SiemService
+    {
+        return $this->get('siem');
     }
 
     /**

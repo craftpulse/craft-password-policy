@@ -94,6 +94,8 @@ abstract class MigrationTestCase extends TestCase
 
         try {
             foreach ([
+                '{{%passwordpolicy_siem_forwarders}}',
+                '{{%passwordpolicy_alert_cooldowns}}',
                 '{{%passwordpolicy_user_state}}',
                 '{{%passwordpolicy_notification_templates}}',
                 '{{%passwordpolicy_blocklist}}',
@@ -159,6 +161,8 @@ abstract class MigrationTestCase extends TestCase
             'm260506_174529_AddNotificationLogActivityColumns',
             'm260507_081201_AddRowHashAndPreviousHashToAuditLog',
             'm260507_081852_RecomputeAuditLogChain',
+            'm260507_122940_AddAlertCooldownsTable',
+            'm260507_132250_AddSiemForwardersTable',
         ];
 
         $existingHistory = $migrator->getMigrationHistory();
