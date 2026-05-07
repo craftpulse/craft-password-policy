@@ -95,10 +95,24 @@ it('writes a failed row with errorMessage when template rendering throws', funct
 });
 
 // =============================================================================
-// Dedup decoupled from row existence — failed-then-retried not suppressed
+// G7 — cooldown is recorded on attempt, not on success
 // =============================================================================
+//
+// Pre-G7 the dedup gate filtered `_hasRecentNotification()` on
+// `status = 'sent'`, so a failed-then-retried notification produced two
+// rows (failed + sent). Phase G7 moved dedup from `notification_log`
+// (status='sent' filter) to a dedicated `passwordpolicy_alert_cooldowns`
+// row, recorded on the dispatch ATTEMPT regardless of outcome — see
+// `AlertCooldownService::shouldFire()` which "records the fire on true
+// return" per § 5 of the Phase G plan. The contract change is
+// deliberate: operators get one notification attempt per window, full
+// stop. A failed dispatch leaves a `status = 'failed'` row in
+// `notification_log` (operator-visible activity trail) and a cooldown
+// row in `alert_cooldowns` (suppression record). Operators can manually
+// re-fire via the Resend action — `NotificationService::resend()`
+// bypasses the cooldown gate (admin override of dedup).
 
-it('does not suppress a retry after a failed attempt', function() {
+it('records the cooldown on attempt — failed dispatch suppresses next call within window', function() {
     $user = UserFactory::admin();
     $user->email = 'recipient@example.test';
 
@@ -106,7 +120,8 @@ it('does not suppress a retry after a failed attempt', function() {
     breakNotificationTemplate('expiry-reminder');
     $this->plugin->getNotification()->sendPasswordExpiryReminder($user, 7);
 
-    // Restore the template so the retry can succeed.
+    // Restore the template — but the cooldown was recorded on the
+    // first attempt, so this call short-circuits before dispatch.
     restoreNotificationTemplate('expiry-reminder');
     $this->plugin->getNotification()->sendPasswordExpiryReminder($user, 7);
 
@@ -116,9 +131,11 @@ it('does not suppress a retry after a failed attempt', function() {
         ->orderBy(['id' => SORT_ASC])
         ->all();
 
-    expect($rows)->toHaveCount(2);
+    // One row — the failed attempt. The retry is gated by the cooldown
+    // service; no second `notification_log` row is written because the
+    // dispatch never ran.
+    expect($rows)->toHaveCount(1);
     expect($rows[0]->status)->toBe(NotificationStatus::Failed->value);
-    expect($rows[1]->status)->toBe(NotificationStatus::Sent->value);
 });
 
 it('suppresses a second send within the dedup window after a successful send', function() {

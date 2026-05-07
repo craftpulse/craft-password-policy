@@ -36,9 +36,9 @@ class GcController extends Controller
     /**
      * Runs garbage collection on all plugin tables.
      *
-     * Purges expired data from: password history (respecting count floor),
-     * audit log, notification log. Each table respects its configured
-     * retention period.
+     * Purges expired data from: password history (respecting count
+     * floor), audit log, notification log, alert cooldowns. Each table
+     * respects its configured retention period.
      *
      * @return int
      *
@@ -62,6 +62,9 @@ class GcController extends Controller
         }
         if (isset($results['auditLog'])) {
             $this->stdout("Audit log: {$results['auditLog']} entries purged (TTL: {$settings->auditLogRetentionDays} days)\n");
+        }
+        if (isset($results['alertCooldowns'])) {
+            $this->stdout("Alert cooldowns: {$results['alertCooldowns']} entries purged (TTL: longest configured cooldown or 7d floor)\n");
         }
 
         $this->stdout(str_repeat('-', 40) . "\n");

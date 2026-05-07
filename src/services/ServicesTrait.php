@@ -19,6 +19,7 @@ use yii\base\InvalidConfigException;
  * @package   Password Policy
  * @since     5.0.3
  *
+ * @property AlertCooldownService $alertCooldown
  * @property AuditLogService $auditLog
  * @property BlocklistService $blocklist
  * @property HibpClientInterface $hibpClient
@@ -53,6 +54,7 @@ trait ServicesTrait
     {
         return [
             'components' => [
+                'alertCooldown' => AlertCooldownService::class,
                 'auditLog' => AuditLogService::class,
                 'blocklist' => BlocklistService::class,
                 'hibpClient' => GuzzleHibpClient::class,
@@ -87,6 +89,21 @@ trait ServicesTrait
 
     // Public Methods
     // =========================================================================
+
+    /**
+     * Returns the alert cooldown service.
+     *
+     * @return AlertCooldownService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getAlertCooldown(): AlertCooldownService
+    {
+        return $this->get('alertCooldown');
+    }
 
     /**
      * Returns the audit log service.

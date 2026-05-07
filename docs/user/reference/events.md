@@ -221,6 +221,50 @@ Event::on(
 
 ---
 
+## `AlertCooldownEvent`
+
+**FQ class:** `craftpulse\passwordpolicy\events\AlertCooldownEvent`
+**Edition:** every (capture surface)
+**Triggered by:** `AlertCooldownService::EVENT_ALERT_COOLDOWN_FIRED`
+**When:** After `AlertCooldownService::recordFire()` writes a row to `passwordpolicy_alert_cooldowns`. The fire decision has already been made by the time this event triggers — listeners observe the fact, they don't gate it. Capture is universal across editions because cooldowns themselves capture on every edition; the event fires on Lite, Pro, and Enterprise alike. Edition gates apply to read surfaces (the SIEM forwarder, compliance dashboard) — they don't gate the event.
+
+### Payload
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `$eventClass` | `string` | The logical alert type the cooldown was recorded against — e.g. `expiry_reminder`, `admin_security_alert:hibp_breach_detected`, `hibp_login_burst`. Stable identifier consumers can match on. |
+| `$cooldownKey` | `string` | The cooldown's dedup key. Shape varies by event class: `user:<id>` for per-user windows, `event:<event>` for per-event-name windows, `prefix:<5char-sha1>` for HIBP bucket-level windows. |
+| `$firedAt` | `\DateTime` | UTC timestamp recorded on the `passwordpolicy_alert_cooldowns.firedAt` column. Authoritative for "when the alert fired" — listeners that need to correlate against external systems should use this rather than the listener's own clock read. |
+
+### Example listener — mirror suppression record to a SIEM
+
+```php
+use yii\base\Event;
+use craftpulse\passwordpolicy\events\AlertCooldownEvent;
+use craftpulse\passwordpolicy\services\AlertCooldownService;
+
+Event::on(
+    AlertCooldownService::class,
+    AlertCooldownService::EVENT_ALERT_COOLDOWN_FIRED,
+    function(AlertCooldownEvent $event) {
+        // Off-site evidence: an auditor walking the cooldowns history
+        // wants the same row visible in both places. Forwarding here
+        // means the suppression record outlives a local DB rotation.
+        Craft::info(
+            sprintf(
+                'Alert cooldown fired: %s/%s at %s',
+                $event->eventClass,
+                $event->cooldownKey,
+                $event->firedAt->format(DATE_ATOM),
+            ),
+            'compliance-mirror',
+        );
+    },
+);
+```
+
+---
+
 ## `PolicySaveEvent`
 
 **FQ class:** `craftpulse\passwordpolicy\events\PolicySaveEvent`

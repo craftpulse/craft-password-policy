@@ -40,11 +40,15 @@ use yii\db\Exception;
  * was a side-effect dedup substrate that pretended to be an audit
  * table — operators couldn't see failures at all.
  *
- * **Dedup decoupled from row existence:** `_hasRecentNotification()`
- * filters on `status = 'sent'`, so a failed-then-retried notification
- * isn't suppressed by the original failed row. This matches operator
- * intent — a failed send is something to retry, not something that
- * blocks the next attempt.
+ * **Dedup substrate (G7).** Per-(eventClass, cooldownKey) suppression
+ * lives in `passwordpolicy_alert_cooldowns` via `AlertCooldownService`.
+ * `_hasRecentNotification()` and `sendAdminSecurityAlert()`'s old 5-min
+ * inline filter both delegate now. Semantic flip from F2: the cooldown
+ * row is recorded on the dispatch ATTEMPT regardless of outcome — a
+ * failed-then-retried call inside the window is suppressed. Operators
+ * get one attempt per window, full stop. Admin override path for the
+ * rare retry-after-fail case is `resend()` (bypasses the cooldown gate
+ * explicitly).
  *
  * Capture is non-negotiable across editions — Lite installs already
  * write rows for the surfaces they have (admin security alerts —
@@ -211,19 +215,20 @@ class NotificationService extends Component
             return;
         }
 
-        // Dedup: no duplicate alerts for same event within 5 minutes.
-        // Filters on status='sent' for the same reason as the expiry-
-        // reminder dedup — failed-then-retried shouldn't suppress.
-        $recentCount = (new Query())
-            ->from('{{%passwordpolicy_notification_log}}')
-            ->where([
-                'notificationType' => 'admin_alert_' . $event,
-                'status' => NotificationStatus::Sent->value,
-            ])
-            ->andWhere(['>=', 'sentAt', Carbon::now('UTC')->subMinutes(5)->format('Y-m-d H:i:s')])
-            ->count();
-
-        if ((int)$recentCount > 0) {
+        // Dedup: no duplicate alerts for same event within the cooldown
+        // window. Pre-G7 this was an inline `Query` against
+        // `notification_log` filtering on `status = 'sent'` within a
+        // hardcoded 5-minute window — same window is now configurable
+        // via `AlertCooldownService::DEFAULT_COOLDOWN_ADMIN_SECURITY_ALERT`
+        // (still 300 seconds default).
+        //
+        // The `!shouldFire()` polarity matches `_hasRecentNotification()`'s
+        // semantic flip — see that method for the documented rationale.
+        if (!PasswordPolicy::$plugin->getAlertCooldown()->shouldFire(
+            'admin_security_alert:' . $event,
+            'event:' . $event,
+            AlertCooldownService::DEFAULT_COOLDOWN_ADMIN_SECURITY_ALERT,
+        )) {
             return;
         }
 
@@ -560,9 +565,25 @@ class NotificationService extends Component
     }
 
     /**
-     * Checks if a recent successful notification of the given type
-     * was sent to the user. Filters on `status = 'sent'` so failed
-     * sends don't suppress retries.
+     * Checks whether a recent fire of `$type` should suppress another
+     * one for `$userId`. Returns `true` when the cooldown is still
+     * active (skip), `false` when the next fire is allowed.
+     *
+     * Delegates to `AlertCooldownService::shouldFire()` since G7. The
+     * notification-log row remains the operator-readable activity
+     * trail, but the dedup decision now lives in
+     * `passwordpolicy_alert_cooldowns` — two storage surfaces:
+     * `notification_log` for "what was sent", `alert_cooldowns` for
+     * "when alerting fired regardless of whether an email was emitted".
+     *
+     * Semantic flip: `AlertCooldownService::shouldFire()` returns
+     * `true` when the alert MAY fire (cooldown clear). This method
+     * returns `true` when the alert should be SKIPPED (cooldown
+     * active). The `!` is intentional — see the inline comment below.
+     *
+     * Window unit: F2 stored the window in days
+     * (`expiryReminderDays`); the cooldown service takes seconds.
+     * Multiply by 86400 at the boundary.
      *
      * @param int $userId
      * @param string $type
@@ -574,20 +595,19 @@ class NotificationService extends Component
     private function _hasRecentNotification(int $userId, string $type): bool
     {
         $settings = PasswordPolicy::$plugin->getSettings();
+        $window = $settings->expiryReminderDays * 86400;
 
-        // For expiry reminders, check within the reminder window
-        $window = $settings->expiryReminderDays;
-        $threshold = Carbon::now('UTC')->subDays($window)->format('Y-m-d H:i:s');
-
-        return (new Query())
-            ->from('{{%passwordpolicy_notification_log}}')
-            ->where([
-                'userId' => $userId,
-                'notificationType' => $type,
-                'status' => NotificationStatus::Sent->value,
-            ])
-            ->andWhere(['>=', 'sentAt', $threshold])
-            ->exists();
+        // Semantic flip: shouldFire() returns true when ok-to-fire
+        // (cooldown clear). _hasRecentNotification() returns true when
+        // the caller should SKIP the fire (recent notification suppresses
+        // it). The `!` translates "ok-to-fire" → "skip-fire". Future
+        // maintainers: do NOT remove the `!` thinking the polarity is
+        // wrong — the polarity is intentional.
+        return !PasswordPolicy::$plugin->getAlertCooldown()->shouldFire(
+            $type,
+            "user:{$userId}",
+            $window,
+        );
     }
 
     /**
