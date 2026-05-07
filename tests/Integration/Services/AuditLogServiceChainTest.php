@@ -59,7 +59,7 @@ afterEach(function() {
 it('writes the genesis row with previousHash = sixty-four zeros', function() {
     $this->plugin->getAuditLog()->logEvent(
         userId: null,
-        event: 'test_genesis',
+        event: 'password_changed',
     );
 
     /** @var array<string, mixed>|null $row */
@@ -82,7 +82,7 @@ it('writes the genesis row with previousHash = sixty-four zeros', function() {
 it('writes a rowHash that matches the canonicalize+sha256 reference', function() {
     $this->plugin->getAuditLog()->logEvent(
         userId: null,
-        event: 'reference_check',
+        event: 'password_changed',
         outcome: 'success',
         source: 'cli',
     );
@@ -101,7 +101,7 @@ it('writes a rowHash that matches the canonicalize+sha256 reference', function()
         'dateCreated' => (new \DateTime($row['dateCreated'], new \DateTimeZone('UTC')))
             ->format('Y-m-d\TH:i:s\Z'),
         'details' => null,
-        'event' => 'reference_check',
+        'event' => 'password_changed',
         'ipHash' => $row['ipHash'],
         'outcome' => 'success',
         'source' => 'cli',
@@ -123,9 +123,9 @@ it('writes a rowHash that matches the canonicalize+sha256 reference', function()
 it('chains rows via previousHash referencing the prior rowHash', function() {
     $service = $this->plugin->getAuditLog();
 
-    $service->logEvent(userId: null, event: 'row_one');
-    $service->logEvent(userId: null, event: 'row_two');
-    $service->logEvent(userId: null, event: 'row_three');
+    $service->logEvent(userId: null, event: 'password_changed');
+    $service->logEvent(userId: null, event: 'account_locked');
+    $service->logEvent(userId: null, event: 'account_unlocked');
 
     /** @var array<int, array<string, mixed>> $rows */
     $rows = (new Query())
@@ -157,13 +157,13 @@ it('writes the chain on Lite edition (capture is universal)', function() {
 
     $this->plugin->getAuditLog()->logEvent(
         userId: null,
-        event: 'lite_capture',
+        event: 'password_changed',
     );
 
     /** @var array<string, mixed>|null $row */
     $row = (new Query())
         ->from('{{%passwordpolicy_audit_log}}')
-        ->where(['event' => 'lite_capture'])
+        ->where(['event' => 'password_changed'])
         ->one();
 
     expect($row)->not->toBeNull();
@@ -180,12 +180,12 @@ it('skips the write when enableAuditLog is false', function() {
 
     $this->plugin->getAuditLog()->logEvent(
         userId: null,
-        event: 'flag_off_event',
+        event: 'password_changed',
     );
 
     $exists = (new Query())
         ->from('{{%passwordpolicy_audit_log}}')
-        ->where(['event' => 'flag_off_event'])
+        ->where(['event' => 'password_changed'])
         ->exists();
 
     expect($exists)->toBeFalse();

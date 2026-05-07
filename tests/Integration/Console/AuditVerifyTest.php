@@ -126,7 +126,7 @@ it('returns exit 0 with "OK: 0 rows verified" on an empty audit log', function()
 // =============================================================================
 
 it('returns exit 0 on a single valid genesis row', function() {
-    $this->plugin->getAuditLog()->logEvent(userId: null, event: 'single_row');
+    $this->plugin->getAuditLog()->logEvent(userId: null, event: 'password_changed');
 
     $verifier = newVerifier();
     $exitCode = $verifier->runAction('verify');
@@ -143,9 +143,9 @@ it('returns exit 0 on a single valid genesis row', function() {
 
 it('returns exit 0 on a three-row valid chain', function() {
     $service = $this->plugin->getAuditLog();
-    $service->logEvent(userId: null, event: 'row_one');
-    $service->logEvent(userId: null, event: 'row_two');
-    $service->logEvent(userId: null, event: 'row_three');
+    $service->logEvent(userId: null, event: 'password_changed');
+    $service->logEvent(userId: null, event: 'account_locked');
+    $service->logEvent(userId: null, event: 'account_unlocked');
 
     $verifier = newVerifier();
     $exitCode = $verifier->runAction('verify');
@@ -160,9 +160,9 @@ it('returns exit 0 on a three-row valid chain', function() {
 
 it('returns exit 1 when row 2 event column is tampered', function() {
     $service = $this->plugin->getAuditLog();
-    $service->logEvent(userId: null, event: 'row_one');
-    $service->logEvent(userId: null, event: 'row_two');
-    $service->logEvent(userId: null, event: 'row_three');
+    $service->logEvent(userId: null, event: 'password_changed');
+    $service->logEvent(userId: null, event: 'account_locked');
+    $service->logEvent(userId: null, event: 'account_unlocked');
 
     $rows = fetchAllRows();
     tamperRow((int)$rows[1]['id'], ['event' => 'tampered']);
@@ -183,9 +183,9 @@ it('returns exit 1 when row 2 event column is tampered', function() {
 
 it('returns exit 1 when row 2 previousHash is tampered', function() {
     $service = $this->plugin->getAuditLog();
-    $service->logEvent(userId: null, event: 'row_one');
-    $service->logEvent(userId: null, event: 'row_two');
-    $service->logEvent(userId: null, event: 'row_three');
+    $service->logEvent(userId: null, event: 'password_changed');
+    $service->logEvent(userId: null, event: 'account_locked');
+    $service->logEvent(userId: null, event: 'account_unlocked');
 
     $rows = fetchAllRows();
     // Replace row 2's previousHash with a sham 64-char hex digest. The
@@ -216,8 +216,8 @@ it('accepts non-genesis previousHash on a row older than retention + 24h', funct
     // and back-dating row 2's dateCreated to predate the retention
     // boundary.
     $service = $this->plugin->getAuditLog();
-    $service->logEvent(userId: null, event: 'will_be_purged');
-    $service->logEvent(userId: null, event: 'first_survivor');
+    $service->logEvent(userId: null, event: 'password_changed');
+    $service->logEvent(userId: null, event: 'account_locked');
 
     $rows = fetchAllRows();
     expect($rows)->toHaveCount(2);
@@ -290,8 +290,8 @@ it('returns exit 1 when first surviving row is recent with a non-genesis previou
     // Two rows, then delete the genesis row. Row 2's dateCreated stays
     // recent — verifier must NOT accept this as a retention boundary.
     $service = $this->plugin->getAuditLog();
-    $service->logEvent(userId: null, event: 'will_be_purged');
-    $service->logEvent(userId: null, event: 'first_survivor');
+    $service->logEvent(userId: null, event: 'password_changed');
+    $service->logEvent(userId: null, event: 'account_locked');
 
     $rows = fetchAllRows();
     Craft::$app->getDb()->createCommand()
@@ -311,9 +311,9 @@ it('returns exit 1 when first surviving row is recent with a non-genesis previou
 
 it('does not detect corruption outside the bounded --from / --to range', function() {
     $service = $this->plugin->getAuditLog();
-    $service->logEvent(userId: null, event: 'row_one');
-    $service->logEvent(userId: null, event: 'row_two');
-    $service->logEvent(userId: null, event: 'row_three');
+    $service->logEvent(userId: null, event: 'password_changed');
+    $service->logEvent(userId: null, event: 'account_locked');
+    $service->logEvent(userId: null, event: 'account_unlocked');
 
     $rows = fetchAllRows();
     // Corrupt row 1 (outside the upcoming --from=row2-id range).
@@ -341,8 +341,8 @@ it('does not detect corruption outside the bounded --from / --to range', functio
 
 it('emits parseable JSON Lines under --json with a final summary line', function() {
     $service = $this->plugin->getAuditLog();
-    $service->logEvent(userId: null, event: 'row_one');
-    $service->logEvent(userId: null, event: 'row_two');
+    $service->logEvent(userId: null, event: 'password_changed');
+    $service->logEvent(userId: null, event: 'account_locked');
 
     $verifier = newVerifier();
     $verifier->json = true;
@@ -375,8 +375,8 @@ it('emits parseable JSON Lines under --json with a final summary line', function
 
 it('suppresses per-row OK lines under --quiet', function() {
     $service = $this->plugin->getAuditLog();
-    $service->logEvent(userId: null, event: 'row_one');
-    $service->logEvent(userId: null, event: 'row_two');
+    $service->logEvent(userId: null, event: 'password_changed');
+    $service->logEvent(userId: null, event: 'account_locked');
 
     $verifier = newVerifier();
     $verifier->quiet = true;

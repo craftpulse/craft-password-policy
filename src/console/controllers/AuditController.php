@@ -119,7 +119,10 @@ class AuditController extends Controller
     public ?int $to = null;
 
     /**
-     * @var bool emit JSON Lines output instead of human-readable text.
+     * @var bool emit machine-readable JSON instead of human-readable
+     * text. On `verify`, that's JSON Lines (one row per line plus a
+     * summary). On `schema`, that's a single JSON object encoding the
+     * per-event allowlist registry.
      */
     public bool $json = false;
 
@@ -157,6 +160,10 @@ class AuditController extends Controller
             $options[] = 'to';
             $options[] = 'json';
             $options[] = 'quiet';
+        }
+
+        if ($actionID === 'schema') {
+            $options[] = 'json';
         }
 
         return $options;
@@ -231,6 +238,64 @@ class AuditController extends Controller
             'json' => $this->_exportJson($entries),
             default => $this->_exportCsv($entries),
         };
+
+        return ExitCode::OK;
+    }
+
+    /**
+     * Emits the per-event PII allowlist registry from
+     * {@see AuditLogService::ALLOWED_DETAILS_BY_EVENT} as auditor-facing
+     * static evidence: "this is what every event class is permitted to
+     * log, and nothing else can land on disk."
+     *
+     * Default output is a human-readable table; `--json` emits a single
+     * JSON object whose keys are event class strings and values are
+     * the allowed-key arrays. Pipe to `jq` for shaped queries.
+     *
+     * Console-direct invocation bypasses the `pp:audit-view` permission
+     * gate (consistent with `actionVerify` — operators with shell access
+     * have already passed any meaningful gate, and CI pipelines need to
+     * inspect the registry without a CP user identity).
+     *
+     * @return int
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function actionSchema(): int
+    {
+        $registry = AuditLogService::ALLOWED_DETAILS_BY_EVENT;
+
+        if ($this->json) {
+            $this->stdout(Json::encode($registry, JSON_PRETTY_PRINT) . "\n");
+
+            return ExitCode::OK;
+        }
+
+        // Human-readable table. Sort by event class so the output is
+        // deterministic regardless of registry source order.
+        ksort($registry, SORT_STRING);
+
+        $eventColumnWidth = max(
+            strlen('Event class'),
+            ...array_map(strlen(...), array_keys($registry)),
+        );
+
+        $header = sprintf(
+            "%-{$eventColumnWidth}s  %s\n",
+            'Event class',
+            'Allowed detail keys',
+        );
+        $this->stdout($header);
+        $this->stdout(str_repeat('-', $eventColumnWidth + 2 + 40) . "\n");
+
+        foreach ($registry as $event => $allowedKeys) {
+            $this->stdout(sprintf(
+                "%-{$eventColumnWidth}s  %s\n",
+                $event,
+                implode(', ', $allowedKeys),
+            ));
+        }
 
         return ExitCode::OK;
     }
