@@ -58,6 +58,10 @@ State legend: `active` = read now, `pending` = scheduled, `done` = built, `block
 - **Release strategy:** 5.2.0 ships as a single release covering Lite + Pro + Enterprise. Nothing tags / publishes until Enterprise (Phase 10–12) is complete and tested. Once the Phase G build plan is drafted (P2.8), revisit whether any G subset can defer to 5.3 if scope expands beyond a comfortable build cycle.
 - Hard gate: Phase D + Phase F + Enterprise build (G) must pass before release prep (H).
 
+### Known regressions (deferred to G12)
+
+- **Mailer-key SystemMessages registration missing for `password-policy:new-device-alert` + `password-policy:admin-security-alert`.** Both keys are called via `composeFromKey()` in `NotificationService` (lines 180, 235) but only `password-policy:audit-export-ready` (G10) is registered with `SystemMessages::EVENT_REGISTER_MESSAGES`. Practical effect: the F2 admin security alerts and HIBP-on-login new-device alerts deliver empty subject/body or the send fails outright (depending on Craft version). Not band-aided via a quick `EVENT_REGISTER_MESSAGES` row because the existing comments at `NotificationService.php:177-179` and `EmailDefaults.php:104` both target G12 for the proper fix: move both keys to the editable-templates path (`_dispatch()`) with per-site DB-stored templates seeded via `EmailDefaults::all()` + the propagation listener. A band-aid registration would be reverted in G12. **Surfaced 2026-05-07 during G10 review.** Resolution: G12.
+
 ---
 
 ## 2. Manual testing remaining
