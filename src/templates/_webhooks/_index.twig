@@ -1,0 +1,109 @@
+{# Webhook endpoints — Enterprise CP index. Lists every registered
+   endpoint with circuit-breaker status pills + per-row edit
+   affordance. Edition-gated upstream — by the time the route resolves
+   the controller has already enforced Enterprise. #}
+{# @var endpoints \craftpulse\passwordpolicy\models\WebhookEndpointModel[] #}
+{# @var readOnly bool #}
+
+{% requirePermission "pp:webhooks-manage" %}
+
+{% extends "password-policy/_layouts/password-policy-cp.twig" %}
+{% import '_includes/forms.twig' as forms %}
+
+{% set selectedSubnavItem = 'webhooks' %}
+{% set title = 'Webhooks'|t('password-policy') %}
+{% set pluginName = 'Password Policy' %}
+{% set docTitle = "#{pluginName} - #{title}" %}
+{% set crumbs = [
+    { label: pluginName, url: cpUrl('password-policy') },
+] %}
+
+{% block actionButton %}
+    {% if not readOnly %}
+        <a href="{{ cpUrl('password-policy/webhooks/new') }}" class="btn submit add icon">
+            {{ 'New endpoint'|t('password-policy') }}
+        </a>
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    {% if readOnly %}
+        {{ readOnlyNotice() }}
+    {% endif %}
+
+    <div class="readable">
+        <p>
+            {{ "Audit-log rows are POSTed to every active webhook endpoint with an HMAC-signed JSON body. Each endpoint is an independent subscriber tracking its own dispatch cursor — endpoint A's success never marks endpoint B's row delivered."|t('password-policy') }}
+        </p>
+    </div>
+
+    {% if endpoints|length == 0 %}
+        <blockquote class="note tip">
+            <p>
+                <strong>{{ 'No endpoints yet.'|t('password-policy') }}</strong>
+                {{ 'Click "New endpoint" to register a webhook subscriber.'|t('password-policy') }}
+            </p>
+        </blockquote>
+    {% else %}
+        <div class="tableview">
+            <table class="data fullwidth collapsible">
+                <thead>
+                    <tr>
+                        <th scope="col">{{ 'Name'|t('app') }}</th>
+                        <th scope="col">{{ 'URL'|t('password-policy') }}</th>
+                        <th scope="col">{{ 'Status'|t('app') }}</th>
+                        <th scope="col">{{ 'Circuit'|t('password-policy') }}</th>
+                        <th scope="col">{{ 'Last delivered row'|t('password-policy') }}</th>
+                        <th scope="col" class="thin"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for endpoint in endpoints %}
+                        {% set displayName = endpoint.name ?: endpoint.url %}
+                        {% set editUrl = cpUrl("password-policy/webhooks/#{endpoint.id}") %}
+
+                        {# Circuit pill — green=clean, red=open. The
+                           half-open state is invisible at the UI
+                           layer (next dispatch is the probe). #}
+                        {% if endpoint.circuitOpenAt is null %}
+                            {% set circuitLabel = 'Closed'|t('password-policy') %}
+                            {% set circuitColor = 'green' %}
+                        {% else %}
+                            {% set circuitLabel = "Open ({n} {n, plural, =1{failure} other{failures}})"|t('password-policy', { n: endpoint.consecutiveFailures }) %}
+                            {% set circuitColor = 'red' %}
+                        {% endif %}
+
+                        <tr>
+                            <td>
+                                <a href="{{ editUrl }}">{{ displayName }}</a>
+                            </td>
+                            <td class="code">{{ endpoint.url }}</td>
+                            <td>
+                                {% set enabledColor = endpoint.enabled ? 'green' : 'grey' %}
+                                {% set enabledLabel = endpoint.enabled ? 'Enabled'|t('app') : 'Disabled'|t('app') %}
+                                <span class="status-label {{ enabledColor }}">
+                                    <span class="status {{ enabledColor }}"></span>
+                                    <span class="status-label-text">{{ enabledLabel }}</span>
+                                </span>
+                            </td>
+                            <td>
+                                <span class="status-label {{ circuitColor }}">
+                                    <span class="status {{ circuitColor }}"></span>
+                                    <span class="status-label-text">{{ circuitLabel }}</span>
+                                </span>
+                            </td>
+                            <td class="code">
+                                {{ endpoint.lastDeliveredRowId ?? '—' }}
+                            </td>
+                            <td class="thin">
+                                <a href="{{ editUrl }}" class="btn small" data-icon="edit">
+                                    {{ 'Edit'|t('app') }}
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+{% endblock %}

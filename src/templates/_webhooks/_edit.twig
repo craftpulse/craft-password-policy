@@ -1,0 +1,273 @@
+{# Webhook endpoint edit — content template for asCpScreen() #}
+{# @var endpoint \craftpulse\passwordpolicy\models\WebhookEndpointModel #}
+{# @var isNew bool #}
+{# @var readOnly bool #}
+{# @var flashedSecret string|null #}
+
+{% import '_includes/forms.twig' as forms %}
+
+{% if not isNew %}
+    {{ hiddenInput('endpointId', endpoint.id) }}
+{% endif %}
+
+{# =========================================================================
+   Once-and-only-once new-secret panel — visible only on the immediate
+   render after creation (controller flashes; flash is consumed here).
+   ========================================================================= #}
+
+{% if flashedSecret is not null %}
+    <blockquote class="note warning">
+        <p>
+            <strong>{{ 'Save this secret now.'|t('password-policy') }}</strong>
+            {{ "It is shown ONCE. The plugin stores only an encrypted copy and cannot recover the plaintext later. Pair it with whatever secrets manager your consumer reads from."|t('password-policy') }}
+        </p>
+        <pre class="code" style="user-select: all">{{ flashedSecret }}</pre>
+    </blockquote>
+{% endif %}
+
+{# =========================================================================
+   General — name, url, eventClasses, enabled
+   ========================================================================= #}
+
+<div id="general">
+    {{ forms.textField({
+        first: true,
+        label: 'Name'|t('app'),
+        instructions: 'Optional display label. Defaults to the URL when empty.'|t('password-policy'),
+        id: 'name',
+        name: 'name',
+        value: endpoint.name,
+        autofocus: true,
+        errors: endpoint.getErrors('name'),
+        disabled: readOnly,
+    }) }}
+
+    {{ forms.autosuggestField({
+        label: 'URL'|t('password-policy'),
+        instructions: 'The endpoint URL audit-log payloads will be POSTed to. Supports env variables (e.g. <code>$PP_WEBHOOK_URL</code>). Always uses HTTPS in production — TLS verify is forced on.'|t('password-policy'),
+        id: 'url',
+        name: 'url',
+        value: endpoint.url,
+        suggestEnvVars: true,
+        required: true,
+        errors: endpoint.getErrors('url'),
+        disabled: readOnly,
+    }) }}
+
+    {{ forms.lightswitchField({
+        label: 'Enabled'|t('app'),
+        instructions: 'Disabled endpoints are skipped by the queue job entirely. Distinct from circuit-open, which is automatic and self-recovering.'|t('password-policy'),
+        id: 'enabled',
+        name: 'enabled',
+        on: endpoint.enabled,
+        disabled: readOnly,
+    }) }}
+</div>
+
+<hr>
+
+{# =========================================================================
+   Eligibility — per-endpoint event-class allowlist override
+   ========================================================================= #}
+
+<div id="eligibility">
+    <h2>{{ 'Eligibility'|t('password-policy') }}</h2>
+
+    {% set eventClassesValue = endpoint.eventClasses ? endpoint.eventClasses|join(', ') : '' %}
+    {{ forms.textField({
+        label: 'Event class allowlist'|t('password-policy'),
+        instructions: 'Comma-separated list of audit-log streams this endpoint receives. Leave empty to use the global setting (currently: <code>audit_log</code>). The only supported stream in this release is <code>audit_log</code>.'|t('password-policy'),
+        id: 'eventClasses',
+        name: 'eventClasses',
+        value: eventClassesValue,
+        class: 'code',
+        autocorrect: false,
+        autocapitalize: false,
+        disabled: readOnly,
+    }) }}
+</div>
+
+{# =========================================================================
+   Secret — display-once on creation; rotate-secret button thereafter
+   ========================================================================= #}
+
+{% if not isNew %}
+    <hr>
+    <div id="secret">
+        <h2>{{ 'HMAC secret'|t('password-policy') }}</h2>
+
+        <div class="readable">
+            <p>
+                {{ "Every dispatch carries an <code>X-PasswordPolicy-Signature: sha256=&lt;hex&gt;</code> header signed with the active secret. Consumers verify against the bytes received."|t('password-policy') }}
+            </p>
+
+            {% if endpoint.secretPrevious is not null and endpoint.secretRotatedAt is not null %}
+                <blockquote class="note tip">
+                    <p>
+                        <strong>{{ 'Rotation grace window active.'|t('password-policy') }}</strong>
+                        {{ "The previous secret is still accepted by consumers that haven't yet picked up the new one. Reaped automatically after the configured grace window."|t('password-policy') }}
+                    </p>
+                    <p>
+                        <small>{{ 'Rotated at: {at}'|t('password-policy', { at: endpoint.secretRotatedAt|datetime }) }}</small>
+                    </p>
+                </blockquote>
+            {% endif %}
+
+            {% if not readOnly %}
+                <button type="button" class="btn" id="pp-webhook-rotate-secret">
+                    {{ 'Rotate secret'|t('password-policy') }}
+                </button>
+                <div id="pp-webhook-secret-display" style="display: none; margin-top: 1em;"></div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# =========================================================================
+       Circuit status — visible for non-new endpoints only
+       ========================================================================= #}
+
+    <hr>
+    <div id="circuit">
+        <h2>{{ 'Circuit breaker'|t('password-policy') }}</h2>
+
+        <div class="readable">
+            {% if endpoint.circuitOpenAt is null %}
+                <blockquote class="note tip">
+                    <p>
+                        <strong>{{ 'Circuit closed.'|t('password-policy') }}</strong>
+                        {{ 'No consecutive failures recorded — endpoint is healthy.'|t('password-policy') }}
+                    </p>
+                </blockquote>
+            {% else %}
+                <blockquote class="note warning">
+                    <p>
+                        <strong>{{ 'Circuit open.'|t('password-policy') }}</strong>
+                        {{ "{n, plural, =1{One consecutive failure} other{# consecutive failures}} since {since}."|t('password-policy', {
+                            n: endpoint.consecutiveFailures,
+                            since: endpoint.circuitOpenAt|datetime,
+                        }) }}
+                        {{ "Endpoint will half-open after the configured cooldown elapses; the next dispatch attempt is the probe."|t('password-policy') }}
+                    </p>
+                </blockquote>
+            {% endif %}
+
+            <p>
+                <strong>{{ 'Last delivered row id:'|t('password-policy') }}</strong>
+                <span class="code">{{ endpoint.lastDeliveredRowId ?? '—' }}</span>
+            </p>
+
+            {% if not readOnly %}
+                <div class="flex">
+                    <form method="post" accept-charset="UTF-8">
+                        {{ csrfInput() }}
+                        {{ redirectInput("password-policy/webhooks/#{endpoint.id}") }}
+                        <input type="hidden" name="action" value="password-policy/webhook-endpoint/reset-circuit">
+                        <input type="hidden" name="endpointId" value="{{ endpoint.id }}">
+                        <button type="submit" class="btn">{{ 'Reset circuit'|t('password-policy') }}</button>
+                    </form>
+
+                    <button type="button" class="btn submit" id="pp-webhook-test-fire">
+                        {{ 'Send test event'|t('password-policy') }}
+                    </button>
+                </div>
+                <div id="pp-webhook-test-result" style="display: none; margin-top: 1em;"></div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if not readOnly %}
+        {% js %}
+        (function() {
+            var rotateBtn = document.getElementById('pp-webhook-rotate-secret');
+            var secretDisplay = document.getElementById('pp-webhook-secret-display');
+            var testBtn = document.getElementById('pp-webhook-test-fire');
+            var testResult = document.getElementById('pp-webhook-test-result');
+            var endpointId = {{ endpoint.id|json_encode|raw }};
+
+            if (rotateBtn) {
+                rotateBtn.addEventListener('click', function() {
+                    if (!confirm({{ "Rotating the secret invalidates the active signing key for new dispatches. Consumers must pick up the new secret within the grace window. Continue?"|t('password-policy')|json_encode|raw }})) {
+                        return;
+                    }
+
+                    rotateBtn.disabled = true;
+
+                    var formData = new FormData();
+                    formData.append(Craft.csrfTokenName, Craft.csrfTokenValue);
+                    formData.append('endpointId', endpointId);
+
+                    fetch(Craft.getActionUrl('password-policy/webhook-endpoint/rotate-secret'), {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body: formData,
+                    }).then(function(r) { return r.json(); })
+                      .then(function(payload) {
+                          if (payload.success) {
+                              Craft.cp.displayNotice(payload.message);
+                              secretDisplay.innerHTML =
+                                  '<blockquote class="note warning">' +
+                                  '<p><strong>' + {{ "Save this secret now. Shown ONCE."|t('password-policy')|json_encode|raw }} + '</strong></p>' +
+                                  '<pre class="code" style="user-select: all">' +
+                                    payload.newSecret.replace(/[<>&]/g, function(c) { return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }) +
+                                  '</pre>' +
+                                  '<p><small>' + {{ "Grace window ends:"|t('password-policy')|json_encode|raw }} + ' ' + payload.graceWindowEndsAt + '</small></p>' +
+                                  '</blockquote>';
+                              secretDisplay.style.display = 'block';
+                          } else {
+                              Craft.cp.displayError(payload.error || payload.message || {{ "Rotation failed."|t('password-policy')|json_encode|raw }});
+                          }
+                      })
+                      .catch(function() {
+                          Craft.cp.displayError({{ "Couldn’t rotate the secret."|t('password-policy')|json_encode|raw }});
+                      })
+                      .finally(function() { rotateBtn.disabled = false; });
+                });
+            }
+
+            if (testBtn) {
+                testBtn.addEventListener('click', function() {
+                    testBtn.disabled = true;
+                    testResult.innerHTML = '';
+                    testResult.style.display = 'none';
+
+                    var formData = new FormData();
+                    formData.append(Craft.csrfTokenName, Craft.csrfTokenValue);
+                    formData.append('endpointId', endpointId);
+
+                    fetch(Craft.getActionUrl('password-policy/webhook-endpoint/test-fire'), {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body: formData,
+                    }).then(function(r) { return r.json(); })
+                      .then(function(payload) {
+                          var status = payload.statusCode !== null ? payload.statusCode : '—';
+                          var bodyText = payload.body || '';
+                          var html = '<div class="readable">' +
+                              '<p><strong>' + (payload.success ? {{ "Delivered"|t('password-policy')|json_encode|raw }} : {{ "Failed"|t('password-policy')|json_encode|raw }}) + '</strong></p>' +
+                              '<ul>' +
+                              '<li>' + {{ "Status code:"|t('password-policy')|json_encode|raw }} + ' <span class="code">' + status + '</span></li>' +
+                              '<li>' + {{ "Duration:"|t('password-policy')|json_encode|raw }} + ' <span class="code">' + payload.duration + ' ms</span></li>' +
+                              '</ul>';
+                          if (bodyText) {
+                              html += '<p>' + {{ "Response/error excerpt:"|t('password-policy')|json_encode|raw }} + '</p>' +
+                                  '<pre class="code">' + bodyText.replace(/[<>&]/g, function(c) { return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }) + '</pre>';
+                          }
+                          html += '</div>';
+                          testResult.innerHTML = html;
+                          testResult.style.display = 'block';
+                          if (payload.success) {
+                              Craft.cp.displayNotice(payload.message);
+                          } else {
+                              Craft.cp.displayError(payload.message);
+                          }
+                      })
+                      .catch(function() {
+                          Craft.cp.displayError({{ "Couldn’t send the test event."|t('password-policy')|json_encode|raw }});
+                      })
+                      .finally(function() { testBtn.disabled = false; });
+                });
+            }
+        })();
+        {% endjs %}
+    {% endif %}
+{% endif %}

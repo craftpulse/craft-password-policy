@@ -148,6 +148,7 @@ class AuditLogService extends Component
         'password_reset_forced' => ['reason', 'source'],
         'policy_changed' => ['diff', 'policyId', 'policyName'],
         'siem_test' => ['source'],
+        'webhook_test' => ['source'],
     ];
 
     /**

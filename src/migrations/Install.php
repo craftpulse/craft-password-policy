@@ -49,6 +49,7 @@ class Install extends Migration
         $this->_createUserStateTable();
         $this->_createAlertCooldownsTable();
         $this->_createSiemForwardersTable();
+        $this->_createWebhookEndpointsTable();
         $this->_seedNotificationTemplateDefaults();
 
         return true;
@@ -61,6 +62,7 @@ class Install extends Migration
      */
     public function safeDown(): bool
     {
+        $this->dropTableIfExists('{{%passwordpolicy_webhook_endpoints}}');
         $this->dropTableIfExists('{{%passwordpolicy_siem_forwarders}}');
         $this->dropTableIfExists('{{%passwordpolicy_alert_cooldowns}}');
         $this->dropTableIfExists('{{%passwordpolicy_user_state}}');
@@ -488,6 +490,58 @@ class Install extends Migration
 
         $this->createIndex(null, $table, ['enabled'], false);
         $this->createIndex(null, $table, ['circuitOpenAt'], false);
+    }
+
+    /**
+     * Creates the webhook endpoints table — the registry of HTTP webhook
+     * subscribers the plugin POSTs HMAC-signed audit payloads to (G9).
+     * Mirror of {@see m260507_175059_AddWebhookEndpointsTable}; that
+     * migration runs on upgrade-from-2.7 sites, this private method runs
+     * on fresh installs.
+     *
+     * Capture is universal across editions; the endpoint *registry* is
+     * exposure (Enterprise-only CP surface). The table exists empty on
+     * Lite / Pro and that's the correct state per
+     * `project_audit_capture_principle.md`.
+     *
+     * Differs from the SIEM forwarders table (G8): each endpoint carries
+     * a `lastDeliveredRowId` watermark for per-endpoint dispatch
+     * tracking. Webhooks are independent subscribers — endpoint A's
+     * success doesn't mark endpoint B's row delivered.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _createWebhookEndpointsTable(): void
+    {
+        $table = '{{%passwordpolicy_webhook_endpoints}}';
+
+        if ($this->db->tableExists($table)) {
+            return;
+        }
+
+        $this->createTable($table, [
+            'id' => $this->primaryKey(),
+            'name' => $this->string()->null(),
+            'url' => $this->string(2048)->notNull(),
+            'secretCurrent' => $this->text()->notNull(),
+            'secretPrevious' => $this->text()->null(),
+            'secretRotatedAt' => $this->dateTime()->null(),
+            'eventClasses' => $this->json()->null(),
+            'enabled' => $this->boolean()->notNull()->defaultValue(true),
+            'lastDeliveredRowId' => $this->bigInteger()->null(),
+            'consecutiveFailures' => $this->integer()->notNull()->defaultValue(0),
+            'circuitOpenAt' => $this->dateTime()->null(),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid' => $this->uid(),
+        ]);
+
+        $this->createIndex(null, $table, ['enabled'], false);
+        $this->createIndex(null, $table, ['circuitOpenAt'], false);
+        $this->createIndex(null, $table, ['lastDeliveredRowId'], false);
     }
 
     /**

@@ -197,6 +197,10 @@ class SettingsController extends Controller
                 $settings['siemCircuitFailureThreshold'],
                 $settings['webhooksEnabled'],
                 $settings['webhooks'],
+                $settings['webhookForwardEventClasses'],
+                $settings['webhookCircuitCooldownSeconds'],
+                $settings['webhookCircuitFailureThreshold'],
+                $settings['webhookSecretGracePeriodHours'],
                 $settings['apiEnabled'],
             );
         }
