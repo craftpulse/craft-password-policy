@@ -42,14 +42,14 @@ class HibpValidator extends Validator
         $result = $plugin->getPasswords()->hibp($value);
 
         if ($result === true) {
-            // Password found in breach database — log if Enterprise
-            if ($plugin->getIsEnterprise() && $settings->enableAuditLog) {
-                $plugin->getAuditLog()->logEvent(
-                    userId: null,
-                    event: 'hibp_breach_detected',
-                    outcome: 'failure',
-                );
-            }
+            // Password found in breach database — record the audit row.
+            // Capture is universal (G1) — the service's `enableAuditLog`
+            // toggle is the only gate.
+            $plugin->getAuditLog()->logEvent(
+                userId: null,
+                event: 'hibp_breach_detected',
+                outcome: 'failure',
+            );
 
             return [
                 Craft::t(
@@ -61,15 +61,15 @@ class HibpValidator extends Validator
         }
 
         if ($result === null) {
-            // API failure — log and respect fail mode
-            if ($plugin->getIsEnterprise() && $settings->enableAuditLog) {
-                $plugin->getAuditLog()->logEvent(
-                    userId: null,
-                    event: 'hibp_check_failed',
-                    details: ['failMode' => $settings->hibpFailMode],
-                    outcome: 'warning',
-                );
-            }
+            // API failure — record the audit row, then respect fail mode.
+            // Capture is universal (G1) — the service's `enableAuditLog`
+            // toggle is the only gate.
+            $plugin->getAuditLog()->logEvent(
+                userId: null,
+                event: 'hibp_check_failed',
+                details: ['failMode' => $settings->hibpFailMode],
+                outcome: 'warning',
+            );
 
             if ($settings->hibpFailMode === 'closed') {
                 return [

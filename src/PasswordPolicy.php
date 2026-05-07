@@ -343,11 +343,19 @@ class PasswordPolicy extends Plugin
             $settings->notificationLogRetentionDays,
         );
 
-        if ($this->getIsEnterprise() && $settings->enableAuditLog) {
-            $results['auditLog'] = $this->getAuditLog()->purgeOldEntries(
-                $settings->auditLogRetentionDays,
-            );
-        }
+        // Audit log pruning runs on every edition for the same reason
+        // notification log pruning does (above): G1 made audit capture
+        // universal, so prune must match. Gating to Enterprise would
+        // let Lite/Pro installs grow the table unbounded after they've
+        // written `password_changed` / `account_locked` /
+        // `account_unlocked` rows. The `enableAuditLog` admin toggle is
+        // unchecked here on purpose — pruning a table that's not being
+        // written to is a no-op DELETE. Same architectural invariant:
+        // capture everywhere, gate exposure (the verifier CLI / dashboard
+        // / forwarder) — see `project_audit_capture_principle.md`.
+        $results['auditLog'] = $this->getAuditLog()->purgeOldEntries(
+            $settings->auditLogRetentionDays,
+        );
 
         return $results;
     }
@@ -1382,15 +1390,15 @@ class PasswordPolicy extends Plugin
             );
         }
 
-        // 3. Audit-log entry — gated to Enterprise installs that have audit
-        //    logging enabled. Lite/Pro skip this branch.
-        if ($this->getIsEnterprise() && $this->getSettings()->enableAuditLog) {
-            $this->getAuditLog()->logEvent(
-                userId: $user->id,
-                event: 'breach_detected',
-                outcome: 'warning',
-            );
-        }
+        // 3. Audit-log entry. Capture is universal (G1) — the service's
+        //    own `enableAuditLog` feature-flag check is the only gate;
+        //    edition gates apply to read surfaces (verifier CLI, dashboard,
+        //    forwarder), not to writes.
+        $this->getAuditLog()->logEvent(
+            userId: $user->id,
+            event: 'breach_detected',
+            outcome: 'warning',
+        );
 
         // 4. Fire the public event.
         if ($this->hasEventHandlers(self::EVENT_BREACH_DETECTED)) {
