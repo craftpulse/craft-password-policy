@@ -351,6 +351,54 @@ For one-shot integrations or testing, a closure works equally well. Listeners th
 
 ---
 
+## `WebhookDeliveryAttemptEvent`
+
+**FQ class:** `craftpulse\passwordpolicy\events\WebhookDeliveryAttemptEvent`
+**Edition:** every (capture surface)
+**Triggered by:** `WebhookService::EVENT_WEBHOOK_DELIVERY_ATTEMPT`
+**When:** After every dispatch attempt by `WebhookService::dispatch()` — success or failure. The webhook delivery itself is Enterprise-only (the queue job is gated, the CP UI is gated), but the event class fires regardless of edition because a non-Enterprise install can still synthesise a dispatch in tests or via custom code.
+
+### Payload
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `$endpointId` | `int` | The webhook endpoint id the dispatch targeted. |
+| `$auditRowId` | `int` | The audit-log row id this dispatch attempted to deliver. Stable correlation key — listeners can join against `passwordpolicy_audit_log` on this id to recover the full payload. |
+| `$statusCode` | `?int` | HTTP status code returned by the endpoint, or `null` when the dispatch failed before a response (connect refusal, DNS failure, timeout). |
+| `$duration` | `int` | Duration of the dispatch in milliseconds, measured around the Guzzle call. Includes connect, TLS handshake, send, receive. |
+| `$success` | `bool` | Whether the dispatch was treated as a success by the service. Success = 2xx HTTP response. 4xx, 5xx, transport failure, and timeouts all map to `false`. |
+| `$errorMessage` | `?string` | Human-readable error message on dispatch failure. Null on success. Never includes the request body or signature material. |
+
+> The HMAC signature, plaintext secret, and full request body are intentionally NOT in the event payload. Listeners that need the body can join against the audit log row via `auditRowId`. The signature and secret material are cryptographic identifiers that downstream listeners have no legitimate reason to receive.
+
+### Example listener — feed delivery outcomes into a metrics dashboard
+
+```php
+use yii\base\Event;
+use craftpulse\passwordpolicy\events\WebhookDeliveryAttemptEvent;
+use craftpulse\passwordpolicy\services\WebhookService;
+
+Event::on(
+    WebhookService::class,
+    WebhookService::EVENT_WEBHOOK_DELIVERY_ATTEMPT,
+    function(WebhookDeliveryAttemptEvent $event) {
+        Craft::info(
+            sprintf(
+                'Webhook %d → audit row %d: %s (%dms, status=%s)',
+                $event->endpointId,
+                $event->auditRowId,
+                $event->success ? 'OK' : 'FAIL',
+                $event->duration,
+                $event->statusCode ?? 'transport-error',
+            ),
+            'webhook-metrics',
+        );
+    },
+);
+```
+
+---
+
 ## Future events
 
 These are scheduled for v5.3 / Phase G but documented here so you can plan around them:

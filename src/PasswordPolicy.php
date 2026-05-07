@@ -214,7 +214,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '2.7.0';
+    public string $schemaVersion = '2.8.0';
 
     /**
      * @var bool
@@ -522,6 +522,16 @@ class PasswordPolicy extends Plugin
             ];
         }
 
+        // Webhooks subnav (Enterprise) — sits next to SIEM. Webhooks
+        // are the second audit-log delivery channel; same edition +
+        // permission gate, parallel surface.
+        if ($this->getIsEnterprise() && $currentUser->can('pp:webhooks-manage')) {
+            $subNavs['webhooks'] = [
+                'label' => Craft::t('password-policy', 'Webhooks'),
+                'url' => 'password-policy/webhooks',
+            ];
+        }
+
         // Settings visible in read-only mode too (admins can view active policy)
         if ($currentUser->can('pp:settings')) {
             $subNavs['settings'] = [
@@ -722,6 +732,9 @@ class PasswordPolicy extends Plugin
                         'password-policy/siem' => 'password-policy/siem-forwarder/index',
                         'password-policy/siem/new' => 'password-policy/siem-forwarder/edit',
                         'password-policy/siem/<forwarderId:\d+>' => 'password-policy/siem-forwarder/edit',
+                        'password-policy/webhooks' => 'password-policy/webhook-endpoint/index',
+                        'password-policy/webhooks/new' => 'password-policy/webhook-endpoint/edit',
+                        'password-policy/webhooks/<endpointId:\d+>' => 'password-policy/webhook-endpoint/edit',
                         'password-policy/user-password/change' => 'password-policy/user-password/change',
                         'password-policy/user-password/send-reset-email' => 'password-policy/user-password/send-reset-email',
                         'password-policy/users/<userId:\d+>/security' => 'password-policy/user-security/index',
@@ -793,6 +806,19 @@ class PasswordPolicy extends Plugin
                         'label' => Craft::t(
                             'password-policy',
                             'Manage SIEM forwarders for audit-log delivery.',
+                        ),
+                    ];
+
+                    // Webhook endpoints are an Enterprise-only write
+                    // surface, parallel to (not nested under) the SIEM
+                    // forwarder permission. Webhooks and SIEM are
+                    // independent delivery channels — operators may
+                    // run one or both — so the permissions split
+                    // separately.
+                    $permissions['pp:webhooks-manage'] = [
+                        'label' => Craft::t(
+                            'password-policy',
+                            'Manage HTTP webhook endpoints for audit-log delivery.',
                         ),
                     ];
                 }

@@ -38,6 +38,7 @@ use yii\base\InvalidConfigException;
  * @property UserIndexService $userIndex
  * @property UserStateService $userState
  * @property VitePluginService $vite
+ * @property WebhookService $webhook
  */
 trait ServicesTrait
 {
@@ -73,6 +74,7 @@ trait ServicesTrait
                 'strength' => StrengthService::class,
                 'userIndex' => UserIndexService::class,
                 'userState' => UserStateService::class,
+                'webhook' => WebhookService::class,
                 // Register the vite service
                 // @TODO devServerPublic / devServerInternal / serverPublic would benefit of `.env` vars for local dev
                 'vite' => [
@@ -374,5 +376,20 @@ trait ServicesTrait
     public function getVite(): VitePluginService
     {
         return $this->get('vite');
+    }
+
+    /**
+     * Returns the webhook delivery service.
+     *
+     * @return WebhookService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getWebhook(): WebhookService
+    {
+        return $this->get('webhook');
     }
 }

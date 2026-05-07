@@ -367,6 +367,47 @@ class SettingsModel extends Model
      */
     public int $siemCircuitFailureThreshold = 5;
 
+    /**
+     * @var array<int, string> the table streams the webhook endpoints
+     *     pull from (G9). Default `['audit_log']` — the only stream
+     *     supported in 5.2.0. Per-endpoint overrides on
+     *     `passwordpolicy_webhook_endpoints.eventClasses` win when set.
+     *
+     * @since 5.2.0
+     */
+    public array $webhookForwardEventClasses = ['audit_log'];
+
+    /**
+     * @var int seconds — the per-endpoint circuit-breaker cooldown
+     *     window after the consecutive-failure threshold opens it
+     *     (G9). Endpoints past this window enter half-open state;
+     *     the next dispatch attempt is the probe.
+     *
+     * @since 5.2.0
+     */
+    public int $webhookCircuitCooldownSeconds = 300;
+
+    /**
+     * @var int the consecutive-failure count that opens an endpoint's
+     *     circuit (G9). Failures count both transient (timeout) and
+     *     terminal (4xx/5xx) errors; a single success resets the
+     *     counter.
+     *
+     * @since 5.2.0
+     */
+    public int $webhookCircuitFailureThreshold = 5;
+
+    /**
+     * @var int hours — the rotation grace window during which the
+     *     `secretPrevious` column stays valid for consumer-side
+     *     verification (G9). Default 24h. Capped at 7 days (168h) by
+     *     `defineRules()` so a typo in `config/password-policy.php`
+     *     can't extend the grace window indefinitely.
+     *
+     * @since 5.2.0
+     */
+    public int $webhookSecretGracePeriodHours = 24;
+
     // Public Methods
     // =========================================================================
 
@@ -692,6 +733,28 @@ class SettingsModel extends Model
                 'integerOnly' => true,
                 'min' => 1,
                 'message' => Craft::t('password-policy', 'Expiry reminder must be at least 1 day.'),
+            ],
+            [
+                ['webhookCircuitCooldownSeconds'],
+                'number',
+                'integerOnly' => true,
+                'min' => 1,
+                'message' => Craft::t('password-policy', 'Webhook circuit cooldown must be at least 1 second.'),
+            ],
+            [
+                ['webhookCircuitFailureThreshold'],
+                'number',
+                'integerOnly' => true,
+                'min' => 1,
+                'message' => Craft::t('password-policy', 'Webhook circuit failure threshold must be at least 1.'),
+            ],
+            [
+                ['webhookSecretGracePeriodHours'],
+                'number',
+                'integerOnly' => true,
+                'min' => 1,
+                'max' => 168,
+                'message' => Craft::t('password-policy', 'Webhook secret grace period must be between 1 and 168 hours (7 days).'),
             ],
         ]);
     }
