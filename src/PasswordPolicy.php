@@ -214,7 +214,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '2.5.0';
+    public string $schemaVersion = '2.6.0';
 
     /**
      * @var bool
@@ -356,6 +356,14 @@ class PasswordPolicy extends Plugin
         $results['auditLog'] = $this->getAuditLog()->purgeOldEntries(
             $settings->auditLogRetentionDays,
         );
+
+        // Alert cooldown pruning (G7) — universal capture, same reason
+        // as the audit + notification log prunes above. The service
+        // computes its own threshold from the longest configured
+        // cooldown OR a 7-day floor so the auditor's "show me last
+        // week's suppression record" query never comes up empty due
+        // to over-aggressive prune.
+        $results['alertCooldowns'] = $this->getAlertCooldown()->pruneOldEntries();
 
         return $results;
     }

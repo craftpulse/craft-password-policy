@@ -47,6 +47,7 @@ class Install extends Migration
         $this->_createBlocklistTable();
         $this->_createNotificationTemplatesTable();
         $this->_createUserStateTable();
+        $this->_createAlertCooldownsTable();
         $this->_seedNotificationTemplateDefaults();
 
         return true;
@@ -59,6 +60,7 @@ class Install extends Migration
      */
     public function safeDown(): bool
     {
+        $this->dropTableIfExists('{{%passwordpolicy_alert_cooldowns}}');
         $this->dropTableIfExists('{{%passwordpolicy_user_state}}');
         $this->dropTableIfExists('{{%passwordpolicy_notification_templates}}');
         $this->dropTableIfExists('{{%passwordpolicy_blocklist}}');
@@ -389,6 +391,56 @@ class Install extends Migration
             'CASCADE',
             null,
         );
+    }
+
+    /**
+     * Creates the alert cooldowns table — durable storage for the per-
+     * (eventClass, cooldownKey) suppression record that
+     * {@see \craftpulse\passwordpolicy\services\AlertCooldownService}
+     * maintains. Pairs with `passwordpolicy_notification_log`: the log
+     * answers "what was sent + when + with what subject/body", the
+     * cooldowns table answers "when alerting fired regardless of
+     * whether an email or row was emitted".
+     *
+     * No FK constraints — events outlive entities by design. A deleted
+     * user's cooldown rows still answer "did we suppress an alert at
+     * the time?" for auditors after the user is gone.
+     *
+     * Capture is universal across editions per memory rule
+     * `project_audit_capture_principle.md`.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _createAlertCooldownsTable(): void
+    {
+        $table = '{{%passwordpolicy_alert_cooldowns}}';
+
+        if ($this->db->tableExists($table)) {
+            return;
+        }
+
+        $this->createTable($table, [
+            'id' => $this->primaryKey(),
+            'eventClass' => $this->string(128)->notNull(),
+            'cooldownKey' => $this->string(191)->notNull(),
+            'firedAt' => $this->dateTime()->notNull(),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid' => $this->uid(),
+        ]);
+
+        $this->createIndex(null, $table, ['eventClass'], false);
+        $this->createIndex(null, $table, ['cooldownKey'], false);
+        $this->createIndex(null, $table, ['firedAt'], false);
+        // Composite index = the dedup hot path. Ordered (eventClass,
+        // cooldownKey, firedAt) so a `WHERE eventClass = ? AND
+        // cooldownKey = ? AND firedAt >= ?` query lands on a covering
+        // prefix scan and the index can serve the >= range from the
+        // last column.
+        $this->createIndex(null, $table, ['eventClass', 'cooldownKey', 'firedAt'], false);
     }
 
     /**

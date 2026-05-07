@@ -313,6 +313,28 @@ class SettingsModel extends Model
      */
     public bool $apiEnabled = false;
 
+    /**
+     * @var array<string, int> per-event-class cooldown overrides for
+     *     `AlertCooldownService`. Keys are eventClass strings (e.g.
+     *     `'expiry_reminder'`,
+     *     `'admin_security_alert:hibp_breach_detected'`,
+     *     `'hibp_login_burst'`); values are cooldown windows in
+     *     seconds. Empty by default — operators wanting non-default
+     *     windows opt in via `config/password-policy.php`. No CP UI in
+     *     5.2.0; service consults this map first then falls back to
+     *     its own `DEFAULT_COOLDOWN_*` constants.
+     *
+     * Defense-in-depth: the service caps its prune horizon at the
+     * longest configured value across this array OR
+     * `AlertCooldownService::PRUNE_FLOOR_SECONDS` (whichever is
+     * longer), so a deployment that sets every key to a short window
+     * doesn't accidentally erase the suppression record an auditor
+     * needs.
+     *
+     * @since 5.2.0
+     */
+    public array $alertCooldowns = [];
+
     // Public Methods
     // =========================================================================
 
