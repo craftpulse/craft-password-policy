@@ -100,11 +100,23 @@ Items not yet verified in the code (reviewer claims, accuracy unverified):
 
 For each: verify against current code → fix inline if real and small → file in `ideas.md` if real but post-5.2.0 → drop if false.
 
-**Step 4 — G12 (mailer-key regression resolution)**
+**Step 4 — `NotificationLogRecord` → `NotificationLogElement`**
 
-Move `new-device-alert` + `admin-security-alert` keys to the editable-templates path per the existing comments. Resolves the regression documented above.
+Foundation refactor. Per the user-stated principle (`feedback_foundation_first_no_refactor_deferrals.md`), record-to-element conversions ship in 5.2.0 because the post-release migration cost is severe. Schema rewrites `passwordpolicy_notification_log.id` to FK `craft_elements.id` (CASCADE delete). New `NotificationLogElement` + `NotificationLogQuery` + element actions (Resend, Delete, Restore). `NotificationActivityController` index swaps to native element-index rendering; per-user panel switches to `NotificationLogElement::find()`. `NotificationService::_logNotification` and `resend()` adapt to the element surface. Playground test data is truncated by the migration (unreleased; documented in migration body). Schema bump 2.8.0 → 2.9.0.
 
-**Step 5 — G11 + G3** in some order. Phase G ends. Release prep (Phase H) starts.
+**Step 5 — `AuditLogRecord` → `AuditLogElement`**
+
+Same refactor pattern as Step 4 but on the bigger audit-chain surface. Element actions: View detail, Export selection, Delete (admin override only). Element-delete cooperates with retention purge (`EVENT_AUDIT_CHAIN_ROTATED` still fires; element soft-delete via `dateDeleted` is the new boundary). Chain hash computed from element-record content unchanged — `canonicalize()` continues to produce bit-identical bytes. `password-policy/audit/verify` console command continues to walk via the existing query (element layer is purely additive). Schema bump 2.9.0 → 2.10.0.
+
+**Step 6 — Policy element-ification decision checkpoint**
+
+User-requested checkpoint after Steps 4 + 5 land. Revisit whether `PolicyRecord` should also become `PolicyElement` for the same reason. Project-config-sync interaction is the wrinkle to think through. If approved: Step 6 implementation lands as a parallel refactor. If declined: PolicyRecord stays as-is for 5.2.0, captured in ideas.md as a 5.3+ consideration only if it can be done additively without migration (likely impossible — same reason we're elementifying now).
+
+**Step 7 — G12 (mailer-key regression resolution)**
+
+Move `new-device-alert` + `admin-security-alert` keys to the editable-templates path per the existing comments. Builds on the element-backed notification surface from Step 4.
+
+**Step 8 — G11 + G3** in some order. Phase G ends. Release prep (Phase H) starts.
 
 Skill-gap learnings from Phase G review (4 items: shared constants public-not-private; queue-job best-effort rethrow contract; HMAC vs bare hash for PII; Yii Response::$stream callable signature) are tracked outside this plan in the user's skill files.
 
