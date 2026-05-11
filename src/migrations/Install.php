@@ -199,7 +199,21 @@ class Install extends Migration
     }
 
     /**
-     * Creates the notification log table for dedup tracking.
+     * Creates the notification log table.
+     *
+     * Element-backed (Craft 5 idiom): `id` is a FK to `craft_elements.id`
+     * with `ON DELETE CASCADE`. Pairs with
+     * {@see \craftpulse\passwordpolicy\elements\NotificationLogElement}
+     * and {@see \craftpulse\passwordpolicy\records\NotificationLogRecord}
+     * — the element provides the queryable + index surface, the record
+     * stays the storage layer. Mirror of
+     * {@see m260511_133103_ConvertNotificationLogToElement}; that
+     * migration runs on upgrade-from-2.8 sites, this private method runs
+     * on fresh installs.
+     *
+     * `userId` is nullable + `SET NULL` so notification history outlives
+     * the user — aligns with `project_audit_capture_principle.md` (events
+     * outlive entities by design).
      *
      * @return void
      *
@@ -215,8 +229,8 @@ class Install extends Migration
         }
 
         $this->createTable($table, [
-            'id' => $this->primaryKey(),
-            'userId' => $this->integer()->notNull(),
+            'id' => $this->integer()->notNull(),
+            'userId' => $this->integer()->null(),
             'notificationType' => $this->string()->notNull(),
             'status' => $this->string(16)->notNull()->defaultValue('sent'),
             'recipientEmail' => $this->string()->null(),
@@ -226,13 +240,15 @@ class Install extends Migration
             'errorMessage' => $this->text()->null(),
             'resentFromId' => $this->integer()->null(),
             'sentAt' => $this->dateTime()->notNull(),
+            'PRIMARY KEY([[id]])',
         ]);
 
         $this->createIndex(null, $table, ['userId', 'notificationType', 'sentAt'], false);
         $this->createIndex(null, $table, ['status', 'sentAt'], false);
         $this->createIndex(null, $table, ['siteId'], false);
         $this->createIndex(null, $table, ['resentFromId'], false);
-        $this->addForeignKey(null, $table, ['userId'], Table::USERS, ['id'], 'CASCADE', null);
+        $this->addForeignKey(null, $table, ['id'], Table::ELEMENTS, ['id'], 'CASCADE', null);
+        $this->addForeignKey(null, $table, ['userId'], Table::USERS, ['id'], 'SET NULL', null);
         $this->addForeignKey(null, $table, ['siteId'], Table::SITES, ['id'], 'SET NULL', null);
         $this->addForeignKey(null, $table, ['resentFromId'], $table, ['id'], 'SET NULL', null);
     }

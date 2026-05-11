@@ -1,15 +1,19 @@
 <?php
 /**
  * Pest coverage for `NotificationActivityService` — the read-side
- * companion to `NotificationService`. Tests pin the query shapes
- * the CP activity index + per-user panel depend on: recent-for-user
- * ordering, filter combinations on the paginated read, distinct
- * type listing, and the recent-failure count.
+ * companion to `NotificationService`. Pins the read shapes the CP
+ * activity index + per-user panel + dashboard failure count depend on:
+ * recent-for-user ordering, single-row lookup, distinct-type listing,
+ * windowed failure count.
  *
- * Direct DB inserts seed the notification log rows. The service is
- * pure read; no mailer interaction is in scope here. Capture-side
- * behavior (row writing on success / failure) is covered separately
- * in `NotificationServiceCaptureTest`.
+ * Step 4 of the Phase G post-review remediation flipped the storage
+ * surface from a plain record to an element-backed table. Pagination
+ * is now driven by the native element-index — the service no longer
+ * owns a `paginated()` method; the CP controller renders
+ * `_layouts/elementindex` directly. Tests adapted accordingly.
+ *
+ * Rows are seeded via the element save path (paired `craft_elements`
+ * row required); no direct INSERT.
  *
  * @link      https://craftpulse.com
  * @copyright Copyright (c) 2024 CraftPulse
@@ -19,9 +23,10 @@
  */
 
 use Carbon\Carbon;
+use craft\helpers\DateTimeHelper;
+use craftpulse\passwordpolicy\elements\NotificationLogElement;
 use craftpulse\passwordpolicy\enums\NotificationStatus;
 use craftpulse\passwordpolicy\PasswordPolicy;
-use craftpulse\passwordpolicy\records\NotificationLogRecord;
 use craftpulse\passwordpolicy\services\NotificationActivityService;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 
@@ -40,9 +45,9 @@ beforeEach(function() {
 it('returns rows for a single user newest first', function() {
     $user = UserFactory::admin();
 
-    seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Sent, sentAt: Carbon::now('UTC')->subDays(3));
-    seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Sent, sentAt: Carbon::now('UTC')->subDays(1));
-    seedLogRow($user->id, 'breach_detected', NotificationStatus::Failed, sentAt: Carbon::now('UTC')->subHours(2));
+    seedLogElement($user->id, 'expiry_reminder', NotificationStatus::Sent, sentAt: Carbon::now('UTC')->subDays(3));
+    seedLogElement($user->id, 'expiry_reminder', NotificationStatus::Sent, sentAt: Carbon::now('UTC')->subDays(1));
+    seedLogElement($user->id, 'breach_detected', NotificationStatus::Failed, sentAt: Carbon::now('UTC')->subHours(2));
 
     $rows = $this->service->recentForUser($user->id);
 
@@ -56,8 +61,8 @@ it('scopes recentForUser strictly to the requested userId', function() {
     $alice = UserFactory::admin();
     $bob = UserFactory::admin();
 
-    seedLogRow($alice->id, 'expiry_reminder', NotificationStatus::Sent);
-    seedLogRow($bob->id, 'expiry_reminder', NotificationStatus::Sent);
+    seedLogElement($alice->id, 'expiry_reminder', NotificationStatus::Sent);
+    seedLogElement($bob->id, 'expiry_reminder', NotificationStatus::Sent);
 
     $rows = $this->service->recentForUser($alice->id);
 
@@ -69,7 +74,7 @@ it('caps recentForUser at the configured limit', function() {
     $user = UserFactory::admin();
 
     for ($i = 0; $i < 15; $i++) {
-        seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Sent, sentAt: Carbon::now('UTC')->subMinutes($i));
+        seedLogElement($user->id, 'expiry_reminder', NotificationStatus::Sent, sentAt: Carbon::now('UTC')->subMinutes($i));
     }
 
     expect($this->service->recentForUser($user->id, 5))->toHaveCount(5);
@@ -77,96 +82,22 @@ it('caps recentForUser at the configured limit', function() {
 });
 
 // =============================================================================
-// paginated — filter shape + total count
-// =============================================================================
-
-it('paginates against the full table when no filters are passed', function() {
-    $user = UserFactory::admin();
-
-    for ($i = 0; $i < 5; $i++) {
-        seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Sent, sentAt: Carbon::now('UTC')->subHours($i));
-    }
-
-    $result = $this->service->paginated([], 1, 3);
-
-    expect($result['total'])->toBe(5);
-    expect($result['rows'])->toHaveCount(3);
-});
-
-it('filters paginated reads by status', function() {
-    $user = UserFactory::admin();
-
-    seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Sent);
-    seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Failed);
-    seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Failed);
-
-    $result = $this->service->paginated(['status' => 'failed']);
-
-    expect($result['total'])->toBe(2);
-    foreach ($result['rows'] as $row) {
-        expect($row->status)->toBe('failed');
-    }
-});
-
-it('filters paginated reads by type', function() {
-    $user = UserFactory::admin();
-
-    seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Sent);
-    seedLogRow($user->id, 'breach_detected', NotificationStatus::Sent);
-
-    $result = $this->service->paginated(['notificationType' => 'breach_detected']);
-
-    expect($result['total'])->toBe(1);
-    expect($result['rows'][0]->notificationType)->toBe('breach_detected');
-});
-
-it('filters paginated reads by userId', function() {
-    $alice = UserFactory::admin();
-    $bob = UserFactory::admin();
-
-    seedLogRow($alice->id, 'expiry_reminder', NotificationStatus::Sent);
-    seedLogRow($bob->id, 'expiry_reminder', NotificationStatus::Sent);
-    seedLogRow($bob->id, 'breach_detected', NotificationStatus::Sent);
-
-    $result = $this->service->paginated(['userId' => $bob->id]);
-
-    expect($result['total'])->toBe(2);
-    foreach ($result['rows'] as $row) {
-        expect($row->userId)->toBe($bob->id);
-    }
-});
-
-it('rejects unknown status filter values rather than returning zero rows', function() {
-    $user = UserFactory::admin();
-
-    seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Sent);
-
-    // Typo on the filter — service ignores unknown status string and
-    // returns the full set, not an empty result that looks like a bug.
-    $result = $this->service->paginated(['status' => 'gibberish']);
-
-    expect($result['total'])->toBe(1);
-});
-
-// =============================================================================
-// getById — null on miss, hydrated record on hit
+// getById — null on miss, hydrated element on hit
 // =============================================================================
 
 it('returns null when getById misses', function() {
     expect($this->service->getById(999999))->toBeNull();
 });
 
-it('returns the hydrated record on getById hit', function() {
+it('returns the hydrated element on getById hit', function() {
     $user = UserFactory::admin();
 
-    seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Sent);
-    /** @var NotificationLogRecord $row */
-    $row = NotificationLogRecord::find()->where(['userId' => $user->id])->one();
+    $seed = seedLogElement($user->id, 'expiry_reminder', NotificationStatus::Sent);
 
-    $found = $this->service->getById($row->id);
+    $found = $this->service->getById((int)$seed->id);
 
     expect($found)->not->toBeNull();
-    expect($found->id)->toBe($row->id);
+    expect($found->id)->toBe($seed->id);
 });
 
 // =============================================================================
@@ -176,10 +107,10 @@ it('returns the hydrated record on getById hit', function() {
 it('returns distinct sorted notificationType values', function() {
     $user = UserFactory::admin();
 
-    seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Sent);
-    seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Sent);
-    seedLogRow($user->id, 'breach_detected', NotificationStatus::Sent);
-    seedLogRow($user->id, 'admin_alert_breach', NotificationStatus::Sent);
+    seedLogElement($user->id, 'expiry_reminder', NotificationStatus::Sent);
+    seedLogElement($user->id, 'expiry_reminder', NotificationStatus::Sent);
+    seedLogElement($user->id, 'breach_detected', NotificationStatus::Sent);
+    seedLogElement($user->id, 'admin_alert_breach', NotificationStatus::Sent);
 
     $types = $this->service->knownTypes();
 
@@ -193,11 +124,11 @@ it('returns distinct sorted notificationType values', function() {
 it('counts only failed rows within the requested hours-back window', function() {
     $user = UserFactory::admin();
 
-    seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Failed, sentAt: Carbon::now('UTC')->subHours(2));
-    seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Failed, sentAt: Carbon::now('UTC')->subHours(20));
-    seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Failed, sentAt: Carbon::now('UTC')->subHours(60));
+    seedLogElement($user->id, 'expiry_reminder', NotificationStatus::Failed, sentAt: Carbon::now('UTC')->subHours(2));
+    seedLogElement($user->id, 'expiry_reminder', NotificationStatus::Failed, sentAt: Carbon::now('UTC')->subHours(20));
+    seedLogElement($user->id, 'expiry_reminder', NotificationStatus::Failed, sentAt: Carbon::now('UTC')->subHours(60));
     // Sent rows must NOT count even within the window
-    seedLogRow($user->id, 'expiry_reminder', NotificationStatus::Sent, sentAt: Carbon::now('UTC')->subHours(1));
+    seedLogElement($user->id, 'expiry_reminder', NotificationStatus::Sent, sentAt: Carbon::now('UTC')->subHours(1));
 
     expect($this->service->recentFailureCount(24))->toBe(2);
     expect($this->service->recentFailureCount(96))->toBe(3);
@@ -209,10 +140,12 @@ it('counts only failed rows within the requested hours-back window', function() 
 // =============================================================================
 
 /**
- * Direct insert into the notification log so tests can pin row-set
- * shape without going through the mailer.
+ * Builds + persists a `NotificationLogElement` so tests can pin row-set
+ * shape without going through the mailer. Element save path allocates
+ * a `craft_elements` row first; the element's `afterSave()` writes the
+ * paired record.
  */
-function seedLogRow(
+function seedLogElement(
     int $userId,
     string $type,
     NotificationStatus $status,
@@ -223,19 +156,20 @@ function seedLogRow(
     ?string $body = 'Body',
     ?string $errorMessage = null,
     ?int $resentFromId = null,
-): void {
-    Craft::$app->getDb()->createCommand()
-        ->insert('{{%passwordpolicy_notification_log}}', [
-            'userId' => $userId,
-            'notificationType' => $type,
-            'status' => $status->value,
-            'recipientEmail' => $recipientEmail,
-            'siteId' => $siteId,
-            'subject' => $subject,
-            'body' => $body,
-            'errorMessage' => $errorMessage,
-            'resentFromId' => $resentFromId,
-            'sentAt' => ($sentAt ?? Carbon::now('UTC'))->format('Y-m-d H:i:s'),
-        ])
-        ->execute();
+): NotificationLogElement {
+    $element = new NotificationLogElement();
+    $element->userId = $userId;
+    $element->notificationType = $type;
+    $element->status = $status->value;
+    $element->recipientEmail = $recipientEmail;
+    $element->siteIdValue = $siteId;
+    $element->subject = $subject;
+    $element->body = $body;
+    $element->errorMessage = $errorMessage;
+    $element->resentFromId = $resentFromId;
+    $element->sentAt = DateTimeHelper::toDateTime(($sentAt ?? Carbon::now('UTC'))->format('Y-m-d H:i:s'));
+
+    Craft::$app->getElements()->saveElement($element, false);
+
+    return $element;
 }

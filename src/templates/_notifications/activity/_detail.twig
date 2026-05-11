@@ -1,9 +1,9 @@
 {# Notifications activity — detail view for a single log row.
  #
  # Variables:
- #   - row (NotificationLogRecord)
- #   - resentFrom (NotificationLogRecord|null) — populated when this row is itself a re-send
- #   - recipientUser (User|null) — the target user (null if user was deleted; row preserved via FK CASCADE on userId would actually drop it, so this should normally be set)
+ #   - row (NotificationLogElement)
+ #   - resentFrom (NotificationLogElement|null) — populated when this row is itself a re-send
+ #   - recipientUser (User|null) — the target user (null when the user was hard-deleted; userId column SET NULL since 5.2.0 so the audit row outlives the user)
  #
  # @author CraftPulse
  # @since 5.2.0
@@ -60,8 +60,8 @@
                     <th scope="row">{{ 'Sent at'|t('password-policy') }}</th>
                     <td>{{ row.sentAt|datetime('short') }}</td>
                 </tr>
-                {% if row.siteId %}
-                    {% set site = craft.app.sites.getSiteById(row.siteId) %}
+                {% if row.siteIdValue %}
+                    {% set site = craft.app.sites.getSiteById(row.siteIdValue) %}
                     <tr>
                         <th scope="row">{{ 'Site'|t('password-policy') }}</th>
                         <td>{{ site ? site.name : '— (deleted)'|t('password-policy') }}</td>
