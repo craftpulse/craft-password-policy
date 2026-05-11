@@ -13,11 +13,13 @@ namespace craftpulse\passwordpolicy\console\controllers;
 use Carbon\Carbon;
 use craft\console\Controller;
 use craft\db\Query;
+use craft\helpers\App;
 use craft\helpers\Json;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\services\AuditLogService;
 use Throwable;
 use yii\console\ExitCode;
+use yii\helpers\Console;
 
 /**
  * Class AuditController
@@ -76,6 +78,16 @@ class AuditController extends Controller
      * @var int number of days of audit entries to retain
      */
     public int $days = 365;
+
+    /**
+     * @var bool overwrite an existing `CRAFT_AUDIT_PII_KEY` value
+     *     during `generate-pii-key`. Without `--force`, the action
+     *     refuses to rotate — accidental rotation orphans every
+     *     historical row's `userIdentifier` correlation.
+     *
+     * @since 5.2.0
+     */
+    public bool $force = false;
 
     /**
      * @var string export format: `csv`, `jsonl`, or `json`. `csv` and
@@ -167,7 +179,85 @@ class AuditController extends Controller
             $options[] = 'json';
         }
 
+        if ($actionID === 'generate-pii-key') {
+            $options[] = 'force';
+        }
+
         return $options;
+    }
+
+    /**
+     * Generates a fresh HMAC key for audit-log PII hashing and writes
+     * it to the local `.env` as `CRAFT_AUDIT_PII_KEY`.
+     *
+     * The key is the HMAC secret behind {@see AuditLogService::_hashUserIdentifier()}.
+     * Operators rotate it to destroy historical-row correlation without
+     * touching `securityKey` (which would also break sessions, CSRF
+     * tokens, asset URLs). See `docs/user/features/audit-logging.md`
+     * § "Rotating the PII key" for the operator workflow.
+     *
+     * Workflow:
+     *  - Generates 32 cryptographically-random bytes via `random_bytes(32)`,
+     *    hex-encoded to a 64-char string (same shape as Craft's
+     *    `securityKey`).
+     *  - Writes via `Craft::$app->getConfig()->setDotEnvVar()` —
+     *    Craft's standard `.env`-mutation API.
+     *  - Refuses to overwrite an existing value unless `--force` is set;
+     *    accidental rotation orphans historical correlation.
+     *  - Prints the new key to stdout so operators can copy it to
+     *    production secret management.
+     *
+     * Console-direct: no permission gate (shell access is itself a
+     * privileged operation, consistent with `actionVerify` and
+     * `actionSchema`).
+     *
+     * @return int
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function actionGeneratePiiKey(): int
+    {
+        $envName = 'CRAFT_AUDIT_PII_KEY';
+        $existing = App::env($envName);
+
+        if (!empty($existing) && !$this->force) {
+            $this->stderr(
+                "$envName is already set. Generating a new key would orphan "
+                . "every existing audit-log row's userIdentifier hash.\n"
+                . "Use --force to overwrite if intentional rotation.\n",
+                Console::FG_YELLOW,
+            );
+
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        $key = bin2hex(random_bytes(32));
+
+        try {
+            \Craft::$app->getConfig()->setDotEnvVar($envName, $key);
+        } catch (Throwable $e) {
+            $this->stderr(
+                "Failed to write $envName to .env: " . $e->getMessage() . "\n",
+                Console::FG_RED,
+            );
+
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        $this->stdout(
+            "Generated and wrote $envName to .env\n",
+            Console::FG_GREEN,
+        );
+        $this->stdout("\nKey: $key\n\n");
+        $this->stdout(
+            "Add $envName=$key to your production environment.\n"
+            . "New audit-log rows will hash userIdentifier with this key.\n"
+            . "Existing rows (hashed with the previous key) become uncorrelatable\n"
+            . "against the new key — this is the intentional rotation behaviour.\n",
+        );
+
+        return ExitCode::OK;
     }
 
     /**
