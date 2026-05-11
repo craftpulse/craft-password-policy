@@ -51,6 +51,14 @@ Gating idiom:
 - **HIBP-on-login**: Pro-only listener registration. Lite installs simply don't fire it.
 - **`SettingsController::actionSave`** unconditionally `unset()` Pro/Enterprise keys for sub-edition saves — defense-in-depth even though UI doesn't render them.
 
+## Permission nesting convention
+
+Plugin permissions register as TOP-LEVEL when they're single-purpose (one operation, no view-vs-manage split): `pp:audit-export`, `pp:siem-manage`, `pp:webhooks-manage`, `pp:notification-templates-manage`, `pp:change-user-passwords`.
+
+Permissions NEST under a parent when the same resource has a view-vs-manage split: `pp:blocklist-view` → `pp:blocklist-manage`. View grants read access; manage grants write access on top. The parent is registered first, the child via the `nested` key on the parent's array.
+
+When a new feature surfaces a write-only operation (no read-only view of the same resource), register flat. When it surfaces both view + manage modes, register nested.
+
 ## Variable handle
 
 `craft.passwordpolicy.*` AND `craft.passwordPolicy.*` both work. Both registered. Lowercase exists for 5.1.1 backward compat; camelCase is the canonical form going forward.

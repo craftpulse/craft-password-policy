@@ -461,6 +461,12 @@ class AuditExportJob extends BaseBatchedJob implements RetryableJobInterface
         // controller looks this up, sends the file, and deletes the
         // entry. Stored as an array for forward-compat (a future
         // signed-URL field could land here without changing callers).
+        //
+        // `exportDate` pins the date the export was finalised so the
+        // download filename reflects when the data covers, not when
+        // the operator happens to click the email link. Without this
+        // a 24-hour-old export downloaded the next morning would
+        // label itself with the wrong day.
         $expiresAt = Carbon::now('UTC')
             ->addSeconds(self::TOKEN_TTL_SECONDS)
             ->toDateTime();
@@ -468,6 +474,7 @@ class AuditExportJob extends BaseBatchedJob implements RetryableJobInterface
         Craft::$app->getCache()->set(
             $this->_tokenCacheKey(),
             [
+                'exportDate' => Carbon::now('UTC')->format('Y-m-d'),
                 'filePath' => $remoteRelativePath ?? $localPath,
                 'filesystemHandle' => $this->filesystemHandle,
                 'format' => $this->format,

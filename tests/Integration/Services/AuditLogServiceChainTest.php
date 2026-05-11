@@ -190,3 +190,57 @@ it('skips the write when enableAuditLog is false', function() {
 
     expect($exists)->toBeFalse();
 });
+
+// =============================================================================
+// Return contract — `logEvent` returns the new row's primary key on success
+// and null on every short-circuit path. The contract exists for the two
+// `sendTestEvent` callers (SIEM + Webhook) — they need to fetch the just-
+// written row by id rather than racing `ORDER BY id DESC LIMIT 1`.
+// =============================================================================
+
+it('returns the new row id on a successful write', function() {
+    $rowId = $this->plugin->getAuditLog()->logEvent(
+        userId: null,
+        event: 'password_changed',
+    );
+
+    expect($rowId)->toBeInt();
+    expect($rowId)->toBeGreaterThan(0);
+
+    /** @var array<string, mixed>|null $row */
+    $row = (new Query())
+        ->from('{{%passwordpolicy_audit_log}}')
+        ->where(['id' => $rowId])
+        ->one();
+
+    expect($row)->not->toBeNull();
+    expect($row['event'])->toBe('password_changed');
+});
+
+it('returns null when enableAuditLog is false', function() {
+    $this->plugin->getSettings()->enableAuditLog = false;
+
+    $rowId = $this->plugin->getAuditLog()->logEvent(
+        userId: null,
+        event: 'password_changed',
+    );
+
+    expect($rowId)->toBeNull();
+});
+
+it('returns null for an event class missing from the allowlist registry', function() {
+    $rowId = $this->plugin->getAuditLog()->logEvent(
+        userId: null,
+        event: 'this_event_class_does_not_exist',
+    );
+
+    expect($rowId)->toBeNull();
+
+    // Fail-closed: no row was written either.
+    $exists = (new Query())
+        ->from('{{%passwordpolicy_audit_log}}')
+        ->where(['event' => 'this_event_class_does_not_exist'])
+        ->exists();
+
+    expect($exists)->toBeFalse();
+});

@@ -587,21 +587,26 @@ class WebhookService extends Component
         $currentUser = Craft::$app->getUser()->getIdentity();
         $userId = $currentUser?->id;
 
-        PasswordPolicy::$plugin->getAuditLog()->logEvent(
+        $rowId = PasswordPolicy::$plugin->getAuditLog()->logEvent(
             userId: $userId,
             event: 'webhook_test',
             details: ['source' => 'admin'],
             outcome: 'success',
         );
 
-        // Look up the just-written row. Order by `id DESC LIMIT 1`
-        // because the chain insert is serialised; the row is on disk
-        // at the moment `logEvent` returns.
+        // Fetch the just-written row by primary key. Using the returned
+        // id instead of `ORDER BY id DESC LIMIT 1` removes the race
+        // against concurrent admin clicks — without it, a second test
+        // arriving between this write and read would steal the lookup.
+        if ($rowId === null) {
+            throw new RuntimeException(
+                'Test event could not be written to the audit log; the log may be disabled or misconfigured.',
+            );
+        }
+
         $row = (new Query())
             ->from('{{%passwordpolicy_audit_log}}')
-            ->where(['event' => 'webhook_test'])
-            ->orderBy(['id' => SORT_DESC])
-            ->limit(1)
+            ->where(['id' => $rowId])
             ->one();
 
         if (!is_array($row)) {

@@ -293,13 +293,30 @@ class AuditLogService extends Component
      * export). The admin-managed `enableAuditLog` setting still gates
      * writes; that's a feature flag, not an edition gate.
      *
+     * Returns the new row's primary key on success, or `null` when the
+     * write was skipped or failed. Three null-return conditions:
+     *
+     *  1. The event class has no entry in `ALLOWED_DETAILS_BY_EVENT`
+     *     (fail-closed registry — see class docblock).
+     *  2. `enableAuditLog` is false (feature flag off).
+     *  3. The write threw a `Throwable` (logged, swallowed — never
+     *     blocks the parent operation).
+     *
+     * Most callers ignore the return value — the audit write is a
+     * fire-and-forget side effect. The return contract exists for
+     * `SiemService::sendTestEvent` + `WebhookService::sendTestEvent`,
+     * which need to fetch the just-written row by primary key to
+     * forward it. Looking up by `ORDER BY id DESC LIMIT 1` would race
+     * against concurrent admin clicks; reading the returned id is
+     * race-free.
+     *
      * @param int|null $userId
      * @param string $event
      * @param array<string, mixed>|null $details
      * @param string $outcome
      * @param string|null $source
      * @param int|null $changedByUserId
-     * @return void
+     * @return int|null the new row's primary key, or null when skipped/failed
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -311,7 +328,7 @@ class AuditLogService extends Component
         string $outcome = 'success',
         ?string $source = null,
         ?int $changedByUserId = null,
-    ): void {
+    ): ?int {
         // Fail-closed: an event class without a registry entry is a
         // programming error (typo in the call site, or new event class
         // shipped without registration). The warning fires BEFORE the
@@ -330,13 +347,13 @@ class AuditLogService extends Component
                 'password-policy',
             );
 
-            return;
+            return null;
         }
 
         $settings = PasswordPolicy::$plugin->getSettings();
 
         if (!$settings->enableAuditLog) {
-            return;
+            return null;
         }
 
         try {
@@ -360,13 +377,17 @@ class AuditLogService extends Component
                 $source = $this->_detectSource();
             }
 
-            // Hash IP address (never store raw)
+            // HMAC IP address (never store raw). Keyed via the same
+            // resolver as `_hashUserIdentifier()` — bare SHA-256 over
+            // IPv4's 32-bit space is rainbow-tableable, and rotating
+            // the `auditPiiKey` should destroy correlation against
+            // both columns symmetrically.
             $ipHash = null;
             $request = Craft::$app->getRequest();
             if (!$request->getIsConsoleRequest()) {
                 $ip = $request->getUserIP();
                 if ($ip !== null) {
-                    $ipHash = hash('sha256', $ip);
+                    $ipHash = hash_hmac('sha256', $ip, $this->_resolveAuditPiiKey());
                 }
             }
 
@@ -391,6 +412,8 @@ class AuditLogService extends Component
             $db = Craft::$app->getDb();
             $tableName = $db->getSchema()->getRawTableName('{{%passwordpolicy_audit_log}}');
 
+            $insertedId = null;
+
             $db->transaction(function() use (
                 $db,
                 $tableName,
@@ -404,6 +427,7 @@ class AuditLogService extends Component
                 $userIdentifier,
                 $dateCreated,
                 $uid,
+                &$insertedId,
             ): void {
                 $previousHash = $db
                     ->createCommand("SELECT [[rowHash]] FROM {$db->quoteTableName($tableName)} ORDER BY [[id]] DESC LIMIT 1 FOR UPDATE")
@@ -442,13 +466,24 @@ class AuditLogService extends Component
                 $record->dateCreated = $dateCreated;
                 $record->uid = $uid;
                 $record->save(false);
+
+                // Capture the new row's primary key for the return
+                // value. Read from the saved record rather than the
+                // raw lastInsertID — works through Yii's identity-map
+                // cache and survives a future move to UUID-keyed
+                // tables.
+                $insertedId = (int)$record->id;
             });
+
+            return $insertedId;
         } catch (Throwable $e) {
             // Never block the parent operation
             Craft::error(
                 'Failed to write audit log: ' . $e->getMessage(),
                 'password-policy',
             );
+
+            return null;
         }
     }
 

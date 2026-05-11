@@ -135,3 +135,16 @@ Brainstorming notes from the v5.2.0 build sessions. Not committed to any of thes
 **Edition / scope:** internal optimisation. Land if profiling shows it's a bottleneck — otherwise YAGNI. The `PreloadBatchingTest` query-count contract holds the line at "preload runs at most N+M queries"; a future `resolveForUsers` swap would add only one additional query class without changing the contract shape.
 
 **Status:** both parked, captured here so the next session knows the surface is intentional, not overlooked. Combine into a single 5.2.x polish commit if either ships — they're both small, both in `UserIndexService`, and share the "we noticed but didn't act" framing.
+
+---
+
+## SIEM forwarder — RFC 6587 octet-count framing as opt-in
+
+**Date:** 2026-05-07
+**Context:** G8 (commit `160808a`) ships syslog-over-TLS with non-transparent newline framing (`$frame . "\n"`). This works against every major SIEM receiver (Splunk, Elastic, Datadog, Logstash, rsyslog) tested during build, but RFC 6587 §3.4.2 explicitly notes non-transparent framing is "unreliable" for messages with embedded LFs. Plugin-emitted RFC 5424 frames don't contain embedded LFs today, so there's no current-correctness issue — this is interop hygiene only.
+
+**Proposal:** Add a `framingMode` enum field to `SiemForwarderModel` with values `non-transparent` (default) + `octet-count`. CP edit screen exposes the choice with help text linking to RFC 6587. `SiemService::_writeToSocket()` switches on the mode: octet-count produces `strlen($frame) . ' ' . $frame` instead of `$frame . "\n"`. Schema migration adds a column.
+
+**Why deferred:** non-blocker for 5.2.0; no current-correctness issue; better to ship after a Phase 12 REST surface lands and operators have real production traffic to inform the default choice.
+
+**Estimated effort:** Half-day. One column, one enum, one branch in `_writeToSocket`, one CP form field.

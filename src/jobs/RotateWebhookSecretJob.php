@@ -153,6 +153,19 @@ class RotateWebhookSecretJob extends BaseJob
         $rotatedAt = $record->secretRotatedAt;
 
         if ($rotatedAt === null) {
+            // The only way to reach this branch is an upstream
+            // bookkeeping bug (a rotation happened without pinning the
+            // timestamp). The reaper still runs to clear the stale
+            // state, but log a warning so the gap reaches a maintainer.
+            Craft::warning(
+                sprintf(
+                    'Webhook endpoint %d has secretPrevious set but secretRotatedAt is null. '
+                    . 'Treating grace window as elapsed; investigate the rotation bookkeeping.',
+                    $record->id,
+                ),
+                'password-policy',
+            );
+
             return true;
         }
 
