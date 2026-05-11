@@ -151,7 +151,14 @@ it('streams the response synchronously for a small range', function() {
     expect($response->headers->get('Content-Type'))->toBe('text/csv');
     expect($response->headers->get('Content-Disposition'))->toContain('attachment');
     expect($response->headers->get('Content-Disposition'))->toContain('.csv');
-    expect($response->stream)->toBeCallable();
+    expect($response->format)->toBe(Response::FORMAT_RAW);
+    expect($response->content)->toBeString();
+    // CSV header is the first line; both seeded rows follow. The
+    // header shape is owned by `AuditExportJob::csvHeader()` so the
+    // assertion only pins the canary columns rather than the full
+    // header string.
+    expect($response->content)->toContain('id,dateCreated');
+    expect($response->content)->toContain('password_changed');
 });
 
 it('streams JSONL when format=jsonl', function() {

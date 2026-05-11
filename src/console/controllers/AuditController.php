@@ -57,25 +57,6 @@ class AuditController extends Controller
     public const EXIT_UNREADABLE = 2;
 
     /**
-     * Stable sentinel for the genesis row's `previousHash`. Mirrors
-     * `AuditLogService::GENESIS_PREVIOUS_HASH` (private there because
-     * it's a writer implementation detail). Re-declared here so the
-     * verifier stays self-contained.
-     *
-     * @var string
-     */
-    private const GENESIS_PREVIOUS_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
-
-    /**
-     * Canonical-payload `dateCreated` format. Must stay in lockstep with
-     * `AuditLogService::CANONICAL_DATE_FORMAT` — drift here silently
-     * invalidates every recompute the verifier performs.
-     *
-     * @var string
-     */
-    private const CANONICAL_DATE_FORMAT = 'Y-m-d\TH:i:s\Z';
-
-    /**
      * Safety margin (in seconds) added to the retention window when
      * deciding whether a non-genesis first surviving row's
      * `previousHash` is an acceptable retention boundary. Tolerates
@@ -257,37 +238,56 @@ class AuditController extends Controller
             ->where(['>=', 'dateCreated', $threshold])
             ->orderBy(['dateCreated' => SORT_ASC]);
 
-        $entries = $query->all();
+        // Cursor-style iteration: stream rows one at a time so the
+        // export's memory footprint stays O(batch size) regardless of
+        // row count. Production audit tables can exceed hundreds of
+        // thousands of rows — `->all()` would OOM the console process
+        // before any bytes hit stdout.
+        if ($this->format === 'json') {
+            $this->stderr(
+                "Deprecated: --format=json emits a single mega-array that doesn't stream. "
+                . "Use --format=jsonl (newline-delimited JSON) for streaming-friendly output. "
+                . "The single-array shape may be removed in 5.3.\n",
+            );
+        }
 
-        if (empty($entries)) {
+        $hasRows = false;
+        $emailCache = [];
+
+        foreach ($query->each(1000) as $row) {
+            if ($this->includeUserDetails) {
+                $row['userEmail'] = $this->_resolveUserEmail((int)($row['userId'] ?? 0), $emailCache);
+            }
+
+            // Defer per-format preamble (CSV header / opening `[`)
+            // until the first row arrives so an empty result emits
+            // nothing to stdout — matches the pre-streaming behaviour.
+            if (!$hasRows) {
+                if ($this->format === 'json') {
+                    $this->stdout('[');
+                } elseif ($this->format !== 'jsonl') {
+                    $this->stdout($this->_csvHeader() . "\n");
+                }
+            }
+
+            match ($this->format) {
+                'jsonl' => $this->_emitJsonlRow($row),
+                'json' => $this->_emitJsonRow($row, !$hasRows),
+                default => $this->_emitCsvRow($row),
+            };
+
+            $hasRows = true;
+        }
+
+        if (!$hasRows) {
             $this->stderr("No entries found within the specified period.\n");
+
             return ExitCode::OK;
         }
 
-        // Optionally resolve user emails
-        if ($this->includeUserDetails) {
-            $userIds = array_filter(array_unique(array_column($entries, 'userId')));
-            $users = [];
-            if (!empty($userIds)) {
-                $users = (new Query())
-                    ->select(['id', 'email'])
-                    ->from(\craft\db\Table::USERS)
-                    ->where(['id' => $userIds])
-                    ->indexBy('id')
-                    ->all();
-            }
-
-            foreach ($entries as &$entry) {
-                $entry['userEmail'] = $users[$entry['userId']]['email'] ?? null;
-            }
-            unset($entry);
+        if ($this->format === 'json') {
+            $this->stdout("]\n");
         }
-
-        match ($this->format) {
-            'jsonl' => $this->_exportJsonl($entries),
-            'json' => $this->_exportJson($entries),
-            default => $this->_exportCsv($entries),
-        };
 
         return ExitCode::OK;
     }
@@ -445,6 +445,28 @@ class AuditController extends Controller
     }
 
     /**
+     * Returns the CSV header line — the same column set the per-row
+     * `_emitCsvRow()` writer emits, in the same order. Lifted out so
+     * `actionExport()` can emit the header once before the first
+     * streamed row.
+     *
+     * @return string
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _csvHeader(): string
+    {
+        $headers = ['id', 'userId', 'event', 'outcome', 'source', 'dateCreated'];
+
+        if ($this->includeUserDetails) {
+            $headers[] = 'userEmail';
+        }
+
+        return implode(',', $headers);
+    }
+
+    /**
      * Decodes the `details` JSON column to an array, or null when the
      * column is empty. JSON columns come back either as an already-
      * decoded array (Yii 2.0.50+) or as a JSON string — accept both.
@@ -586,15 +608,17 @@ class AuditController extends Controller
     }
 
     /**
-     * Outputs entries as CSV to stdout.
+     * Writes a single CSV-formatted row to stdout. Matches the column
+     * set returned by `_csvHeader()`. Values containing commas or
+     * double quotes are double-quote-escaped per RFC 4180.
      *
-     * @param array $entries
+     * @param array<string, mixed> $entry
      * @return void
      *
      * @author CraftPulse
      * @since 5.2.0
      */
-    private function _exportCsv(array $entries): void
+    private function _emitCsvRow(array $entry): void
     {
         $headers = ['id', 'userId', 'event', 'outcome', 'source', 'dateCreated'];
 
@@ -602,64 +626,65 @@ class AuditController extends Controller
             $headers[] = 'userEmail';
         }
 
-        $this->stdout(implode(',', $headers) . "\n");
+        $row = [];
 
-        foreach ($entries as $entry) {
-            $row = [];
-            foreach ($headers as $header) {
-                $value = $entry[$header] ?? '';
-                // Escape CSV values
-                if (str_contains((string)$value, ',') || str_contains((string)$value, '"')) {
-                    $value = '"' . str_replace('"', '""', (string)$value) . '"';
-                }
-                $row[] = $value;
+        foreach ($headers as $header) {
+            $value = $entry[$header] ?? '';
+
+            if (str_contains((string)$value, ',') || str_contains((string)$value, '"')) {
+                $value = '"' . str_replace('"', '""', (string)$value) . '"';
             }
-            $this->stdout(implode(',', $row) . "\n");
+
+            $row[] = $value;
         }
+
+        $this->stdout(implode(',', $row) . "\n");
     }
 
     /**
-     * Outputs entries as a single JSON mega-array to stdout. Emits a
-     * deprecation hint pointing operators at `--format=jsonl` — the
-     * single-array shape doesn't stream and may be removed in 5.3.
+     * Writes a single audit-log row as a JSON object inside the
+     * legacy single-mega-array shape, comma-prefixed when it's not the
+     * first row. The opening `[` and closing `]` are written by
+     * `actionExport()` so this helper only handles the inter-row
+     * separator. Cursor-style emission keeps memory bounded; the
+     * shape stays bit-identical to the pre-streaming output for any
+     * existing consumer.
      *
-     * @param array $entries
+     * @param array<string, mixed> $entry
+     * @param bool $isFirst whether this is the first row in the stream
      * @return void
      *
      * @author CraftPulse
      * @since 5.2.0
      */
-    private function _exportJson(array $entries): void
+    private function _emitJsonRow(array $entry, bool $isFirst): void
     {
-        $this->stderr(
-            "Deprecated: --format=json emits a single mega-array that doesn't stream. "
-            . "Use --format=jsonl (newline-delimited JSON) for streaming-friendly output. "
-            . "The single-array shape may be removed in 5.3.\n",
-        );
+        $prefix = $isFirst ? '' : ',';
 
-        $this->stdout(Json::encode($entries, JSON_PRETTY_PRINT) . "\n");
+        $this->stdout($prefix . Json::encode(
+            $entry,
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+        ));
     }
 
     /**
-     * Outputs entries as JSON Lines (one JSON object per line) to
-     * stdout. Matches the queued-job format byte-for-byte —
-     * downstream tooling that consumes the queued export's bytes can
-     * pipe stdin through identical parsing logic.
+     * Writes a single JSON Lines row to stdout (one JSON object per
+     * line). Matches the queued-job format byte-for-byte — downstream
+     * tooling that consumes the queued export's bytes can pipe stdin
+     * through identical parsing logic.
      *
-     * @param array<int, array<string, mixed>> $entries
+     * @param array<string, mixed> $entry
      * @return void
      *
      * @author CraftPulse
      * @since 5.2.0
      */
-    private function _exportJsonl(array $entries): void
+    private function _emitJsonlRow(array $entry): void
     {
-        foreach ($entries as $entry) {
-            $this->stdout(Json::encode(
-                $entry,
-                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
-            ) . "\n");
-        }
+        $this->stdout(Json::encode(
+            $entry,
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+        ) . "\n");
     }
 
     /**
@@ -827,7 +852,46 @@ class AuditController extends Controller
     private function _normaliseDateCreated(string $value): string
     {
         return (new \DateTime($value, new \DateTimeZone('UTC')))
-            ->format(self::CANONICAL_DATE_FORMAT);
+            ->format(AuditLogService::CANONICAL_DATE_FORMAT);
+    }
+
+    /**
+     * Memoised user-email lookup for the `--includeUserDetails` export
+     * path. The streaming loop calls this once per row; cache hits
+     * short-circuit before the DB query so a noisy single user dropping
+     * a thousand audit rows still costs exactly one `users` table read.
+     *
+     * The `$cache` parameter is passed by reference so the caller's
+     * lookup table accumulates across rows — keeps the cache lifecycle
+     * scoped to a single export invocation without bolting state onto
+     * the controller.
+     *
+     * @param int $userId zero / negative ids short-circuit to null
+     * @param array<int, string|null> $cache passed by reference
+     * @return string|null
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _resolveUserEmail(int $userId, array &$cache): ?string
+    {
+        if ($userId <= 0) {
+            return null;
+        }
+
+        if (array_key_exists($userId, $cache)) {
+            return $cache[$userId];
+        }
+
+        $email = (new Query())
+            ->select(['email'])
+            ->from(\craft\db\Table::USERS)
+            ->where(['id' => $userId])
+            ->scalar();
+
+        $cache[$userId] = is_string($email) ? $email : null;
+
+        return $cache[$userId];
     }
 
     /**
@@ -867,19 +931,18 @@ class AuditController extends Controller
             $query->andWhere(['<=', 'id', $this->to]);
         }
 
-        $rows = $query->all();
-        $totalRows = count($rows);
-
-        if ($totalRows === 0) {
-            $this->_emitSummary(totalRows: 0, verifiedRows: 0, exitCode: ExitCode::OK);
-            return ExitCode::OK;
-        }
-
-        $previousHash = self::GENESIS_PREVIOUS_HASH;
+        // Cursor-style iteration via `->each(1000)` keeps the chain
+        // walk's memory footprint bounded at O(batch size) regardless
+        // of audit-log row count. Production-scale tables can exceed
+        // hundreds of thousands of rows — `->all()` would OOM the
+        // verifier before it printed anything.
+        $previousHash = AuditLogService::GENESIS_PREVIOUS_HASH;
         $isFirstRow = true;
         $verifiedRows = 0;
+        $totalRows = 0;
 
-        foreach ($rows as $row) {
+        foreach ($query->each(1000) as $row) {
+            $totalRows++;
             $expectedPayload = AuditLogService::canonicalize($this->_buildCanonicalPayload($row));
             $expectedHash = hash('sha256', $expectedPayload . $row['previousHash']);
 
@@ -901,7 +964,7 @@ class AuditController extends Controller
             if ($isFirstRow) {
                 $isFirstRow = false;
 
-                $isGenesis = $row['previousHash'] === self::GENESIS_PREVIOUS_HASH;
+                $isGenesis = $row['previousHash'] === AuditLogService::GENESIS_PREVIOUS_HASH;
                 $isBoundedStart = $this->from !== null;
                 $isRetentionBoundary = !$isGenesis
                     && !$isBoundedStart

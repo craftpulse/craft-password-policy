@@ -156,9 +156,15 @@ class AuditLogService extends Component
      * zero hex chars — same width as a SHA-256 digest, so verifier
      * chain-walks treat it as a hash without a null-handling branch.
      *
+     * Single source of truth — referenced by `AuditController` (the
+     * G2 verifier CLI) and the `m260507_081852_RecomputeAuditLogChain`
+     * migration. Drift between the writer and either reader silently
+     * invalidates every chain hash in the table, so the constant lives
+     * in one place and the readers import it.
+     *
      * @var string
      */
-    private const GENESIS_PREVIOUS_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
+    public const GENESIS_PREVIOUS_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
 
     /**
      * Canonical-payload `dateCreated` format. UTC, ISO 8601 with the
@@ -167,9 +173,15 @@ class AuditLogService extends Component
      * verifier produces bit-identical output only when the format
      * matches exactly.
      *
+     * Single source of truth — referenced by `AuditController` (the
+     * G2 verifier CLI) and the `m260507_081852_RecomputeAuditLogChain`
+     * migration. Drift between the writer and either reader silently
+     * invalidates every chain hash in the table, so the constant lives
+     * in one place and the readers import it.
+     *
      * @var string
      */
-    private const CANONICAL_DATE_FORMAT = 'Y-m-d\TH:i:s\Z';
+    public const CANONICAL_DATE_FORMAT = 'Y-m-d\TH:i:s\Z';
 
     // Static Methods
     // =========================================================================
