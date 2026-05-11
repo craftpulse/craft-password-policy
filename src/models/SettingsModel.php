@@ -425,6 +425,39 @@ class SettingsModel extends Model
      */
     public ?string $auditExportFilesystem = null;
 
+    /**
+     * Dedicated HMAC key for audit-log PII hashing. Resolved from
+     * `CRAFT_AUDIT_PII_KEY` env var via `config/password-policy.php`.
+     *
+     * Why dedicated — `AuditLogService::_hashUserIdentifier()` HMACs
+     * user email so auditors can correlate audit rows to a known
+     * person without the User record needing to exist. The "rotate
+     * the key to destroy correlation" privacy lever only works if
+     * the key is independent of `securityKey` — otherwise rotating
+     * breaks the whole site (sessions, CSRF tokens, asset URLs).
+     *
+     * Operator workflow:
+     *  1. `ddev craft password-policy/audit/generate-pii-key` — writes
+     *     `CRAFT_AUDIT_PII_KEY` to the local `.env`.
+     *  2. Deploy with the env var set on production.
+     *  3. Rotation: regenerate + redeploy. New rows hash with the new
+     *     key; old rows remain correlate-able with the previous key
+     *     (which the operator may retain or destroy depending on
+     *     compliance policy).
+     *
+     * Fallback — when the env var is unset, falls back to
+     * `Craft::$app->getConfig()->getGeneral()->securityKey`. The
+     * fallback is for dev convenience (5.2.0 ships unreleased; fresh
+     * installs that haven't run the generator still produce hashable
+     * rows). Production deployments should set the env var via the
+     * CLI generator.
+     *
+     * @var string|null
+     *
+     * @since 5.2.0
+     */
+    public ?string $auditPiiKey = null;
+
     // Public Methods
     // =========================================================================
 

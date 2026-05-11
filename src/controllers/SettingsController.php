@@ -202,6 +202,7 @@ class SettingsController extends Controller
                 $settings['webhookCircuitFailureThreshold'],
                 $settings['webhookSecretGracePeriodHours'],
                 $settings['auditExportFilesystem'],
+                $settings['auditPiiKey'],
                 $settings['apiEnabled'],
             );
         }

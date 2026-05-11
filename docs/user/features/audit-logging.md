@@ -54,9 +54,61 @@ Any other key in the `$details` array is silently stripped.
 ## GDPR Notes
 
 - IP addresses stored as SHA-256 hashes only
-- User identifier uses HMAC-SHA-256 (key can be destroyed)
+- User identifier uses HMAC-SHA-256 keyed with a dedicated audit-PII secret (`CRAFT_AUDIT_PII_KEY`) that can be rotated independently of `securityKey` — see [Rotating the PII key](#rotating-the-pii-key) below
 - User deletion: SET NULL preserves anonymous audit records
 - Configurable retention period (default 365 days)
+
+### Rotating the PII key
+
+The `userIdentifier` column on every audit-log row is `HMAC-SHA256(email, $key)` where `$key` is a dedicated audit-PII secret independent of Craft's site `securityKey`. Auditors with knowledge of a target user's email can re-hash and match historical rows — essential for GDPR Article 17 deletion verification and incident-response timelines.
+
+The key is **rotatable**. Rotation destroys correlation against new rows; old rows remain hashable against the previous key (which the operator may retain or destroy depending on compliance policy). Critically, rotating this key does **not** invalidate sessions, CSRF tokens, asset URLs, or anything else `securityKey` anchors.
+
+#### Initial setup
+
+Generate the key on install:
+
+```bash
+ddev craft password-policy/audit/generate-pii-key
+```
+
+The command:
+
+- Generates 32 cryptographically-random bytes (64 hex chars, same shape as Craft's `securityKey`).
+- Writes `CRAFT_AUDIT_PII_KEY` to the local `.env`.
+- Prints the key so you can copy it to your production environment.
+
+Set the same env var on every environment that runs this plugin — staging, production, CI for tests that touch audit-log rows. Rows hashed in one environment with a different key are not correlate-able from another environment.
+
+The plugin reads `$auditPiiKey` from `config/password-policy.php`; the default template wires the env var through:
+
+```php
+<?php
+
+use craft\helpers\App;
+
+return [
+    'auditPiiKey' => App::env('CRAFT_AUDIT_PII_KEY'),
+];
+```
+
+#### Rotation procedure
+
+```bash
+ddev craft password-policy/audit/generate-pii-key --force
+```
+
+The `--force` flag is required to overwrite an existing key. Without it, the command refuses (accidental rotation orphans historical correlation).
+
+After rotation:
+
+- New audit rows hash `userIdentifier` with the new key.
+- Existing audit rows still carry hashes from the previous key. Those rows are correlate-able only by an auditor who retains the previous key value.
+- The verifier CLI (`password-policy/audit/verify`) continues to verify the chain integrity — `userIdentifier` is part of the canonical row payload, so rotating the key for new rows does not break the chain of existing rows. Rotation affects PII correlation only.
+
+#### Fallback when unset
+
+If `CRAFT_AUDIT_PII_KEY` is unset, the plugin falls back to `securityKey`. This is for dev-install convenience — fresh installs still produce hashable rows without the env var. The privacy USP (rotation without site breakage) only applies once you've run the generator and deployed the env var. Production deployments should always set it explicitly.
 
 ---
 

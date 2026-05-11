@@ -594,8 +594,12 @@ class AuditLogService extends Component
     /**
      * Creates an HMAC-SHA-256 hash of the user's email for post-deletion correlation.
      *
-     * Uses a server-side secret key. The key can be destroyed to make
-     * correlation permanently impossible on demand.
+     * The HMAC secret is resolved via {@see _resolveAuditPiiKey()} —
+     * a dedicated `auditPiiKey` (env-var-backed via
+     * `CRAFT_AUDIT_PII_KEY` + `config/password-policy.php`) with a
+     * `securityKey` fallback. Rotating the dedicated key destroys
+     * correlation against new rows without touching session signing,
+     * CSRF tokens, asset URLs, or anything else `securityKey` anchors.
      *
      * @param int $userId
      * @return string|null
@@ -611,9 +615,37 @@ class AuditLogService extends Component
             return null;
         }
 
-        // Use Craft's security key as the HMAC secret
-        $key = Craft::$app->getConfig()->getGeneral()->securityKey;
+        return hash_hmac('sha256', $user->email, $this->_resolveAuditPiiKey());
+    }
 
-        return hash_hmac('sha256', $user->email, $key);
+    /**
+     * Resolves the HMAC key for `userIdentifier` hashing.
+     *
+     * Reads `SettingsModel::$auditPiiKey` first (operator-managed via
+     * `CRAFT_AUDIT_PII_KEY` env var → `config/password-policy.php`).
+     * Falls back to `securityKey` when unset so dev installs that
+     * skipped the generator still produce hashable rows.
+     *
+     * The fallback is intentional but the USP-grade rotation property
+     * (key rotation destroys historical correlation without breaking
+     * the rest of the site) only applies once the env var is set —
+     * operators wanting the privacy lever MUST run
+     * `ddev craft password-policy/audit/generate-pii-key` once and
+     * redeploy.
+     *
+     * @return string
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _resolveAuditPiiKey(): string
+    {
+        $configured = PasswordPolicy::$plugin->getSettings()->auditPiiKey;
+
+        if (!empty($configured)) {
+            return $configured;
+        }
+
+        return Craft::$app->getConfig()->getGeneral()->securityKey;
     }
 }
