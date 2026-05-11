@@ -32,6 +32,7 @@
 use craft\db\Query;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
+use craftpulse\passwordpolicy\tests\Support\WebRequestStub;
 
 // =============================================================================
 // Setup — Pro edition, audit log enabled, wipe rows so per-test queries are
@@ -149,4 +150,59 @@ it('produces different userIdentifier hashes when auditPiiKey rotates', function
     expect($hashBefore)->not->toBeNull();
     expect($hashAfter)->not->toBeNull();
     expect($hashBefore)->not->toBe($hashAfter);
+});
+
+// =============================================================================
+// IP hash inherits the same keying — rotating `auditPiiKey` destroys
+// correlation against both `userIdentifier` AND `ipHash`. Bare SHA-256 over
+// IPv4's 32-bit space is rainbow-tableable; HMAC closes that gap.
+// =============================================================================
+
+/**
+ * Returns the `ipHash` column for the most-recently inserted row.
+ */
+function latestIpHash(): ?string
+{
+    $value = (new Query())
+        ->select(['ipHash'])
+        ->from('{{%passwordpolicy_audit_log}}')
+        ->orderBy(['id' => SORT_DESC])
+        ->limit(1)
+        ->scalar();
+
+    return is_string($value) ? $value : null;
+}
+
+it('produces different ipHash bytes when auditPiiKey rotates', function() {
+    // Swap the request for a stub so `getUserIP()` returns a known
+    // value — `_resolveAuditPiiKey()` ignores console requests and
+    // skips the IP hash entirely.
+    $originalRequest = Craft::$app->getRequest();
+    $request = new WebRequestStub();
+    $request->stubUserIp = '203.0.113.7';
+    Craft::$app->set('request', $request);
+
+    try {
+        $this->settings->auditPiiKey = 'ip-key-A';
+        $this->plugin->getAuditLog()->logEvent(
+            userId: null,
+            event: 'password_changed',
+        );
+        $hashA = latestIpHash();
+
+        $this->settings->auditPiiKey = 'ip-key-B';
+        $this->plugin->getAuditLog()->logEvent(
+            userId: null,
+            event: 'password_changed',
+        );
+        $hashB = latestIpHash();
+
+        expect($hashA)->not->toBeNull();
+        expect($hashB)->not->toBeNull();
+        expect($hashA)->not->toBe($hashB);
+        expect($hashA)->toBe(hash_hmac('sha256', '203.0.113.7', 'ip-key-A'));
+        expect($hashB)->toBe(hash_hmac('sha256', '203.0.113.7', 'ip-key-B'));
+    } finally {
+        Craft::$app->set('request', $originalRequest);
+    }
 });

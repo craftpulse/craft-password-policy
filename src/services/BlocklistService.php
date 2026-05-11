@@ -18,6 +18,7 @@ use DateTime;
 use InvalidArgumentException;
 use yii\base\Component;
 use yii\db\Exception;
+use yii\db\IntegrityException;
 
 /**
  * Class BlocklistService
@@ -179,14 +180,22 @@ class BlocklistService extends Component
             return false;
         }
 
-        Craft::$app->getDb()->createCommand()
-            ->insert('{{%passwordpolicy_blocklist}}', [
-                'word' => $word,
-                'source' => 'custom',
-                'policyId' => $policyId,
-                'dateCreated' => Carbon::now('UTC')->format('Y-m-d H:i:s'),
-            ])
-            ->execute();
+        try {
+            Craft::$app->getDb()->createCommand()
+                ->insert('{{%passwordpolicy_blocklist}}', [
+                    'word' => $word,
+                    'source' => 'custom',
+                    'policyId' => $policyId,
+                    'dateCreated' => Carbon::now('UTC')->format('Y-m-d H:i:s'),
+                ])
+                ->execute();
+        } catch (IntegrityException) {
+            // Race: another caller inserted the same word between our
+            // existence check and this insert. The unique index is the
+            // authoritative duplicate guard; surface this as the same
+            // "already exists" return shape as the explicit check.
+            return false;
+        }
 
         $this->clearCache();
 

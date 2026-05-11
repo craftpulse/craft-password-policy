@@ -246,6 +246,13 @@ it('caches the token entry with file metadata after writing the export', functio
     expect($entry['format'])->toBe('csv');
     expect($entry['filePath'])->toEndWith($token . '.csv');
     expect($entry['filesystemHandle'])->toBeNull();
+
+    // `exportDate` pins the date the export was finalised so the
+    // download controller labels the filename with the right day even
+    // if the operator clicks the link the next morning.
+    expect($entry['exportDate'])->toBeString();
+    expect($entry['exportDate'])->toMatch('/^\d{4}-\d{2}-\d{2}$/');
+    expect($entry['exportDate'])->toBe(\Carbon\Carbon::now('UTC')->format('Y-m-d'));
 });
 
 // =============================================================================

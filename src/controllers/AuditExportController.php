@@ -148,9 +148,18 @@ class AuditExportController extends Controller
 
         $filesystemHandle = $entry['filesystemHandle'] ?? null;
         $format = $entry['format'];
+
+        // Prefer the export date pinned at enqueue time so a token
+        // generated on day D but downloaded D+1 still labels the
+        // payload with D. Falls back to "now" for legacy cache entries
+        // written before the `exportDate` field landed.
+        $exportDate = is_string($entry['exportDate'] ?? null) && $entry['exportDate'] !== ''
+            ? (string)$entry['exportDate']
+            : Carbon::now('UTC')->format('Y-m-d');
+
         $filename = sprintf(
             'audit-export-%s.%s',
-            Carbon::now('UTC')->format('Y-m-d'),
+            $exportDate,
             $format,
         );
 
@@ -205,10 +214,9 @@ class AuditExportController extends Controller
 
     /**
      * Counts audit-log rows within the date range. Used to decide
-     * whether to take the synchronous-streaming shortcut. Cached for
-     * 60s to keep repeated form submissions cheap; the count is only
-     * advisory (the threshold is conservative enough that minor drift
-     * doesn't matter).
+     * whether to take the synchronous-streaming shortcut. Direct
+     * `COUNT` query against the indexed `dateCreated` column; cheap
+     * enough to skip caching.
      *
      * @param int $days
      * @return int

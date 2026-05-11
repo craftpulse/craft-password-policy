@@ -307,7 +307,21 @@ class SiemForwarderController extends Controller
         try {
             $accepted = $service->sendTestEvent($forwarder);
         } catch (Throwable $e) {
-            return $this->asFailure($e->getMessage());
+            // Defense-in-depth: surface a generic message to the CP
+            // admin and pin the actual exception to the plugin log.
+            // Raw TLS connect errors carry internal hostnames, IPs and
+            // port numbers that don't belong in a UI response — even a
+            // privileged one. Forwarder-level details belong in the
+            // operator's log channel.
+            Craft::error(
+                'SIEM test event failed: ' . $e->getMessage(),
+                'password-policy',
+            );
+
+            return $this->asFailure(Craft::t(
+                'password-policy',
+                'Test event failed. Check the plugin log for details.',
+            ));
         }
 
         return $accepted

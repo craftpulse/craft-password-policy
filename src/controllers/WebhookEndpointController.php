@@ -446,7 +446,21 @@ class WebhookEndpointController extends Controller
         try {
             $result = $service->sendTestEvent($endpoint);
         } catch (Throwable $e) {
-            return $this->asFailure($e->getMessage());
+            // Defense-in-depth: surface a generic message to the CP
+            // admin and pin the actual exception to the plugin log.
+            // Endpoint TLS / DNS errors carry internal hostnames + IPs
+            // that don't belong in a UI response — even a privileged
+            // one. Endpoint-level details belong in the operator's
+            // log channel.
+            Craft::error(
+                'Webhook test fire failed: ' . $e->getMessage(),
+                'password-policy',
+            );
+
+            return $this->asFailure(Craft::t(
+                'password-policy',
+                'Test event failed. Check the plugin log for details.',
+            ));
         }
 
         return $this->asJson([
