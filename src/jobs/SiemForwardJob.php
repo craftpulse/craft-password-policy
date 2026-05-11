@@ -16,7 +16,6 @@ use craft\queue\BaseBatchedJob;
 use craftpulse\passwordpolicy\batchers\UnforwardedAuditRowBatcher;
 use craftpulse\passwordpolicy\models\SiemForwarderModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
-use RuntimeException;
 use Throwable;
 use yii\queue\RetryableJobInterface;
 
@@ -280,10 +279,9 @@ class SiemForwardJob extends BaseBatchedJob implements RetryableJobInterface
                 [':id' => $rowId],
             )->execute();
         } catch (Throwable $e) {
-            throw new RuntimeException(
+            Craft::error(
                 'Failed to record audit-log forward outcome for row ' . $rowId . ': ' . $e->getMessage(),
-                0,
-                $e,
+                'password-policy',
             );
         }
     }

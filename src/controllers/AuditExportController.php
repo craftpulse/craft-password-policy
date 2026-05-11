@@ -270,11 +270,18 @@ class AuditExportController extends Controller
     }
 
     /**
-     * Streams the export response synchronously — used for small
-     * ranges below the threshold. Re-runs the same row-by-row writer
-     * the queued job uses, but pipes to PHP's output buffer instead
-     * of a file. Sets `Content-Type` + `Content-Disposition` headers
-     * before the stream callback fires.
+     * Builds the export payload in memory and serves it as a raw
+     * response. Used for small ranges below the synchronous threshold
+     * (`SYNC_DAYS_LIMIT` days AND `SYNC_ROW_LIMIT` rows). Re-runs the
+     * same row-by-row writer the queued job uses so the byte output
+     * stays identical across both paths.
+     *
+     * In-memory accumulation is intentional — the synchronous threshold
+     * caps the result at ~1000 rows × ~1KB each (~1MB), well under
+     * PHP's default memory ceiling. Larger ranges take the queued
+     * path. Yii's `Response::$stream` callable contract (`[string,
+     * bool]` per yield) is awkward and easy to misuse; building once
+     * then `asRaw`-ing keeps the controller obvious.
      *
      * @param int $days
      * @param string $format
@@ -299,32 +306,27 @@ class AuditExportController extends Controller
             ->orderBy(['id' => SORT_ASC])
             ->all();
 
+        // Single-source the writers — the queued job exposes
+        // `csvHeader`, `formatCsvRow`, and `formatJsonlRow` as static
+        // methods so this path produces byte-identical output without
+        // duplicating the writer contract.
+        $payload = '';
+
+        if ($format === 'csv') {
+            $payload .= AuditExportJob::csvHeader() . "\n";
+        }
+
+        foreach ($rows as $row) {
+            $payload .= ($format === 'jsonl'
+                ? AuditExportJob::formatJsonlRow($row)
+                : AuditExportJob::formatCsvRow($row)) . "\n";
+        }
+
         $response = Craft::$app->getResponse();
         $response->headers->set('Content-Type', $mimeType);
         $response->headers->set('Content-Disposition', sprintf('attachment; filename="%s"', $filename));
-
-        $response->stream = function() use ($format, $rows): array {
-            // Single-source the writers — the queued job exposes
-            // `csvHeader`, `formatCsvRow`, and `formatJsonlRow` as
-            // static methods so the synchronous-stream path produces
-            // byte-identical output without duplicating the writer
-            // contract.
-            $payload = '';
-
-            if ($format === 'csv') {
-                $payload .= AuditExportJob::csvHeader() . "\n";
-            }
-
-            foreach ($rows as $row) {
-                $payload .= ($format === 'jsonl'
-                    ? AuditExportJob::formatJsonlRow($row)
-                    : AuditExportJob::formatCsvRow($row)) . "\n";
-            }
-
-            echo $payload;
-
-            return [true, true];
-        };
+        $response->format = Response::FORMAT_RAW;
+        $response->content = $payload;
 
         return $response;
     }

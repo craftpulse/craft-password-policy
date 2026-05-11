@@ -10,6 +10,7 @@
 
 namespace craftpulse\passwordpolicy\services;
 
+use Carbon\Carbon;
 use Craft;
 use craft\db\Query;
 use craft\helpers\Json;
@@ -267,7 +268,7 @@ class PolicyService extends Component
         $transaction = $db->beginTransaction();
 
         try {
-            $now = (new \DateTime())->format('Y-m-d H:i:s');
+            $now = Carbon::now('UTC')->format('Y-m-d H:i:s');
             $settingsJson = Json::encode($policy->getSettingsArray());
 
             $attrs = [

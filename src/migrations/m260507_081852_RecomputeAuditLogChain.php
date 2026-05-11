@@ -50,17 +50,6 @@ class m260507_081852_RecomputeAuditLogChain extends Migration
     // =========================================================================
 
     /**
-     * Stable sentinel for the genesis row's `previousHash`. Mirrors the
-     * value in `AuditLogService::GENESIS_PREVIOUS_HASH` (private there
-     * because it's an implementation detail of the writer; copied here
-     * so the recompute migration stays self-contained and doesn't depend
-     * on the service exposing it).
-     *
-     * @var string
-     */
-    private const GENESIS_PREVIOUS_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
-
-    /**
      * Placeholder default applied by
      * {@see m260507_081201_AddRowHashAndPreviousHashToAuditLog}. Rows
      * still showing this value haven't been recomputed yet.
@@ -68,15 +57,6 @@ class m260507_081852_RecomputeAuditLogChain extends Migration
      * @var string
      */
     private const PLACEHOLDER_HASH = '0';
-
-    /**
-     * Canonical-payload `dateCreated` format. Must stay in lockstep with
-     * `AuditLogService::CANONICAL_DATE_FORMAT` — drift here silently
-     * invalidates every hash this migration writes.
-     *
-     * @var string
-     */
-    private const CANONICAL_DATE_FORMAT = 'Y-m-d\TH:i:s\Z';
 
     // Public Methods
     // =========================================================================
@@ -103,7 +83,7 @@ class m260507_081852_RecomputeAuditLogChain extends Migration
                 ->orderBy(['id' => SORT_ASC])
                 ->all();
 
-            $previousHash = self::GENESIS_PREVIOUS_HASH;
+            $previousHash = AuditLogService::GENESIS_PREVIOUS_HASH;
 
             foreach ($rows as $row) {
                 // Idempotent guard — skip rows whose `rowHash` is no
@@ -233,6 +213,6 @@ class m260507_081852_RecomputeAuditLogChain extends Migration
     private function _normaliseDateCreated(string $value): string
     {
         return (new \DateTime($value, new \DateTimeZone('UTC')))
-            ->format(self::CANONICAL_DATE_FORMAT);
+            ->format(AuditLogService::CANONICAL_DATE_FORMAT);
     }
 }
