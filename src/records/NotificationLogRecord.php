@@ -11,22 +11,27 @@
 namespace craftpulse\passwordpolicy\records;
 
 use craft\db\ActiveRecord;
+use craft\records\Element;
 use yii\db\ActiveQueryInterface;
 
 /**
  * Class NotificationLogRecord
  *
  * Active-record wrapper around `passwordpolicy_notification_log`. The
- * table doubles as both the dedup substrate (`_hasRecentNotification`
- * filters on `status = 'sent'`) and the user-facing activity log
- * (read paths in `NotificationActivityService`).
+ * table is element-backed (Craft 5 idiom): `id` is a FK to
+ * `craft_elements.id` with `ON DELETE CASCADE`. The record stays the
+ * storage layer; the queryable + index surface lives on
+ * {@see \craftpulse\passwordpolicy\elements\NotificationLogElement}.
+ *
+ * `userId` flips to nullable + `SET NULL` so notification history
+ * outlives the user, per `project_audit_capture_principle.md`.
  *
  * Datetime columns come back as raw strings — memory gap #10. Callers
  * that need real `DateTime` instances should hydrate via
  * `\craft\helpers\DateTimeHelper::toDateTime()`.
  *
- * @property int $id
- * @property int $userId
+ * @property int $id matches `craft_elements.id`
+ * @property ?int $userId nullable since 5.2.0 — `SET NULL` on user hard-delete
  * @property string $notificationType
  * @property string $status `sent` / `failed` — backed by {@see \craftpulse\passwordpolicy\enums\NotificationStatus}
  * @property ?string $recipientEmail address the message went to (null on legacy rows)
@@ -55,6 +60,19 @@ class NotificationLogRecord extends ActiveRecord
     public static function tableName(): string
     {
         return '{{%passwordpolicy_notification_log}}';
+    }
+
+    /**
+     * Relation back to the paired `craft_elements` row.
+     *
+     * @return ActiveQueryInterface
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getElement(): ActiveQueryInterface
+    {
+        return $this->hasOne(Element::class, ['id' => 'id']);
     }
 
     /**

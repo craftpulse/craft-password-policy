@@ -6,13 +6,18 @@
  *  - Re-renders the template **fresh** from current state (admin may
  *    have edited the template since the original send) — does NOT
  *    replay the stored snapshot.
- *  - Writes a new row linked to the original via `resentFromId`.
+ *  - Writes a new element row linked to the original via `resentFromId`.
  *  - Bypasses the dedup gate that normally suppresses a second send
  *    within the reminder window (admin click is an explicit override).
  *  - Returns false (without writing a row) when the row's
  *    `notificationType` isn't resendable — mailer-key paths
  *    (`new_device`, `admin_alert_*`) need the original event payload
  *    that we don't snapshot.
+ *
+ * Tests adapted in Step 4 of the Phase G post-review remediation:
+ * resend() now takes a `NotificationLogElement`, and rows are seeded
+ * via the element save path rather than direct INSERT (so the paired
+ * `craft_elements` row exists).
  *
  * @link      https://craftpulse.com
  * @copyright Copyright (c) 2024 CraftPulse
@@ -22,9 +27,10 @@
  */
 
 use Carbon\Carbon;
+use craft\helpers\DateTimeHelper;
+use craftpulse\passwordpolicy\elements\NotificationLogElement;
 use craftpulse\passwordpolicy\enums\NotificationStatus;
 use craftpulse\passwordpolicy\PasswordPolicy;
-use craftpulse\passwordpolicy\records\NotificationLogRecord;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 
 // =============================================================================
@@ -45,31 +51,33 @@ afterEach(function() {
 // Resend writes a new row chained to the original via resentFromId
 // =============================================================================
 
-it('writes a new sent row linked to the original via resentFromId', function() {
+it('writes a new sent element linked to the original via resentFromId', function() {
     $user = UserFactory::admin();
     $user->email = 'recipient@example.test';
 
     // Original send — normal pipeline, success.
     $this->plugin->getNotification()->sendPasswordExpiryReminder($user, 7);
 
-    /** @var NotificationLogRecord $original */
-    $original = NotificationLogRecord::find()
-        ->where(['userId' => $user->id])
-        ->orderBy(['id' => SORT_DESC])
+    /** @var NotificationLogElement $original */
+    $original = NotificationLogElement::find()
+        ->userId($user->id)
+        ->status(null)
+        ->orderBy(['elements.id' => SORT_DESC])
         ->one();
 
     $dispatched = $this->plugin->getNotification()->resend($original);
 
     expect($dispatched)->toBeTrue();
 
-    /** @var NotificationLogRecord $resent */
-    $resent = NotificationLogRecord::find()
-        ->where(['userId' => $user->id])
-        ->orderBy(['id' => SORT_DESC])
+    /** @var NotificationLogElement $resent */
+    $resent = NotificationLogElement::find()
+        ->userId($user->id)
+        ->status(null)
+        ->orderBy(['elements.id' => SORT_DESC])
         ->one();
 
     expect($resent->id)->not->toBe($original->id);
-    expect($resent->resentFromId)->toBe($original->id);
+    expect($resent->resentFromId)->toBe((int)$original->id);
     expect($resent->notificationType)->toBe('expiry_reminder');
     expect($resent->status)->toBe(NotificationStatus::Sent->value);
 });
@@ -84,20 +92,21 @@ it('resends even when the recent-success dedup window would normally block', fun
 
     $this->plugin->getNotification()->sendPasswordExpiryReminder($user, 7);
 
-    /** @var NotificationLogRecord $original */
-    $original = NotificationLogRecord::find()
-        ->where(['userId' => $user->id])
-        ->orderBy(['id' => SORT_DESC])
+    /** @var NotificationLogElement $original */
+    $original = NotificationLogElement::find()
+        ->userId($user->id)
+        ->status(null)
+        ->orderBy(['elements.id' => SORT_DESC])
         ->one();
 
     // Sanity — a normal second call is suppressed by the dedup gate.
     $this->plugin->getNotification()->sendPasswordExpiryReminder($user, 7);
-    expect((int)NotificationLogRecord::find()->where(['userId' => $user->id])->count())->toBe(1);
+    expect((int)NotificationLogElement::find()->userId($user->id)->status(null)->count())->toBe(1);
 
     // Resend bypasses dedup explicitly.
     $this->plugin->getNotification()->resend($original);
 
-    expect((int)NotificationLogRecord::find()->where(['userId' => $user->id])->count())->toBe(2);
+    expect((int)NotificationLogElement::find()->userId($user->id)->status(null)->count())->toBe(2);
 });
 
 // =============================================================================
@@ -110,10 +119,11 @@ it('re-renders the template fresh and reflects post-edit changes', function() {
 
     $this->plugin->getNotification()->sendPasswordExpiryReminder($user, 7);
 
-    /** @var NotificationLogRecord $original */
-    $original = NotificationLogRecord::find()
-        ->where(['userId' => $user->id])
-        ->orderBy(['id' => SORT_DESC])
+    /** @var NotificationLogElement $original */
+    $original = NotificationLogElement::find()
+        ->userId($user->id)
+        ->status(null)
+        ->orderBy(['elements.id' => SORT_DESC])
         ->one();
 
     $originalSubject = $original->subject;
@@ -123,10 +133,11 @@ it('re-renders the template fresh and reflects post-edit changes', function() {
 
     $this->plugin->getNotification()->resend($original);
 
-    /** @var NotificationLogRecord $resent */
-    $resent = NotificationLogRecord::find()
-        ->where(['userId' => $user->id])
-        ->orderBy(['id' => SORT_DESC])
+    /** @var NotificationLogElement $resent */
+    $resent = NotificationLogElement::find()
+        ->userId($user->id)
+        ->status(null)
+        ->orderBy(['elements.id' => SORT_DESC])
         ->one();
 
     expect($resent->subject)->toContain('EDITED');
@@ -142,34 +153,32 @@ it('returns false without writing a row when the type is not resendable', functi
 
     // Seed a row whose type isn't resendable — `new_device` is a
     // mailer-key path, so the original event payload (deviceLabel,
-    // maskedIp) isn't snapshotted in the log.
-    Craft::$app->getDb()->createCommand()
-        ->insert('{{%passwordpolicy_notification_log}}', [
-            'userId' => $user->id,
-            'notificationType' => 'new_device',
-            'status' => NotificationStatus::Sent->value,
-            'recipientEmail' => 'recipient@example.test',
-            'siteId' => null,
-            'subject' => 'New device',
-            'body' => 'Body',
-            'errorMessage' => null,
-            'resentFromId' => null,
-            'sentAt' => Carbon::now('UTC')->format('Y-m-d H:i:s'),
-        ])
-        ->execute();
+    // maskedIp) isn't snapshotted in the log. Goes through the
+    // element save path so the paired `craft_elements` row exists.
+    $seed = new NotificationLogElement();
+    $seed->userId = $user->id;
+    $seed->notificationType = 'new_device';
+    $seed->status = NotificationStatus::Sent->value;
+    $seed->recipientEmail = 'recipient@example.test';
+    $seed->subject = 'New device';
+    $seed->body = 'Body';
+    $seed->sentAt = DateTimeHelper::toDateTime(Carbon::now('UTC')->format('Y-m-d H:i:s'));
 
-    /** @var NotificationLogRecord $row */
-    $row = NotificationLogRecord::find()
-        ->where(['userId' => $user->id])
+    Craft::$app->getElements()->saveElement($seed, false);
+
+    /** @var NotificationLogElement $row */
+    $row = NotificationLogElement::find()
+        ->userId($user->id)
+        ->status(null)
         ->one();
 
-    $rowsBefore = (int)NotificationLogRecord::find()->where(['userId' => $user->id])->count();
+    $rowsBefore = (int)NotificationLogElement::find()->userId($user->id)->status(null)->count();
 
     $dispatched = $this->plugin->getNotification()->resend($row);
 
     expect($dispatched)->toBeFalse();
 
-    $rowsAfter = (int)NotificationLogRecord::find()->where(['userId' => $user->id])->count();
+    $rowsAfter = (int)NotificationLogElement::find()->userId($user->id)->status(null)->count();
 
     expect($rowsAfter)->toBe($rowsBefore);
 });

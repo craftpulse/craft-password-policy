@@ -15,10 +15,11 @@ use Craft;
 use craft\db\Query;
 use craft\elements\User;
 use craft\helpers\App;
+use craft\helpers\DateTimeHelper;
+use craftpulse\passwordpolicy\elements\NotificationLogElement;
 use craftpulse\passwordpolicy\enums\NotificationStatus;
 use craftpulse\passwordpolicy\models\NotificationTemplateModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
-use craftpulse\passwordpolicy\records\NotificationLogRecord;
 use DateTime;
 use RuntimeException;
 use Throwable;
@@ -237,9 +238,12 @@ class NotificationService extends Component
             'context' => $context,
         ]);
 
-        // Log with userId=0 for admin alerts (no specific user).
+        // Log with userId=null for admin alerts (no specific user).
+        // userId is nullable since 5.2.0 — the same column that flips
+        // to `SET NULL` on user hard-delete also accepts NULL for
+        // not-tied-to-a-user admin events.
         $this->_dispatchMailerKey(
-            userId: 0,
+            userId: null,
             type: 'admin_alert_' . $event,
             recipient: $email,
             sender: $message,
@@ -251,9 +255,9 @@ class NotificationService extends Component
      *
      * Re-renders the template **fresh** from current state (admin may
      * have edited the template since the original send) and writes a
-     * new row linked to the original via `resentFromId`. Bypasses the
-     * dedup gate — the admin's "Resend" click is an explicit override
-     * of the dedup-prevents-spam logic.
+     * new element row linked to the original via `resentFromId`.
+     * Bypasses the dedup gate — the admin's "Resend" click is an
+     * explicit override of the dedup-prevents-spam logic.
      *
      * Skips rows whose `notificationType` doesn't map to the editable-
      * templates surface (e.g. `admin_alert_*` rows, `new_device`):
@@ -261,18 +265,28 @@ class NotificationService extends Component
      * and re-rendering them requires the original event payload which
      * we don't snapshot. Callers can detect this via the bool return.
      *
-     * @param NotificationLogRecord $original
+     * @param NotificationLogElement $original
      * @return bool true if the resend dispatched, false if the row's
      *     type isn't resendable
      *
      * @author CraftPulse
      * @since 5.2.0
      */
-    public function resend(NotificationLogRecord $original): bool
+    public function resend(NotificationLogElement $original): bool
     {
+        if ($original->notificationType === null) {
+            return false;
+        }
+
         $templateKey = self::_templateKeyForType($original->notificationType);
 
         if ($templateKey === null) {
+            return false;
+        }
+
+        if ($original->userId === null) {
+            // Audit row outlived the user (FK SET NULL since 5.2.0)
+            // — we can't re-target the original recipient by id alone.
             return false;
         }
 
@@ -300,7 +314,7 @@ class NotificationService extends Component
             type: $original->notificationType,
             templateKey: $templateKey,
             extraVars: $extraVars,
-            resentFromId: $original->id,
+            resentFromId: (int)$original->id,
         );
 
         return true;
@@ -513,7 +527,7 @@ class NotificationService extends Component
      * the editable-templates surface; at that point those paths
      * move to `_dispatch()` and gain full subject + body capture.
      *
-     * @param int $userId user-scoped row (0 for admin alerts)
+     * @param int|null $userId user-scoped row, null for admin alerts (no specific user)
      * @param string $type machine-key matching `notification_log.notificationType`
      * @param string $recipient address the message goes to
      * @param \craft\mail\Message $sender prepared mailer message
@@ -523,7 +537,7 @@ class NotificationService extends Component
      * @since 5.2.0
      */
     private function _dispatchMailerKey(
-        int $userId,
+        ?int $userId,
         string $type,
         string $recipient,
         \craft\mail\Message $sender,
@@ -611,12 +625,21 @@ class NotificationService extends Component
     }
 
     /**
-     * Inserts a notification log row. Wrapped in try/catch so a row-
-     * write failure during the failure path doesn't double-fault the
+     * Saves a notification log element. Wrapped in try/catch so a
+     * save failure on the failure path doesn't double-fault the
      * caller — the worst case is operators don't see the failure on
      * the activity index.
      *
-     * @param int $userId
+     * Routes through `Craft::$app->getElements()->saveElement()` so
+     * the paired `craft_elements` row is allocated first; the
+     * element's `afterSave()` persists the record. Element id IS
+     * record id IS `craft_elements.id`.
+     *
+     * `userId` is passed as int|null since 5.2.0: the audit row
+     * outlives the user (`SET NULL` on user hard-delete). Admin-alert
+     * paths still use `userId = null` to indicate "no specific user."
+     *
+     * @param int|null $userId null for admin alerts (no specific user)
      * @param string $type
      * @param NotificationStatus $status
      * @param string|null $recipient
@@ -631,7 +654,7 @@ class NotificationService extends Component
      * @since 5.2.0
      */
     private function _logNotification(
-        int $userId,
+        ?int $userId,
         string $type,
         NotificationStatus $status,
         ?string $recipient,
@@ -642,20 +665,19 @@ class NotificationService extends Component
         ?int $resentFromId,
     ): void {
         try {
-            Craft::$app->getDb()->createCommand()
-                ->insert('{{%passwordpolicy_notification_log}}', [
-                    'userId' => $userId,
-                    'notificationType' => $type,
-                    'status' => $status->value,
-                    'recipientEmail' => $recipient,
-                    'siteId' => $siteId,
-                    'subject' => $subject,
-                    'body' => $body,
-                    'errorMessage' => $errorMessage,
-                    'resentFromId' => $resentFromId,
-                    'sentAt' => Carbon::now('UTC')->format('Y-m-d H:i:s'),
-                ])
-                ->execute();
+            $element = new NotificationLogElement();
+            $element->userId = $userId;
+            $element->notificationType = $type;
+            $element->status = $status->value;
+            $element->recipientEmail = $recipient;
+            $element->siteIdValue = $siteId;
+            $element->subject = $subject;
+            $element->body = $body;
+            $element->errorMessage = $errorMessage;
+            $element->resentFromId = $resentFromId;
+            $element->sentAt = DateTimeHelper::toDateTime(Carbon::now('UTC')->format('Y-m-d H:i:s')) ?: new DateTime('now');
+
+            Craft::$app->getElements()->saveElement($element, false);
         } catch (Throwable $e) {
             Craft::error(
                 "Failed to log notification: " . $e->getMessage(),

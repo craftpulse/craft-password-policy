@@ -40,6 +40,7 @@ use craft\helpers\ElementHelper;
 use craft\helpers\Json;
 use craft\helpers\UrlHelper;
 use craft\log\MonologTarget;
+use craft\services\Elements;
 use craft\services\Gc;
 use craft\services\Sites;
 use craft\services\SystemMessages;
@@ -64,6 +65,7 @@ use craftpulse\passwordpolicy\elements\conditions\PasswordNeverChangedConditionR
 use craftpulse\passwordpolicy\elements\conditions\PasswordResetRequiredConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\PasswordStatusConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\PolicyDriftConditionRule;
+use craftpulse\passwordpolicy\elements\NotificationLogElement;
 use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\events\BreachDetectedEvent;
 use craftpulse\passwordpolicy\events\PasswordChangedEvent;
@@ -217,7 +219,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '2.8.0';
+    public string $schemaVersion = '2.9.0';
 
     /**
      * @var bool
@@ -667,6 +669,7 @@ class PasswordPolicy extends Plugin
         // Safety net: clear any remaining cached passwords at end of request
         $this->_registerRequestCleanup();
 
+        $this->_registerElementTypes();
         $this->_registerUserPermissions();
         $this->_registerUtilities();
         $this->_registerUserIndexIntegration();
@@ -850,6 +853,31 @@ class PasswordPolicy extends Plugin
                     'permissions' => $permissions,
                 ];
             }
+        );
+    }
+
+    /**
+     * Registers plugin-owned element types with Craft.
+     *
+     * `NotificationLogElement` is universal capture (rows are written
+     * on every edition; the Activity CP surface is Pro-gated separately
+     * via the subnav). Registering on every edition lets fixtures /
+     * Pest / console tooling query the element type even on Lite
+     * installs.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerElementTypes(): void
+    {
+        Event::on(
+            Elements::class,
+            Elements::EVENT_REGISTER_ELEMENT_TYPES,
+            static function(RegisterComponentTypesEvent $event) {
+                $event->types[] = NotificationLogElement::class;
+            },
         );
     }
 
