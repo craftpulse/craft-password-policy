@@ -272,6 +272,15 @@ class Install extends Migration
     /**
      * Creates the policies table.
      *
+     * Element-backed (Craft 5 idiom): `id` is a FK to `craft_elements.id`
+     * with `ON DELETE CASCADE`. Pairs with
+     * {@see \craftpulse\passwordpolicy\elements\PolicyElement} and
+     * {@see \craftpulse\passwordpolicy\records\PolicyRecord} — the element
+     * provides the queryable + index surface, the record stays the storage
+     * layer. Mirror of {@see m260513_172440_ConvertPolicyToElement}; that
+     * migration runs on upgrade-from-2.10 sites, this private method runs
+     * on fresh installs.
+     *
      * @return void
      *
      * @author CraftPulse
@@ -279,12 +288,14 @@ class Install extends Migration
      */
     private function _createPoliciesTable(): void
     {
-        if ($this->db->tableExists('{{%passwordpolicy_policies}}')) {
+        $table = '{{%passwordpolicy_policies}}';
+
+        if ($this->db->tableExists($table)) {
             return;
         }
 
-        $this->createTable('{{%passwordpolicy_policies}}', [
-            'id' => $this->primaryKey(),
+        $this->createTable($table, [
+            'id' => $this->integer()->notNull(),
             'name' => $this->string(255)->notNull(),
             'handle' => $this->string(255)->notNull(),
             'preset' => $this->string(64)->null(),
@@ -293,9 +304,11 @@ class Install extends Migration
             'dateCreated' => $this->dateTime()->notNull(),
             'dateUpdated' => $this->dateTime()->notNull(),
             'uid' => $this->uid(),
+            'PRIMARY KEY([[id]])',
         ]);
 
-        $this->createIndex(null, '{{%passwordpolicy_policies}}', ['handle'], true);
+        $this->createIndex(null, $table, ['handle'], true);
+        $this->addForeignKey(null, $table, ['id'], Table::ELEMENTS, ['id'], 'CASCADE', null);
     }
 
     /**

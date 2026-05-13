@@ -17,6 +17,7 @@ use craft\db\Query;
 use craft\helpers\App;
 use craft\models\UserGroup;
 use craft\validators\HandleValidator;
+use craftpulse\passwordpolicy\elements\PolicyElement;
 use craftpulse\passwordpolicy\enums\PolicyPreset;
 
 /**
@@ -159,6 +160,48 @@ class PolicyModel extends Model
 
     // Static Methods
     // =========================================================================
+
+    /**
+     * Hydrates a `PolicyModel` from a saved `PolicyElement`. The
+     * element carries the canonical id + raw column values; this
+     * factory unwraps them onto the in-memory model shape that the
+     * CP controller, resolver service, and Pest fixtures consume.
+     *
+     * Used by `PolicyService::getPolicyById()` /
+     * `getPolicyByHandle()` / `getAllPolicies()` /
+     * `getPoliciesForGroupIds()` to bridge the element layer onto
+     * the legacy model surface — every read path resolves through
+     * here so a single update to the conversion logic propagates
+     * cleanly.
+     *
+     * The `settings` JSON column populated on the element via
+     * `PolicyElement::init()` is already an array when this runs —
+     * `setSettingsFromArray()` resets every override field to null
+     * first, so partial settings payloads (e.g. legacy upgrade-path
+     * rows that lost a column) cleanly land as inherits.
+     *
+     * @param PolicyElement $element
+     * @return self
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public static function fromElement(PolicyElement $element): self
+    {
+        $model = new self();
+        $model->id = (int)$element->id;
+        $model->name = $element->name ?? '';
+        $model->handle = $element->handle ?? '';
+        $model->preset = $element->preset;
+        $model->sortOrder = (int)$element->sortOrder;
+        $model->uid = $element->uid;
+
+        if (is_array($element->settings)) {
+            $model->setSettingsFromArray($element->settings);
+        }
+
+        return $model;
+    }
 
     /**
      * Returns the override fields that map to the JSON settings column.

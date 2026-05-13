@@ -67,6 +67,7 @@ use craftpulse\passwordpolicy\elements\conditions\PasswordResetRequiredCondition
 use craftpulse\passwordpolicy\elements\conditions\PasswordStatusConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\PolicyDriftConditionRule;
 use craftpulse\passwordpolicy\elements\NotificationLogElement;
+use craftpulse\passwordpolicy\elements\PolicyElement;
 use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\events\BreachDetectedEvent;
 use craftpulse\passwordpolicy\events\PasswordChangedEvent;
@@ -220,7 +221,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '2.10.0';
+    public string $schemaVersion = '2.11.0';
 
     /**
      * @var bool
@@ -888,6 +889,7 @@ class PasswordPolicy extends Plugin
             static function(RegisterComponentTypesEvent $event) {
                 $event->types[] = NotificationLogElement::class;
                 $event->types[] = AuditLogElement::class;
+                $event->types[] = PolicyElement::class;
             },
         );
     }

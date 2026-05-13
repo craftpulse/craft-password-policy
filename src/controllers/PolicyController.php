@@ -15,7 +15,6 @@ use craft\helpers\App;
 use craft\helpers\Cp;
 use craft\helpers\Html;
 use craft\web\Controller;
-use craftpulse\passwordpolicy\enums\PolicyPreset;
 use craftpulse\passwordpolicy\models\PolicyModel;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
@@ -70,7 +69,14 @@ class PolicyController extends Controller
     }
 
     /**
-     * Renders the policies index page with VueAdminTable.
+     * Renders the policies index — thin wrapper around the native
+     * Craft element index for {@see PolicyElement}. The template
+     * extends `_layouts/elementindex`; the sources sidebar, sort,
+     * search, pagination, and bulk Delete / Restore actions all come
+     * from the native plumbing.
+     *
+     * The action button (`New policy`) routes through `actionEdit` —
+     * keeping the form-bound edit screen as the canonical create flow.
      *
      * @return Response
      *
@@ -84,20 +90,8 @@ class PolicyController extends Controller
         $this->_requireSettingsPermission();
         $this->_requireProEdition();
 
-        $plugin = PasswordPolicy::$plugin;
-        $policies = $plugin->getPolicies()->getAllPolicies();
-
-        // Build preset label mapping for display
-        $presetLabels = [];
-        foreach (PolicyPreset::cases() as $preset) {
-            $presetLabels[$preset->value] = $preset->label();
-        }
-
         return $this->renderTemplate('password-policy/_policies/_index', [
-            'policies' => $policies,
-            'presetLabels' => $presetLabels,
             'readOnly' => $this->_readOnly,
-            'isPro' => $plugin->getIsPro(),
         ]);
     }
 
