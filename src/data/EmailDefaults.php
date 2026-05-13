@@ -96,12 +96,87 @@ class EmailDefaults
     }
 
     /**
+     * Returns the default content shape for the `new-device-alert` notification.
+     *
+     * Sent when HIBP-on-login (Pro) detects a sign-in from a previously
+     * unseen device fingerprint. `deviceLabel` is a free-form description
+     * (e.g. `"Chrome on macOS"`) and `maskedIp` is the source IP with the
+     * last octet redacted for privacy. Both are populated by the new-
+     * device detection listener before dispatch.
+     *
+     * @return array<string, string|null>
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public static function newDeviceAlert(): array
+    {
+        return [
+            'subject' => 'New sign-in to your {{ siteName }} account',
+            'body' => "Hi {{ user.friendlyName ?? user.username }},\n\n"
+                . "We detected a new sign-in to your {{ siteName }} account from a device "
+                . "we have not seen before.\n\n"
+                . "Device: {{ deviceLabel }}\n"
+                . "IP address: {{ maskedIp }}\n\n"
+                . "If this was you, no further action is needed — this email is for awareness only.\n\n"
+                . "If this was NOT you:\n"
+                . "  - Change your password immediately.\n"
+                . "  - Review any other sessions on your account.\n"
+                . "  - Contact a site administrator if you suspect your account has been compromised.\n\n"
+                . "Thanks,\n"
+                . "The {{ siteName }} team",
+            'senderName' => null,
+            'senderEmail' => null,
+            'replyTo' => null,
+        ];
+    }
+
+    /**
+     * Returns the default content shape for the `admin-security-alert` notification.
+     *
+     * Sent to the configured `adminAlertEmail` recipient on security
+     * events the operator opted into via `adminAlertEvents`. The
+     * `event` token is the machine key (e.g. `breach_detected`,
+     * `lockout`); `context` is a free-form `array<string, mixed>` of
+     * event-specific metadata (e.g. `{ userId: 7, email: '...' }`).
+     *
+     * Admin-recipient templates do NOT receive a `user` Twig variable —
+     * the recipient is the operator, not an end-user — so the default
+     * body avoids `{{ user.* }}` references.
+     *
+     * @return array<string, string|null>
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public static function adminSecurityAlert(): array
+    {
+        return [
+            'subject' => '[{{ siteName }}] Security alert: {{ event }}',
+            'body' => "A security event was recorded on {{ siteName }}.\n\n"
+                . "Event: {{ event }}\n"
+                . "{% if context|length %}"
+                . "Context:\n"
+                . "{% for key, value in context %}"
+                . "  - {{ key }}: {{ value }}\n"
+                . "{% endfor %}"
+                . "{% endif %}\n"
+                . "Review the password-policy audit log or notifications activity surface "
+                . "in the control panel for more detail.\n\n"
+                . "This message was sent because the event matches your `adminAlertEvents` "
+                . "configuration. To stop receiving these emails, remove the event from "
+                . "that list or clear `adminAlertEmail` entirely.",
+            'senderName' => null,
+            'senderEmail' => null,
+            'replyTo' => null,
+        ];
+    }
+
+    /**
      * Returns the list of all notification keys this plugin manages, mapped
      * to their default-content factory methods. Used by the install
      * migration and the site propagation listener to seed all keys for a
      * given site.
-     *
-     * Phase G adds `new-device-alert` and `admin-security-alert` here.
      *
      * @return array<string, callable(): array<string, string|null>>
      *
@@ -113,6 +188,8 @@ class EmailDefaults
         return [
             'expiry-reminder' => [self::class, 'expiryReminder'],
             'breach-detected' => [self::class, 'breachDetected'],
+            'new-device-alert' => [self::class, 'newDeviceAlert'],
+            'admin-security-alert' => [self::class, 'adminSecurityAlert'],
         ];
     }
 }
