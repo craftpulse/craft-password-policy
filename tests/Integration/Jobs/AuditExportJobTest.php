@@ -22,8 +22,10 @@
  */
 
 use Carbon\Carbon;
+use craft\db\Table;
 use craft\helpers\FileHelper;
 use craft\helpers\StringHelper;
+use craftpulse\passwordpolicy\elements\AuditLogElement;
 use craftpulse\passwordpolicy\events\AuditExportCompleteEvent;
 use craftpulse\passwordpolicy\jobs\AuditExportJob;
 use craftpulse\passwordpolicy\PasswordPolicy;
@@ -73,11 +75,30 @@ afterEach(function() {
  * Inserts an audit-log row directly via SQL (bypassing the chain
  * writer for fixture speed). Tests don't care about chain integrity;
  * they care about export-file shape.
+ *
+ * Step 5 element-ification: every audit_log row pairs with a
+ * `craft_elements` row via `id`. Allocate a paired element row first
+ * so the FK constraint is satisfied.
  */
 function makeExportRow(array $overrides = []): int
 {
     $now = Carbon::now('UTC')->format('Y-m-d H:i:s');
+
+    Craft::$app->getDb()->createCommand()
+        ->insert(Table::ELEMENTS, [
+            'type' => AuditLogElement::class,
+            'enabled' => 1,
+            'archived' => 0,
+            'dateCreated' => $now,
+            'dateUpdated' => $now,
+            'uid' => StringHelper::UUID(),
+        ])
+        ->execute();
+
+    $elementId = (int)Craft::$app->getDb()->getLastInsertID(Table::ELEMENTS);
+
     $row = array_merge([
+        'id' => $elementId,
         'event' => 'password_changed',
         'outcome' => 'success',
         'source' => 'admin',
@@ -94,7 +115,7 @@ function makeExportRow(array $overrides = []): int
         ->insert('{{%passwordpolicy_audit_log}}', $row)
         ->execute();
 
-    return (int)Craft::$app->getDb()->getLastInsertID('{{%passwordpolicy_audit_log}}');
+    return $elementId;
 }
 
 /**

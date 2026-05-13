@@ -15,9 +15,9 @@ use Craft;
 use craft\db\Query;
 use craft\helpers\Json;
 use craft\helpers\StringHelper;
+use craftpulse\passwordpolicy\elements\AuditLogElement;
 use craftpulse\passwordpolicy\events\AuditChainRotatedEvent;
 use craftpulse\passwordpolicy\PasswordPolicy;
-use craftpulse\passwordpolicy\records\AuditLogRecord;
 use Throwable;
 use yii\base\Component;
 
@@ -409,6 +409,15 @@ class AuditLogService extends Component
             // locking read as a raw command. The table name is a
             // compile-time constant — no user-input interpolation, no
             // injection surface.
+            //
+            // The transaction MUST wrap saveElement(). Step 5
+            // converted the writer from a raw record insert to an
+            // element pipeline — Craft inserts the craft_elements row
+            // first, then the element's afterSave() inserts the
+            // audit_log row. Both inserts share the lock; without the
+            // wrapping transaction two concurrent logEvent() calls
+            // could read the same previousHash and produce parallel
+            // chain forks.
             $db = Craft::$app->getDb();
             $tableName = $db->getSchema()->getRawTableName('{{%passwordpolicy_audit_log}}');
 
@@ -437,6 +446,12 @@ class AuditLogService extends Component
                     $previousHash = self::GENESIS_PREVIOUS_HASH;
                 }
 
+                // Canonical-payload order matches the pre-element writer
+                // byte-for-byte. The element-pipeline refactor (Step 5)
+                // is additive — the element layer wraps the same audit
+                // row shape that previously lived under a flat record
+                // writer, so canonicalize() input is unchanged. Every
+                // existing chain hash continues to verify.
                 $canonicalPayload = self::canonicalize([
                     'changedByUserId' => $resolvedChangedByUserId,
                     'dateCreated' => $dateCreated->format(self::CANONICAL_DATE_FORMAT),
@@ -452,27 +467,39 @@ class AuditLogService extends Component
 
                 $rowHash = hash('sha256', $canonicalPayload . $previousHash);
 
-                $record = new AuditLogRecord();
-                $record->userId = $userId;
-                $record->changedByUserId = $resolvedChangedByUserId;
-                $record->event = $event;
-                $record->outcome = $outcome;
-                $record->source = $source;
-                $record->details = $filteredDetails;
-                $record->ipHash = $ipHash;
-                $record->userIdentifier = $userIdentifier;
-                $record->rowHash = $rowHash;
-                $record->previousHash = $previousHash;
-                $record->dateCreated = $dateCreated;
-                $record->uid = $uid;
-                $record->save(false);
+                // The element pipeline assigns `craft_elements.id` +
+                // `craft_elements.uid` + `craft_elements.dateCreated`
+                // from the element's properties (or auto-allocates when
+                // unset). We explicitly set `uid` + `dateCreated` so
+                // the canonical-payload bytes match the persisted
+                // values. `id` is auto-allocated by Craft from the
+                // craft_elements row, then the element's afterSave()
+                // writes the paired audit_log row with that id.
+                $element = new AuditLogElement();
+                $element->uid = $uid;
+                $element->dateCreated = $dateCreated->toDateTime();
+                $element->userId = $userId;
+                $element->changedByUserId = $resolvedChangedByUserId;
+                $element->event = $event;
+                $element->outcome = $outcome;
+                $element->source = $source;
+                $element->details = $filteredDetails;
+                $element->ipHash = $ipHash;
+                $element->userIdentifier = $userIdentifier;
+                $element->previousHash = $previousHash;
+                $element->rowHash = $rowHash;
+
+                if (!Craft::$app->getElements()->saveElement($element, runValidation: false)) {
+                    throw new \RuntimeException(
+                        'AuditLogElement save failed: ' . implode('; ', $element->getFirstErrors()),
+                    );
+                }
 
                 // Capture the new row's primary key for the return
-                // value. Read from the saved record rather than the
+                // value. Read from the saved element rather than the
                 // raw lastInsertID — works through Yii's identity-map
-                // cache and survives a future move to UUID-keyed
-                // tables.
-                $insertedId = (int)$record->id;
+                // cache.
+                $insertedId = (int)$element->id;
             });
 
             return $insertedId;
@@ -518,9 +545,39 @@ class AuditLogService extends Component
             ->limit(1)
             ->one();
 
-        $deleted = Craft::$app->getDb()->createCommand()
-            ->delete('{{%passwordpolicy_audit_log}}', ['<', 'dateCreated', $threshold])
-            ->execute();
+        // Audit retention is a compliance requirement — rows must be
+        // GONE from disk past the retention boundary (L3 of the Step 5
+        // invariants). Element soft-delete via `dateDeleted` is NOT
+        // acceptable for this path. Delete the paired
+        // `craft_elements` rows; the FK CASCADE on
+        // `audit_log.id → craft_elements.id` drops the audit rows in
+        // the same statement.
+        //
+        // Bulk DELETE on craft_elements rather than per-row
+        // `deleteElementById($id, hardDelete: true)` — the latter
+        // would fire ElementHelper lifecycle events per row, which
+        // both spams the event bus and bumps memory on a large prune
+        // batch. Retention is a bulk operation by design.
+        //
+        // SELECT-then-DELETE rather than DELETE-with-subquery so the
+        // deletion happens against a fixed id set (avoids MySQL's
+        // "can't reopen table in subquery" edge cases on some
+        // versions). Audit retention prune batches scale with
+        // `daysToKeep` and the event volume between prunes — for
+        // production volumes the id-list materialisation cost is in
+        // the noise.
+        $expiredIds = (new Query())
+            ->select(['id'])
+            ->from('{{%passwordpolicy_audit_log}}')
+            ->where(['<', 'dateCreated', $threshold])
+            ->column();
+
+        $deleted = 0;
+        if ($expiredIds !== []) {
+            $deleted = Craft::$app->getDb()->createCommand()
+                ->delete('{{%elements}}', ['id' => $expiredIds])
+                ->execute();
+        }
 
         if ($deleted < 1 || !is_array($endRow)) {
             return $deleted;

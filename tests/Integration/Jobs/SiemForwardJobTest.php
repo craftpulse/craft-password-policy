@@ -28,7 +28,9 @@
 
 use Carbon\Carbon;
 use craft\db\Query;
+use craft\db\Table;
 use craft\helpers\StringHelper;
+use craftpulse\passwordpolicy\elements\AuditLogElement;
 use craftpulse\passwordpolicy\jobs\SiemForwardJob;
 use craftpulse\passwordpolicy\models\SiemForwarderModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
@@ -86,11 +88,33 @@ function makeJobForwarder(array $overrides = []): SiemForwarderModel
  * Inserts an audit-log row (bypassing the chain writer for fixture
  * speed). Tests don't care about the chain integrity; they care about
  * the job's `forwardedAt` writeback.
+ *
+ * Step 5 element-ification: every audit_log row pairs with a
+ * `craft_elements` row via `id`. Manually allocate a craft_elements
+ * row first (bypassing the full element pipeline) so the FK constraint
+ * is satisfied, then insert the audit_log row with that id. Faster
+ * than `Craft::$app->getElements()->saveElement(new AuditLogElement)`
+ * since these tests don't exercise the element lifecycle.
  */
 function makeAuditRow(array $overrides = []): int
 {
     $now = Carbon::now('UTC')->format('Y-m-d H:i:s');
+
+    Craft::$app->getDb()->createCommand()
+        ->insert(Table::ELEMENTS, [
+            'type' => AuditLogElement::class,
+            'enabled' => 1,
+            'archived' => 0,
+            'dateCreated' => $now,
+            'dateUpdated' => $now,
+            'uid' => StringHelper::UUID(),
+        ])
+        ->execute();
+
+    $elementId = (int)Craft::$app->getDb()->getLastInsertID(Table::ELEMENTS);
+
     $row = array_merge([
+        'id' => $elementId,
         'event' => 'siem_test',
         'outcome' => 'success',
         'source' => 'admin',
@@ -106,7 +130,7 @@ function makeAuditRow(array $overrides = []): int
         ->insert('{{%passwordpolicy_audit_log}}', $row)
         ->execute();
 
-    return (int)Craft::$app->getDb()->getLastInsertID('{{%passwordpolicy_audit_log}}');
+    return $elementId;
 }
 
 /**

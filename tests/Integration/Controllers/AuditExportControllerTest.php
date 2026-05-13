@@ -23,9 +23,11 @@
  */
 
 use Carbon\Carbon;
+use craft\db\Table;
 use craft\helpers\StringHelper;
 use craft\web\Response;
 use craftpulse\passwordpolicy\controllers\AuditExportController;
+use craftpulse\passwordpolicy\elements\AuditLogElement;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
@@ -90,11 +92,30 @@ function runExportAction(string $actionId, array $params = []): mixed
 /**
  * Inserts an audit-log row directly via SQL (bypasses chain writer
  * for fixture speed).
+ *
+ * Step 5 element-ification: every audit_log row pairs with a
+ * `craft_elements` row via `id`. Allocate a paired element row first
+ * so the FK constraint is satisfied.
  */
 function makeControllerExportRow(array $overrides = []): int
 {
     $now = Carbon::now('UTC')->format('Y-m-d H:i:s');
+
+    Craft::$app->getDb()->createCommand()
+        ->insert(Table::ELEMENTS, [
+            'type' => AuditLogElement::class,
+            'enabled' => 1,
+            'archived' => 0,
+            'dateCreated' => $now,
+            'dateUpdated' => $now,
+            'uid' => StringHelper::UUID(),
+        ])
+        ->execute();
+
+    $elementId = (int)Craft::$app->getDb()->getLastInsertID(Table::ELEMENTS);
+
     $row = array_merge([
+        'id' => $elementId,
         'event' => 'password_changed',
         'outcome' => 'success',
         'source' => 'admin',
@@ -110,7 +131,7 @@ function makeControllerExportRow(array $overrides = []): int
         ->insert('{{%passwordpolicy_audit_log}}', $row)
         ->execute();
 
-    return (int)Craft::$app->getDb()->getLastInsertID('{{%passwordpolicy_audit_log}}');
+    return $elementId;
 }
 
 // =============================================================================
@@ -182,10 +203,35 @@ it('streams JSONL when format=jsonl', function() {
 it('enqueues the export job for a large range and redirects', function() {
     // Insert 1001 rows to push past the SYNC_ROW_LIMIT threshold.
     // Use a low-overhead bulk insert.
-    $rows = [];
+    //
+    // Step 5 element-ification: each audit_log row pairs with a
+    // craft_elements row via FK. Allocate the element rows in bulk
+    // first, then back-fill paired audit_log rows.
     $now = Carbon::now('UTC')->format('Y-m-d H:i:s');
+
+    $elementRows = [];
+    for ($i = 0; $i < 1001; $i++) {
+        $elementRows[] = [
+            AuditLogElement::class, // type
+            1, // enabled
+            0, // archived
+            $now,
+            $now,
+            StringHelper::UUID(),
+        ];
+    }
+    Craft::$app->getDb()->createCommand()->batchInsert(
+        Table::ELEMENTS,
+        ['type', 'enabled', 'archived', 'dateCreated', 'dateUpdated', 'uid'],
+        $elementRows,
+    )->execute();
+
+    $firstElementId = (int)Craft::$app->getDb()->getLastInsertID(Table::ELEMENTS);
+
+    $rows = [];
     for ($i = 0; $i < 1001; $i++) {
         $rows[] = [
+            $firstElementId + $i, // id — paired craft_elements row
             null, // userId
             null, // changedByUserId
             'password_changed',
@@ -206,6 +252,7 @@ it('enqueues the export job for a large range and redirects', function() {
     Craft::$app->getDb()->createCommand()->batchInsert(
         '{{%passwordpolicy_audit_log}}',
         [
+            'id',
             'userId',
             'changedByUserId',
             'event',
