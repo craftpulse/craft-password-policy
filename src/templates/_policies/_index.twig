@@ -1,83 +1,39 @@
-{# Policies index — VueAdminTable listing of named password policies #}
-{# @var policies \craftpulse\passwordpolicy\models\PolicyModel[] #}
-{# @var presetLabels array<string, string> #}
+{# Policies index — element index for `PolicyElement`. Extends Craft's
+ # `_layouts/elementindex` so the sources sidebar, pagination, sort,
+ # search, and bulk actions (Delete, Restore) come from the native
+ # element-index plumbing.
+ #
+ # Page chrome (subnav, breadcrumbs, doc title) layers on top of the
+ # standard element-index layout. Stable subnav URL is preserved via
+ # `_registerCpUrlRules` → `password-policy/policies` → this template
+ # via `PolicyController::actionIndex`.
+ #
+ # The "New policy" action button continues to route through
+ # `PolicyController::actionEdit` for the form-bound edit screen. The
+ # element index "edit" link points at the same controller via
+ # `PolicyElement::cpEditUrl()`.
+ #
+ # @author CraftPulse
+ # @since 5.2.0
+ #}
+
 {# @var readOnly bool #}
-{# @var isPro bool #}
 
 {% requirePermission "pp:settings" %}
 
-{% extends "password-policy/_layouts/password-policy-cp.twig" %}
+{% extends "_layouts/elementindex" %}
 
-{% set selectedSubnavItem = 'policies' %}
+{% set elementType = 'craftpulse\\passwordpolicy\\elements\\PolicyElement' %}
 {% set title = 'Policies'|t('password-policy') %}
+{% set docTitle = title %}
+{% set selectedSubnavItem = 'policies' %}
 
-{% do view.registerAssetBundle('craft\\web\\assets\\admintable\\AdminTableAsset') %}
-
-{% if readOnly %}
-    {% set contentNotice = readOnlyNotice() %}
-{% endif %}
-
-{% block actionButton %}
-    {% if not readOnly %}
-        <a href="{{ cpUrl('password-policy/policies/new') }}" class="btn submit add icon">{{ "New policy"|t('password-policy') }}</a>
-    {% endif %}
-{% endblock %}
-
-{% block content %}
-    <div id="policies-vue-admin-table"></div>
-{% endblock %}
-
-{% set tableData = [] %}
-{% for policy in policies %}
-    {% set groupNames = policy.getGroups()|map(g => g.name)|join(', ') %}
-    {% set divergentCount = policy.preset ? policy.getDivergentFields()|length : 0 %}
-    {% set presetName = policy.preset ? (presetLabels[policy.preset] ?? policy.preset) : 'Custom'|t('password-policy') %}
-    {% set policyUrl = cpUrl('password-policy/policies/' ~ policy.id) %}
-
-    {% set rowData = {
-        id: policy.id,
-        title: policy.name,
-        url: divergentCount > 0 ? policyUrl ~ '#rules' : policyUrl,
-        groups: groupNames ?: '-',
-        preset: presetName,
-        changes: divergentCount > 0 ? '{n, number} {n, plural, =1{change} other{changes}}'|t('password-policy', { n: divergentCount }) : '—',
-    } %}
-
-    {# Inline blue dot icon next to the title when this policy diverges
-       from its preset — uses Craft's built-in cp-icon system from App.vue. #}
-    {% if divergentCount > 0 %}
-        {% set rowData = rowData|merge({
-            icon: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg>',
-            iconColor: 'blue',
-        }) %}
-    {% endif %}
-
-    {% set tableData = tableData|merge([rowData]) %}
-{% endfor %}
-
-{% js %}
-var columns = [
-    { name: '__slot:title', title: Craft.t('password-policy', 'Name') },
-    { name: 'groups', title: Craft.t('password-policy', 'Groups') },
-    { name: 'preset', title: Craft.t('password-policy', 'Preset') },
-    { name: 'changes', title: Craft.t('password-policy', 'Changes') },
-];
-
-var tableData = {{ tableData|json_encode|raw }};
-
-var config = {
-    columns: columns,
-    container: '#policies-vue-admin-table',
-    emptyMessage: Craft.t('password-policy', 'No policies exist yet.'),
-    tableData: tableData,
-};
+{% set crumbs = [
+    { label: 'Password Policy'|t('password-policy'), url: cpUrl('password-policy') },
+] %}
 
 {% if not readOnly %}
-    config.deleteAction = 'password-policy/policy/delete';
-    {% if policies|length > 1 %}
-        config.reorderAction = 'password-policy/policy/reorder';
-    {% endif %}
+    {% set actionButton %}
+        <a href="{{ cpUrl('password-policy/policies/new') }}" class="btn submit add icon">{{ "New policy"|t('password-policy') }}</a>
+    {% endset %}
 {% endif %}
-
-new Craft.VueAdminTable(config);
-{% endjs %}

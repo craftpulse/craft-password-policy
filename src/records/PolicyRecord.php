@@ -15,14 +15,25 @@ use craft\db\ActiveRecord;
 /**
  * Class PolicyRecord
  *
- * @property int $id
+ * ActiveRecord wrapper around `passwordpolicy_policies`. Pairs with
+ * {@see \craftpulse\passwordpolicy\elements\PolicyElement} (queryable
+ * surface) and {@see \craftpulse\passwordpolicy\models\PolicyModel}
+ * (validation surface). Record id IS element id IS `craft_elements.id`.
+ *
+ * Date columns are typed as `?string` because the element layer
+ * propagates them via `Db::prepareDateForDb()` — assigning a
+ * `DateTime` directly to the record would trigger Yii's column-cast
+ * which expects the string form. The element's `init()` handles the
+ * read-side decode for downstream consumers.
+ *
+ * @property int $id matches `craft_elements.id`
  * @property string $name
  * @property string $handle
  * @property string|null $preset
  * @property array $settings
  * @property int $sortOrder
- * @property \DateTime $dateCreated
- * @property \DateTime $dateUpdated
+ * @property string|null $dateCreated set by element pipeline via Db::prepareDateForDb
+ * @property string|null $dateUpdated set by element pipeline via Db::prepareDateForDb
  * @property string $uid
  *
  * @author      CraftPulse

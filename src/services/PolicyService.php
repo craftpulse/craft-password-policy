@@ -10,54 +10,56 @@
 
 namespace craftpulse\passwordpolicy\services;
 
-use Carbon\Carbon;
 use Craft;
-use craft\db\Query;
-use craft\helpers\Json;
-use craft\helpers\StringHelper;
+use craftpulse\passwordpolicy\elements\PolicyElement;
 use craftpulse\passwordpolicy\events\PolicySaveEvent;
 use craftpulse\passwordpolicy\models\PolicyModel;
-use craftpulse\passwordpolicy\PasswordPolicy;
 use Throwable;
 use yii\base\Component;
-use yii\db\Exception;
 
 /**
  * Class PolicyService
  *
  * Manages CRUD operations for named password policies.
  *
- * Audit capture (Phase G — G4)
- * ----------------------------
- * On a successful UPDATE, `savePolicy()` fires the `policy_changed`
- * audit event with a structured `{field: {old, new}}` diff covering
- * top-level columns (`name`, `handle`, `preset`, `sortOrder`), every
- * settings-array key the model exposes, and group assignments
- * (`groupIds`). Unchanged fields are omitted; INSERT-path saves do
- * not fire (a future `policy_created` event is out of scope for G4).
+ * Tri-layer storage pairing (Step 6 element-ification)
+ * ----------------------------------------------------
+ * As of 5.2.0 the service translates between the public-facing model
+ * (`PolicyModel`) and the underlying element + record pair
+ * (`PolicyElement` + `PolicyRecord`). The model stays the validation
+ * surface + form-binding shape the CP controller and tests rely on;
+ * the element is the persistence surface (queryable + indexable + the
+ * G4 audit-diff carrier); the record is the storage layer. The service
+ * is the bridge — `savePolicy(PolicyModel, array $groupIds)` continues
+ * to accept the same payload third-party code has always passed in, but
+ * routes the actual write through `Craft::$app->getElements()->saveElement()`
+ * on a hydrated PolicyElement.
  *
- * Capture is inline rather than event-driven on purpose: G4 needs the
- * pre-save state captured before the transaction, and an after-save
- * listener would have to either re-query (wasteful) or rely on the
- * event payload carrying pre-state (couples the event to one consumer's
- * needs). The inline path serves G4 cleanly. The audit `logEvent()`
- * call is wrapped in try/catch because the parent transaction is
- * already committed — an audit failure must never unwind a saved policy.
+ * Audit capture — moved to element lifecycle (G4 invariant preserved)
+ * -------------------------------------------------------------------
+ * Pre-Step-6, the pre-save state capture + diff fire lived inline in
+ * `savePolicy()`. The element refactor moves that to
+ * `PolicyElement::beforeSave()` (pre-save snapshot) +
+ * `PolicyElement::afterSave()` (diff fire). The `policy_changed` event
+ * payload + diff shape are bit-identical to before — `PolicyDiffCaptureTest`
+ * pins the contract. The migration was about WHERE the diff fires, not
+ * WHAT it fires.
  *
  * Maps to ISO 27002 A.5.37, SOC 2 CC8.1, and NIS2 Article 21(2)(e)
  * change-management evidence — auditors reading the audit log can
  * reconstruct who changed which policy field when.
  *
- * Extension seam
- * --------------
+ * Extension seam (preserved across Step 6)
+ * ----------------------------------------
  * `EVENT_BEFORE_SAVE_POLICY` and `EVENT_AFTER_SAVE_POLICY` are the
  * public extension surface for third-party listeners (external audit
- * mirroring, custom validation veto, CRM/SIEM sync). They run parallel
- * to the inline G4 capture above — BEFORE fires before any DB I/O so
- * vetoers short-circuit cheaply; AFTER fires after `commit()` and
- * before the inline G4 audit-diff so external listeners observe the
- * save before the audit row is written. See `events/PolicySaveEvent.php`
- * for the veto contract and `$isNew` semantics.
+ * mirroring, custom validation veto, CRM/SIEM sync). The event payload
+ * remains `(PolicyModel $policy, array $groupIds, bool $isNew)` — the
+ * service-level event surface is unchanged. BEFORE fires before
+ * element construction so vetoers short-circuit cheaply (no element
+ * pipeline overhead); AFTER fires after `saveElement()` returns,
+ * matching the canonical "policy saved" moment listeners observed
+ * before Step 6.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -69,21 +71,22 @@ class PolicyService extends Component
     // =========================================================================
 
     /**
-     * Fired by `savePolicy()` AFTER the policy validates but BEFORE any DB
-     * I/O — pre-save state capture, the transaction, and the junction-table
+     * Fired by `savePolicy()` AFTER the policy validates but BEFORE any
+     * DB I/O — element construction + persistence + the junction-table
      * sync all happen downstream of this event.
      *
-     * Listeners may amend `$event->policy` (the amended model is what gets
-     * persisted) or flip `$event->isValid = false` to abort the save. When
-     * a listener vetoes, `savePolicy()` returns `false` and no row is
-     * written. The event matches the canonical Craft / Yii idiom
-     * (`Element::EVENT_BEFORE_SAVE`) — `ModelEvent::$isValid` defaults to
-     * `true` and the listener flips it to `false` to abort.
+     * Listeners may amend `$event->policy` (the amended model is what
+     * gets persisted) or flip `$event->isValid = false` to abort the
+     * save. When a listener vetoes, `savePolicy()` returns `false` and
+     * no element row is written. The event matches the canonical Craft /
+     * Yii idiom (`Element::EVENT_BEFORE_SAVE`) — `ModelEvent::$isValid`
+     * defaults to `true` and the listener flips it to `false` to abort.
      *
      * Does NOT fire when `$policy->validate()` rejects the model — the
-     * event surface is reserved for valid-shape policies. Listeners that
-     * want to add validation rules should listen on `Model::EVENT_AFTER_VALIDATE`
-     * on `PolicyModel` directly, not on this seam.
+     * event surface is reserved for valid-shape policies. Listeners
+     * that want to add validation rules should listen on
+     * `Model::EVENT_AFTER_VALIDATE` on `PolicyModel` directly, not on
+     * this seam.
      *
      * @event PolicySaveEvent
      *
@@ -92,28 +95,27 @@ class PolicyService extends Component
     public const EVENT_BEFORE_SAVE_POLICY = 'beforeSavePolicy';
 
     /**
-     * Fired by `savePolicy()` AFTER the transaction successfully commits.
-     * Listeners observe the canonical "policy saved" moment — the row is
-     * on disk, the junction-table sync is done, and `$event->policy->id`
-     * is populated (even on the INSERT path, where it was null when
-     * `EVENT_BEFORE_SAVE_POLICY` fired).
+     * Fired by `savePolicy()` AFTER `Craft::$app->getElements()->saveElement()`
+     * successfully returns. Listeners observe the canonical "policy
+     * saved" moment — the element row is on disk, the paired
+     * `PolicyRecord` is upserted, the junction-table sync is done,
+     * `$event->policy->id` is populated (even on the INSERT path,
+     * where it was null when `EVENT_BEFORE_SAVE_POLICY` fired), and
+     * the G4 `policy_changed` audit row (if applicable) has been
+     * fired from the element's `afterSave()`.
      *
      * Does NOT fire on:
      *   - validation failure (`$policy->validate()` returned false),
      *   - veto on `EVENT_BEFORE_SAVE_POLICY` (listener set `isValid = false`),
-     *   - transaction rollback (a `\Throwable` thrown inside the write path).
+     *   - element-save failure (`saveElement()` returned false).
      *
      * Branch on `$event->isNew` to distinguish "newly created" from
-     * "updated existing" — the flag reflects the pre-save shape and stays
-     * stable across before/after.
+     * "updated existing" — the flag reflects the pre-save shape and
+     * stays stable across before/after.
      *
-     * Fires BEFORE the inline `policy_changed` audit-diff capture (G4),
-     * so external listeners observe the save before the audit row is
-     * written. An audit-write hiccup downstream cannot starve a registered
-     * external listener.
-     *
-     * The `$isValid` flag is inherited from `ModelEvent` but meaningless
-     * here — the save is already committed, listeners cannot abort it.
+     * The `$isValid` flag is inherited from `ModelEvent` but
+     * meaningless here — the save is already committed, listeners
+     * cannot abort it.
      *
      * @event PolicySaveEvent
      *
@@ -134,13 +136,11 @@ class PolicyService extends Component
      */
     public function getAllPolicies(): array
     {
-        $rows = (new Query())
-            ->select('*')
-            ->from('{{%passwordpolicy_policies}}')
-            ->orderBy(['sortOrder' => SORT_ASC])
+        $elements = PolicyElement::find()
+            ->orderBy(['passwordpolicy_policies.sortOrder' => SORT_ASC])
             ->all();
 
-        return array_map(fn(array $row) => $this->_hydratePolicy($row), $rows);
+        return array_map(static fn(PolicyElement $element) => PolicyModel::fromElement($element), $elements);
     }
 
     /**
@@ -154,17 +154,9 @@ class PolicyService extends Component
      */
     public function getPolicyById(int $id): ?PolicyModel
     {
-        $row = (new Query())
-            ->select('*')
-            ->from('{{%passwordpolicy_policies}}')
-            ->where(['id' => $id])
-            ->one();
+        $element = PolicyElement::find()->id($id)->one();
 
-        if (!$row) {
-            return null;
-        }
-
-        return $this->_hydratePolicy($row);
+        return $element instanceof PolicyElement ? PolicyModel::fromElement($element) : null;
     }
 
     /**
@@ -178,17 +170,9 @@ class PolicyService extends Component
      */
     public function getPolicyByHandle(string $handle): ?PolicyModel
     {
-        $row = (new Query())
-            ->select('*')
-            ->from('{{%passwordpolicy_policies}}')
-            ->where(['handle' => $handle])
-            ->one();
+        $element = PolicyElement::find()->handle($handle)->one();
 
-        if (!$row) {
-            return null;
-        }
-
-        return $this->_hydratePolicy($row);
+        return $element instanceof PolicyElement ? PolicyModel::fromElement($element) : null;
     }
 
     /**
@@ -208,29 +192,36 @@ class PolicyService extends Component
             return [];
         }
 
-        $rows = (new Query())
-            ->select('p.*')
-            ->from(['p' => '{{%passwordpolicy_policies}}'])
-            ->innerJoin(
-                ['pg' => '{{%passwordpolicy_policy_groups}}'],
-                '[[pg.policyId]] = [[p.id]]',
-            )
-            ->where(['pg.groupId' => $groupIds])
-            ->groupBy('p.id')
-            ->orderBy(['p.sortOrder' => SORT_ASC])
+        $elements = PolicyElement::find()
+            ->groupId($groupIds)
+            ->orderBy(['passwordpolicy_policies.sortOrder' => SORT_ASC])
             ->all();
 
-        return array_map(fn(array $row) => $this->_hydratePolicy($row), $rows);
+        return array_map(static fn(PolicyElement $element) => PolicyModel::fromElement($element), $elements);
     }
 
     /**
      * Saves a policy and syncs its group assignments.
      *
+     * Translation flow:
+     *
+     *  1. Validate the in-memory `PolicyModel` (cheap, no DB I/O).
+     *  2. Fire `EVENT_BEFORE_SAVE_POLICY` — listeners may amend or veto.
+     *  3. Build a `PolicyElement` from the model + groupIds and route
+     *     through `Craft::$app->getElements()->saveElement()`.
+     *  4. Element pipeline runs `beforeSave()` (snapshot capture),
+     *     inserts the `craft_elements` row, upserts the paired
+     *     `PolicyRecord`, syncs the junction, and fires the G4
+     *     `policy_changed` audit event from `afterSave()`.
+     *  5. Pull the persisted id back onto the model so callers see a
+     *     populated id (matters for INSERTs).
+     *  6. Fire `EVENT_AFTER_SAVE_POLICY`.
+     *
      * @param PolicyModel $policy the policy to save
      * @param int[] $groupIds the group IDs to assign
      * @return bool whether the save was successful
      *
-     * @throws \Throwable
+     * @throws Throwable
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -242,9 +233,10 @@ class PolicyService extends Component
         }
 
         // External extension seam — listeners may amend `$event->policy`
-        // or flip `$event->isValid = false` to abort the save before any
-        // DB I/O occurs. Vetoers short-circuit cheaply; the
-        // pre-save-state capture below runs only when the event survives.
+        // or flip `$event->isValid = false` to abort the save before
+        // any element pipeline I/O occurs. Vetoers short-circuit
+        // cheaply; the element + record + junction writes downstream
+        // run only when the event survives.
         $beforeEvent = new PolicySaveEvent([
             'policy' => $policy,
             'groupIds' => $groupIds,
@@ -256,129 +248,83 @@ class PolicyService extends Component
             return false;
         }
 
-        // Capture pre-save state for the `policy_changed` audit diff.
-        // Only meaningful on the UPDATE branch; INSERTs have nothing to
-        // diff against. Resolve before the transaction so the audit
-        // payload reflects the on-disk row as it existed coming in.
-        $isUpdate = $policy->id !== null;
-        $existing = $isUpdate ? $this->getPolicyById((int)$policy->id) : null;
-        $existingGroupIds = $isUpdate ? $this->_loadGroupIdsForPolicy((int)$policy->id) : [];
+        // Track the pre-save shape — `saveElement()` will populate
+        // `policy->id` on the INSERT branch via the element pipeline's
+        // id-pullback below, so capture isNew before the round-trip.
+        $isNew = $policy->id === null;
+        $element = PolicyElement::fromModel($policy, $groupIds);
 
-        $db = Craft::$app->getDb();
-        $transaction = $db->beginTransaction();
-
-        try {
-            $now = Carbon::now('UTC')->format('Y-m-d H:i:s');
-            $settingsJson = Json::encode($policy->getSettingsArray());
-
-            $attrs = [
-                'name' => $policy->name,
-                'handle' => $policy->handle,
-                'preset' => $policy->preset,
-                'settings' => $settingsJson,
-                'sortOrder' => $policy->sortOrder,
-                'dateUpdated' => $now,
-            ];
-
-            if ($policy->id !== null) {
-                // Update existing
-                $db->createCommand()
-                    ->update('{{%passwordpolicy_policies}}', $attrs, ['id' => $policy->id])
-                    ->execute();
-            } else {
-                // Insert new
-                $attrs['dateCreated'] = $now;
-                $attrs['uid'] = $policy->uid ?? StringHelper::UUID();
-
-                $db->createCommand()
-                    ->insert('{{%passwordpolicy_policies}}', $attrs)
-                    ->execute();
-
-                $policy->id = (int)$db->getLastInsertID('{{%passwordpolicy_policies}}');
+        if (!Craft::$app->getElements()->saveElement($element)) {
+            // Propagate element-level errors back onto the model so
+            // the caller sees attribute-keyed validation messages.
+            foreach ($element->getErrors() as $attribute => $errors) {
+                foreach ($errors as $message) {
+                    $policy->addError($attribute, $message);
+                }
             }
-
-            // Sync junction table
-            $db->createCommand()
-                ->delete('{{%passwordpolicy_policy_groups}}', ['policyId' => $policy->id])
-                ->execute();
-
-            foreach ($groupIds as $groupId) {
-                $db->createCommand()
-                    ->insert('{{%passwordpolicy_policy_groups}}', [
-                        'policyId' => $policy->id,
-                        'groupId' => (int)$groupId,
-                        'dateCreated' => $now,
-                        'dateUpdated' => $now,
-                        'uid' => StringHelper::UUID(),
-                    ])
-                    ->execute();
-            }
-
-            $transaction->commit();
-        } catch (\Throwable $e) {
-            $transaction->rollBack();
-            throw $e;
+            return false;
         }
 
-        // External extension seam — fires AFTER the commit (so listeners
-        // observe the canonical "policy saved" moment) and BEFORE the
-        // inline G4 audit-diff capture (so an audit-write hiccup downstream
-        // cannot starve a registered external listener). `$isUpdate` was
-        // captured before the INSERT branch flipped `$policy->id`, so
-        // `isNew` correctly reflects the pre-save shape.
+        // Pull the persisted id back onto the model so INSERT callers
+        // see the populated id on return. The element pipeline
+        // generates the id from `craft_elements`; the paired record
+        // and the model share it.
+        $policy->id = (int)$element->id;
+        $policy->uid = $element->uid;
+
+        // External extension seam — fires AFTER `saveElement()`
+        // returns. Listeners observe the canonical "policy saved"
+        // moment: element + record + junction are all on disk, and
+        // the G4 `policy_changed` audit event (if applicable) was
+        // already fired by the element's `afterSave()`.
         $afterEvent = new PolicySaveEvent([
             'policy' => $policy,
             'groupIds' => $groupIds,
-            'isNew' => !$isUpdate,
+            'isNew' => $isNew,
         ]);
         $this->trigger(self::EVENT_AFTER_SAVE_POLICY, $afterEvent);
-
-        // Audit diff fires AFTER commit — never unwind a saved policy
-        // because of a downstream audit-write hiccup. INSERTs are out
-        // of scope for G4 (no `policy_created` event class).
-        if ($isUpdate && $existing !== null) {
-            $diff = $this->_buildPolicyDiff(
-                existing: $existing,
-                existingGroupIds: $existingGroupIds,
-                updated: $policy,
-                updatedGroupIds: array_map(static fn($id): int => (int)$id, $groupIds),
-            );
-
-            if (!empty($diff)) {
-                $this->_logPolicyChanged($policy, $diff);
-            }
-        }
 
         return true;
     }
 
     /**
-     * Deletes a policy by ID. Junction rows are removed by CASCADE.
+     * Hard-deletes a policy by ID. Junction rows are removed by the
+     * `passwordpolicy_policy_groups.policyId → policies.id` CASCADE
+     * after the `craft_elements` row is dropped.
+     *
+     * Routes through `Elements::deleteElementById()` with
+     * `hardDelete: true` to preserve the pre-Step-6 UX (permanent
+     * delete from the CP index). The element layer's soft-delete path
+     * is reachable from the native element index (Delete action), but
+     * the legacy service-level API stays hard-delete to avoid
+     * breaking callers that expect rows to actually disappear.
      *
      * @param int $id the policy ID
      * @return bool whether the delete was successful
      *
-     * @throws Exception
+     * @throws Throwable
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function deletePolicy(int $id): bool
     {
-        $affectedRows = Craft::$app->getDb()->createCommand()
-            ->delete('{{%passwordpolicy_policies}}', ['id' => $id])
-            ->execute();
-
-        return $affectedRows > 0;
+        return (bool)Craft::$app->getElements()->deleteElementById($id, PolicyElement::class, hardDelete: true);
     }
 
     /**
      * Reorders policies by updating sortOrder for each ID in the array.
      *
+     * Direct UPDATE rather than round-tripping each row through the
+     * element pipeline — reorder is a bulk sortOrder write, not a
+     * semantic policy edit. Skipping the pipeline avoids firing
+     * `policy_changed` audit events for every drag-and-drop reorder
+     * (which would noise the audit log without operational value).
+     *
      * @param int[] $ids the ordered policy IDs
      * @return bool whether the reorder was successful
      *
-     * @throws \Throwable
+     * @throws Throwable
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -400,205 +346,11 @@ class PolicyService extends Component
             }
 
             $transaction->commit();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $transaction->rollBack();
             throw $e;
         }
 
         return true;
-    }
-
-    // Private Methods
-    // =========================================================================
-
-    /**
-     * Builds the field-level `{field: {old, new}}` diff for the
-     * `policy_changed` audit event.
-     *
-     * Compared surfaces:
-     *
-     *  - Top-level columns: `name`, `handle`, `preset`, `sortOrder`.
-     *  - Every key in `PolicyModel::settingsFields()` — sourced from
-     *    the model's `getSettingsArray()` so null (inherit) values
-     *    are normalised on both sides of the comparison.
-     *  - `groupIds` — the assigned-groups junction. Sorted (numeric
-     *    ascending) before comparison; group order is not semantic.
-     *    When changed, emits the FULL old + new arrays so the auditor
-     *    sees the assignment as a unit, not a sequence of add/remove
-     *    deltas.
-     *
-     * Boolean tri-state settings (`?bool`) emit `null` / `true` /
-     * `false` literally — no coercion. JSON canonicalisation in the
-     * audit row preserves these as the auditor needs them.
-     *
-     * Unchanged fields are omitted entirely; an empty diff means the
-     * caller should skip the audit write (no-op save).
-     *
-     * @param PolicyModel $existing the on-disk policy as it was before save
-     * @param int[] $existingGroupIds the on-disk junction-row group IDs
-     * @param PolicyModel $updated the in-memory policy that just landed
-     * @param int[] $updatedGroupIds the group IDs the caller passed in
-     * @return array<string, array{old: mixed, new: mixed}>
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _buildPolicyDiff(
-        PolicyModel $existing,
-        array $existingGroupIds,
-        PolicyModel $updated,
-        array $updatedGroupIds,
-    ): array {
-        $diff = [];
-
-        // Top-level columns. `sortOrder` is cast to int on both sides
-        // because the in-memory model can carry a string sortOrder
-        // pulled from a form submission while the hydrated record is
-        // already int-cast.
-        $topLevel = [
-            'name' => [$existing->name, $updated->name],
-            'handle' => [$existing->handle, $updated->handle],
-            'preset' => [$existing->preset, $updated->preset],
-            'sortOrder' => [(int)$existing->sortOrder, (int)$updated->sortOrder],
-        ];
-
-        foreach ($topLevel as $field => [$old, $new]) {
-            if ($old !== $new) {
-                $diff[$field] = ['old' => $old, 'new' => $new];
-            }
-        }
-
-        // Settings array — every field in `PolicyModel::settingsFields()`.
-        // Use `getSettingsArray()` to normalise null (inherit) values:
-        // `getSettingsArray()` omits nulls, so we walk the canonical
-        // settingsFields() list and pull each value via property access
-        // to capture explicit nulls in the diff.
-        foreach (PolicyModel::settingsFields() as $field) {
-            $oldValue = $existing->{$field};
-            $newValue = $updated->{$field};
-
-            if ($oldValue !== $newValue) {
-                $diff[$field] = ['old' => $oldValue, 'new' => $newValue];
-            }
-        }
-
-        // Group assignments. Sort both ascending — group order is not
-        // semantic, swapping rows around in the junction table should
-        // not produce a diff.
-        $oldGroupIds = array_map(static fn($id): int => (int)$id, $existingGroupIds);
-        $newGroupIds = array_map(static fn($id): int => (int)$id, $updatedGroupIds);
-        sort($oldGroupIds, SORT_NUMERIC);
-        sort($newGroupIds, SORT_NUMERIC);
-
-        if ($oldGroupIds !== $newGroupIds) {
-            $diff['groupIds'] = ['old' => $oldGroupIds, 'new' => $newGroupIds];
-        }
-
-        return $diff;
-    }
-
-    /**
-     * Hydrates a PolicyModel from a database row.
-     *
-     * @param array $row the database row
-     * @return PolicyModel
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _hydratePolicy(array $row): PolicyModel
-    {
-        $model = new PolicyModel();
-        $model->id = (int)$row['id'];
-        $model->name = $row['name'];
-        $model->handle = $row['handle'];
-        $model->preset = $row['preset'] ?? null;
-        $model->sortOrder = (int)$row['sortOrder'];
-        $model->uid = $row['uid'] ?? null;
-
-        // Decode JSON settings column — handles double-encoded values
-        // from migration (json_encode + Yii2 JSON column type)
-        $settings = $row['settings'] ?? null;
-
-        if (is_string($settings)) {
-            $decoded = Json::decodeIfJson($settings);
-
-            // Double-encoded: first decode yields string, second yields array
-            if (is_string($decoded)) {
-                $decoded = Json::decodeIfJson($decoded);
-            }
-
-            if (is_array($decoded)) {
-                $model->setSettingsFromArray($decoded);
-            }
-        }
-
-        return $model;
-    }
-
-    /**
-     * Returns the user-group IDs currently assigned to the given policy
-     * via the `passwordpolicy_policy_groups` junction table.
-     *
-     * Inlined into the audit diff path rather than reusing
-     * `PolicyModel::getGroupIds()` so we don't accidentally hit the
-     * model's `_groups` cache during the in-flight save.
-     *
-     * @param int $policyId the policy ID
-     * @return int[]
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _loadGroupIdsForPolicy(int $policyId): array
-    {
-        return array_map(
-            static fn($id): int => (int)$id,
-            (new Query())
-                ->select(['groupId'])
-                ->from('{{%passwordpolicy_policy_groups}}')
-                ->where(['policyId' => $policyId])
-                ->column(),
-        );
-    }
-
-    /**
-     * Fires the `policy_changed` audit event for a successful UPDATE.
-     *
-     * Wrapped in try/catch — the parent `savePolicy()` transaction is
-     * already committed at this point, and an audit-write failure must
-     * never unwind a saved policy. AuditLogService internally fail-safes
-     * its own writes, but the wrapping catch is belt-and-braces against
-     * any future change to that contract.
-     *
-     * `userId` is null because the event subject is the policy itself,
-     * not a user. The audit row's `changedByUserId` is auto-resolved
-     * from the current admin context inside `AuditLogService::logEvent()`.
-     *
-     * @param PolicyModel $policy the policy that was just saved
-     * @param array<string, array{old: mixed, new: mixed}> $diff the field-level diff
-     * @return void
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _logPolicyChanged(PolicyModel $policy, array $diff): void
-    {
-        try {
-            PasswordPolicy::$plugin->getAuditLog()->logEvent(
-                userId: null,
-                event: 'policy_changed',
-                details: [
-                    'diff' => $diff,
-                    'policyId' => (int)$policy->id,
-                    'policyName' => $policy->name,
-                ],
-            );
-        } catch (Throwable $e) {
-            Craft::error(
-                'Failed to write policy_changed audit event: ' . $e->getMessage(),
-                'password-policy',
-            );
-        }
     }
 }
