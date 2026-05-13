@@ -120,6 +120,18 @@ class Install extends Migration
     /**
      * Creates the audit log table.
      *
+     * Element-backed (Craft 5 idiom). `id` is a FK to `craft_elements.id`
+     * with `ON DELETE CASCADE`. The chain bytes (`rowHash`, `previousHash`,
+     * canonical payload) are unchanged from the pre-element shape — the
+     * `id` column is NOT in the canonical payload that
+     * `AuditLogService::canonicalize()` hashes, so the chain hashes
+     * verify byte-identically across the element-ification refactor.
+     *
+     * `userId` is nullable + `SET NULL` so audit history outlives the
+     * user — aligns with `project_audit_capture_principle.md` (events
+     * outlive entities by design). `changedByUserId` follows the same
+     * pattern.
+     *
      * @return void
      *
      * @author CraftPulse
@@ -127,14 +139,16 @@ class Install extends Migration
      */
     private function _createAuditLogTable(): void
     {
-        if ($this->db->tableExists('{{%passwordpolicy_audit_log}}')) {
+        $table = '{{%passwordpolicy_audit_log}}';
+
+        if ($this->db->tableExists($table)) {
             return;
         }
 
-        $this->createTable('{{%passwordpolicy_audit_log}}', [
-            'id' => $this->primaryKey(),
-            'userId' => $this->integer(),
-            'changedByUserId' => $this->integer(),
+        $this->createTable($table, [
+            'id' => $this->integer()->notNull(),
+            'userId' => $this->integer()->null(),
+            'changedByUserId' => $this->integer()->null(),
             'event' => $this->string()->notNull(),
             'outcome' => $this->string()->notNull()->defaultValue('success'),
             'source' => $this->string(),
@@ -154,13 +168,15 @@ class Install extends Migration
             'forwardAttempts' => $this->integer()->notNull()->defaultValue(0),
             'dateCreated' => $this->dateTime()->notNull(),
             'uid' => $this->uid(),
+            'PRIMARY KEY([[id]])',
         ]);
 
-        $this->createIndex(null, '{{%passwordpolicy_audit_log}}', ['userId'], false);
-        $this->createIndex(null, '{{%passwordpolicy_audit_log}}', ['event', 'dateCreated'], false);
-        $this->createIndex(null, '{{%passwordpolicy_audit_log}}', ['forwardedAt'], false);
-        $this->addForeignKey(null, '{{%passwordpolicy_audit_log}}', ['userId'], Table::USERS, ['id'], 'SET NULL', null);
-        $this->addForeignKey(null, '{{%passwordpolicy_audit_log}}', ['changedByUserId'], Table::USERS, ['id'], 'SET NULL', null);
+        $this->createIndex(null, $table, ['userId'], false);
+        $this->createIndex(null, $table, ['event', 'dateCreated'], false);
+        $this->createIndex(null, $table, ['forwardedAt'], false);
+        $this->addForeignKey(null, $table, ['id'], Table::ELEMENTS, ['id'], 'CASCADE', null);
+        $this->addForeignKey(null, $table, ['userId'], Table::USERS, ['id'], 'SET NULL', null);
+        $this->addForeignKey(null, $table, ['changedByUserId'], Table::USERS, ['id'], 'SET NULL', null);
     }
 
     /**

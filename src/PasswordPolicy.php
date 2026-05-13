@@ -57,6 +57,7 @@ use craftpulse\passwordpolicy\controllers\UserSecurityController;
 use craftpulse\passwordpolicy\elements\actions\ChangeUserPassword;
 use craftpulse\passwordpolicy\elements\actions\ForcePasswordReset;
 use craftpulse\passwordpolicy\elements\actions\SendPasswordResetEmail;
+use craftpulse\passwordpolicy\elements\AuditLogElement;
 use craftpulse\passwordpolicy\elements\conditions\BreachedRecentlyConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\LastChangeReasonConditionRule;
 use craftpulse\passwordpolicy\elements\conditions\PasswordExpiredConditionRule;
@@ -219,7 +220,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '2.9.0';
+    public string $schemaVersion = '2.10.0';
 
     /**
      * @var bool
@@ -859,11 +860,20 @@ class PasswordPolicy extends Plugin
     /**
      * Registers plugin-owned element types with Craft.
      *
-     * `NotificationLogElement` is universal capture (rows are written
-     * on every edition; the Activity CP surface is Pro-gated separately
-     * via the subnav). Registering on every edition lets fixtures /
-     * Pest / console tooling query the element type even on Lite
-     * installs.
+     * Both `NotificationLogElement` (Step 4) and `AuditLogElement`
+     * (Step 5) are universal capture — rows are written on every
+     * edition. Edition gates apply to the CP nav surfaces (activity
+     * subnav, G3 compliance dashboard) downstream of the element-type
+     * registration, never to the underlying writes. Registering on
+     * every edition lets fixtures / Pest / console tooling query the
+     * element types even on Lite installs.
+     *
+     * `AuditLogElement` is registered so `AuditLogElement::find()`
+     * resolves and Craft knows about the type for element-id collision
+     * checks, soft-delete bookkeeping, and the future G3 dashboard.
+     * Step 5 deliberately does NOT add a top-level "Audit Log" CP
+     * subnav — that's G3's job — but the type is available to anyone
+     * who wants to query it via the element API.
      *
      * @return void
      *
@@ -877,6 +887,7 @@ class PasswordPolicy extends Plugin
             Elements::EVENT_REGISTER_ELEMENT_TYPES,
             static function(RegisterComponentTypesEvent $event) {
                 $event->types[] = NotificationLogElement::class;
+                $event->types[] = AuditLogElement::class;
             },
         );
     }

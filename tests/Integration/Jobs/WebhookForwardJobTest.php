@@ -27,7 +27,9 @@
 
 use Carbon\Carbon;
 use craft\db\Query;
+use craft\db\Table;
 use craft\helpers\StringHelper;
+use craftpulse\passwordpolicy\elements\AuditLogElement;
 use craftpulse\passwordpolicy\jobs\WebhookForwardJob;
 use craftpulse\passwordpolicy\models\WebhookEndpointModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
@@ -90,11 +92,30 @@ function makeJobEndpoint(array $overrides = []): WebhookEndpointModel
 /**
  * Inserts an audit-log row directly (bypassing the chain writer for
  * fixture speed). Returns the inserted id.
+ *
+ * Step 5 element-ification: every audit_log row pairs with a
+ * `craft_elements` row via `id`. Allocate a paired element row first
+ * so the FK constraint is satisfied.
  */
 function makeWebhookAuditRow(array $overrides = []): int
 {
     $now = Carbon::now('UTC')->format('Y-m-d H:i:s');
+
+    Craft::$app->getDb()->createCommand()
+        ->insert(Table::ELEMENTS, [
+            'type' => AuditLogElement::class,
+            'enabled' => 1,
+            'archived' => 0,
+            'dateCreated' => $now,
+            'dateUpdated' => $now,
+            'uid' => StringHelper::UUID(),
+        ])
+        ->execute();
+
+    $elementId = (int)Craft::$app->getDb()->getLastInsertID(Table::ELEMENTS);
+
     $row = array_merge([
+        'id' => $elementId,
         'event' => 'webhook_test',
         'outcome' => 'success',
         'source' => 'admin',
@@ -110,7 +131,7 @@ function makeWebhookAuditRow(array $overrides = []): int
         ->insert('{{%passwordpolicy_audit_log}}', $row)
         ->execute();
 
-    return (int)Craft::$app->getDb()->getLastInsertID('{{%passwordpolicy_audit_log}}');
+    return $elementId;
 }
 
 /**
