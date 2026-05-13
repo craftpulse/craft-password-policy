@@ -41,6 +41,16 @@ use yii\db\Exception;
  * was a side-effect dedup substrate that pretended to be an audit
  * table — operators couldn't see failures at all.
  *
+ * **Single dispatch path.** All four notification keys route through
+ * `_dispatch()` and the per-(key, site) editable-templates surface.
+ * Pre-G12, `new-device-alert` and `admin-security-alert` used
+ * `Craft::$app->getMailer()->composeFromKey()` against mailer-template
+ * keys that were never registered with `SystemMessages::EVENT_REGISTER_
+ * MESSAGES`, so those emails failed to render. G12 moved both keys
+ * onto the editable surface with default content from `EmailDefaults`,
+ * a seed migration for upgraders, and full subject/body capture on the
+ * log row.
+ *
  * **Dedup substrate (G7).** Per-(eventClass, cooldownKey) suppression
  * lives in `passwordpolicy_alert_cooldowns` via `AlertCooldownService`.
  * `_hasRecentNotification()` and `sendAdminSecurityAlert()`'s old 5-min
@@ -155,6 +165,20 @@ class NotificationService extends Component
     /**
      * Sends a new device login alert to a user.
      *
+     * Routes through the editable-templates surface since G12 — the
+     * pre-G12 `composeFromKey('password-policy:new-device-alert', ...)`
+     * path never had a corresponding `SystemMessages` registration, so
+     * the email rendered empty. Defaults live in
+     * `EmailDefaults::newDeviceAlert()` and seed per-site rows via
+     * `Install::_seedNotificationTemplateDefaults()` (fresh installs) or
+     * `m260513_185354_AddEnterpriseNotificationDefaults` (upgraders).
+     *
+     * Note on resend: `new_device` log rows are still NOT resendable —
+     * the input vars (`deviceLabel`, `maskedIp`) aren't snapshotted on
+     * the log row, and `_templateKeyForType()` continues to return null
+     * for this type. A future `templateVarsJson` column would unlock
+     * resend (additive future work, not part of G12).
+     *
      * @param User $user
      * @param string $deviceLabel
      * @param string $maskedIp
@@ -169,34 +193,40 @@ class NotificationService extends Component
             return;
         }
 
-        // `composeFromKey` path (mailer-templates.php) — distinct from
-        // the editable-templates surface used by expiry / breach.
-        // Subject + body capture is intentionally omitted for mailer-
-        // key sources: the rendered content lives inside the Symfony
-        // Message and isn't trivially extractable, and the operator-
-        // visibility value is low because these templates aren't
-        // admin-edited. Phase G adds new-device + admin-alert to the
-        // editable-templates surface; at that point this path moves
-        // to `_dispatch()` and gets full capture.
-        $message = Craft::$app->getMailer()->composeFromKey('password-policy:new-device-alert', [
-            'user' => $user,
-            'deviceLabel' => $deviceLabel,
-            'maskedIp' => $maskedIp,
-        ]);
-
-        $this->_dispatchMailerKey(
-            userId: $user->id,
+        $this->_dispatch(
+            user: $user,
             type: 'new_device',
-            recipient: $user->email,
-            sender: $message,
+            templateKey: 'new-device-alert',
+            extraVars: [
+                'deviceLabel' => $deviceLabel,
+                'maskedIp' => $maskedIp,
+            ],
         );
     }
 
     /**
      * Sends an admin security alert.
      *
+     * Routes through the editable-templates surface since G12 — the
+     * pre-G12 `composeFromKey('password-policy:admin-security-alert', ...)`
+     * path never had a corresponding `SystemMessages` registration, so
+     * the email rendered empty. Defaults live in
+     * `EmailDefaults::adminSecurityAlert()` and seed per-site rows via
+     * `Install::_seedNotificationTemplateDefaults()` (fresh installs) or
+     * `m260513_185354_AddEnterpriseNotificationDefaults` (upgraders).
+     *
+     * Recipient is the configured `adminAlertEmail` (operator inbox),
+     * not the end-user — `_dispatch()` receives `user: null` and
+     * `recipientOverride: $email`, and the rendered template omits any
+     * `{{ user.* }}` reference. Site context resolves to the primary
+     * site (admin alerts aren't user-scoped).
+     *
+     * Cooldown gate (`AlertCooldownService`) is preserved from pre-G12 —
+     * one alert per (event, cooldownKey) per window, recorded on the
+     * dispatch attempt regardless of outcome.
+     *
      * @param string $event
-     * @param array $context
+     * @param array<string, mixed> $context
      * @return void
      *
      * @author CraftPulse
@@ -233,20 +263,15 @@ class NotificationService extends Component
             return;
         }
 
-        $message = Craft::$app->getMailer()->composeFromKey('password-policy:admin-security-alert', [
-            'event' => $event,
-            'context' => $context,
-        ]);
-
-        // Log with userId=null for admin alerts (no specific user).
-        // userId is nullable since 5.2.0 — the same column that flips
-        // to `SET NULL` on user hard-delete also accepts NULL for
-        // not-tied-to-a-user admin events.
-        $this->_dispatchMailerKey(
-            userId: null,
+        $this->_dispatch(
+            user: null,
             type: 'admin_alert_' . $event,
-            recipient: $email,
-            sender: $message,
+            templateKey: 'admin-security-alert',
+            extraVars: [
+                'event' => $event,
+                'context' => $context,
+            ],
+            recipientOverride: $email,
         );
     }
 
@@ -259,11 +284,16 @@ class NotificationService extends Component
      * Bypasses the dedup gate — the admin's "Resend" click is an
      * explicit override of the dedup-prevents-spam logic.
      *
-     * Skips rows whose `notificationType` doesn't map to the editable-
-     * templates surface (e.g. `admin_alert_*` rows, `new_device`):
-     * those are mailer-key sources rather than DB-template sources,
-     * and re-rendering them requires the original event payload which
-     * we don't snapshot. Callers can detect this via the bool return.
+     * Skips rows whose `notificationType` doesn't snapshot the input
+     * variables needed to re-render (`new_device` needs `deviceLabel`
+     * + `maskedIp`; `admin_alert_*` needs the event-specific `context`
+     * payload). Since G12 every key renders against the editable-
+     * templates surface, but only the user-driven keys
+     * (`expiry_reminder`, `breach_detected`) recompute their input
+     * vars from current state — the others would need a
+     * `templateVarsJson` snapshot column to be resendable (additive
+     * future work, not part of G12). Callers detect this via the bool
+     * return.
      *
      * @param NotificationLogElement $original
      * @return bool true if the resend dispatched, false if the row's
@@ -359,7 +389,12 @@ class NotificationService extends Component
      * admin-edited templates — calling it twice per send is wasteful).
      *
      * @param NotificationTemplateModel $template the template to render
-     * @param User $user the recipient (used as `from` for elevated session)
+     * @param User|null $user the recipient when the template is user-scoped;
+     *     null for admin-recipient templates (G12 — `admin-security-alert`).
+     *     The `$user` reference is retained on the signature for caller
+     *     readability and forward compatibility (e.g. an elevated-session
+     *     `from` field tied to the user-side mail flow); the method body
+     *     does not currently read it.
      * @param array<string, mixed> $vars Twig render context
      * @param array<string, string>|null $rendered out-param — populated
      *     with `subject` + `body` rendered strings when not null
@@ -372,7 +407,7 @@ class NotificationService extends Component
      */
     public function composeFromTemplate(
         NotificationTemplateModel $template,
-        User $user,
+        ?User $user,
         array $vars,
         ?array &$rendered = null,
     ): \craft\mail\Message {
@@ -415,17 +450,35 @@ class NotificationService extends Component
     // =========================================================================
 
     /**
-     * Shared dispatch path for editable-template-backed notifications
-     * (`expiry_reminder`, `breach_detected`). Resolves the per-user
-     * site, loads the template, renders subject + body, attempts the
-     * send, and writes a log row — `status = sent` on success,
-     * `status = failed` with the captured error message on
+     * Shared dispatch path for editable-template-backed notifications.
+     * Resolves the target site, loads the template, renders subject +
+     * body, attempts the send, and writes a log row — `status = sent`
+     * on success, `status = failed` with the captured error message on
      * `Throwable`.
      *
-     * @param User $user
+     * Supports two modes:
+     *
+     *  - **User-scoped** (`$user !== null`, `$recipientOverride === null`):
+     *    site resolves from the user's `preferredLanguage`; recipient is
+     *    the user's email; the render context includes `{{ user }}`.
+     *    Used by `expiry_reminder`, `breach_detected`, `new_device`.
+     *  - **Admin-scoped** (`$user === null`, `$recipientOverride !== null`):
+     *    site resolves to the primary site (or `$siteIdOverride` when
+     *    explicitly passed); recipient is `$recipientOverride`; the
+     *    render context omits `{{ user }}` and `userId` writes as null
+     *    on the log row. Used by `admin_alert_*`.
+     *
+     * Missing template is a config error — log a warning and return
+     * without writing a log row. Send/render failures DO write a
+     * `status = failed` row so operators see the failure on the
+     * activity index.
+     *
+     * @param User|null $user the recipient user, or null for admin-scoped sends
      * @param string $type machine-key matching `notification_log.notificationType`
      * @param string $templateKey notification-templates handle (e.g. `expiry-reminder`)
      * @param array<string, mixed> $extraVars vars merged into the render context (besides `user` + `siteName`)
+     * @param string|null $recipientOverride explicit recipient email for admin-scoped sends
+     * @param int|null $siteIdOverride explicit site ID for admin-scoped sends; defaults to primary site
      * @param int|null $resentFromId set when this dispatch is a re-send of an earlier row
      * @return void
      *
@@ -433,13 +486,30 @@ class NotificationService extends Component
      * @since 5.2.0
      */
     private function _dispatch(
-        User $user,
+        ?User $user,
         string $type,
         string $templateKey,
         array $extraVars = [],
+        ?string $recipientOverride = null,
+        ?int $siteIdOverride = null,
         ?int $resentFromId = null,
     ): void {
-        $siteId = $this->_resolveSiteIdForUser($user);
+        $siteId = $siteIdOverride
+            ?? ($user !== null
+                ? $this->_resolveSiteIdForUser($user)
+                : Craft::$app->getSites()->getPrimarySite()->id);
+
+        $recipient = $recipientOverride ?? $user?->email;
+
+        if ($recipient === null) {
+            // Nothing to send to — caller is responsible for filtering
+            // (User::email===null + no override). Defensive return so
+            // a misuse doesn't write a log row with a null recipient.
+            return;
+        }
+
+        $userId = $user?->id;
+
         $template = PasswordPolicy::$plugin->getNotificationTemplates()
             ->getTemplate($templateKey, $siteId);
 
@@ -447,9 +517,10 @@ class NotificationService extends Component
             // Missing-template is a config error, not a send failure —
             // log and return without writing a notification_log row.
             // Operator should fix the template before any further
-            // sends to this user fire.
+            // sends fire.
+            $userContext = $userId !== null ? "user {$userId}" : "admin-scoped";
             Craft::warning(
-                "No {$templateKey} template found for user {$user->id} (siteId {$siteId})",
+                "No {$templateKey} template found for {$userContext} (siteId {$siteId})",
                 'password-policy',
             );
             return;
@@ -458,11 +529,16 @@ class NotificationService extends Component
         $rendered = [];
 
         try {
-            $vars = array_merge([
-                'user' => $user,
+            $baseVars = [
                 'siteName' => Craft::$app->getSites()->getSiteById($siteId)?->getName()
                     ?? Craft::$app->getSystemName(),
-            ], $extraVars);
+            ];
+
+            if ($user !== null) {
+                $baseVars['user'] = $user;
+            }
+
+            $vars = array_merge($baseVars, $extraVars);
 
             // Render once via composeFromTemplate's out-param. Capturing
             // the rendered strings outside the Symfony Message object
@@ -471,7 +547,7 @@ class NotificationService extends Component
             // side effects; double-rendering is also pure waste).
             $message = $this->composeFromTemplate($template, $user, $vars, $rendered);
 
-            $message->setTo($user->email)->send();
+            $message->setTo($recipient)->send();
         } catch (Throwable $e) {
             // Privacy invariant on the breach-detected path: the
             // exception message can only originate from template
@@ -479,16 +555,17 @@ class NotificationService extends Component
             // password material — but we still log only an opaque
             // summary at error level. The detailed message goes into
             // the notification_log errorMessage column.
+            $userContext = $userId !== null ? "user {$userId}" : "admin-scoped";
             Craft::error(
-                "Failed to send {$type} notification to user {$user->id}: " . $e->getMessage(),
+                "Failed to send {$type} notification to {$userContext}: " . $e->getMessage(),
                 'password-policy',
             );
 
             $this->_logNotification(
-                userId: $user->id,
+                userId: $userId,
                 type: $type,
                 status: NotificationStatus::Failed,
-                recipient: $user->email,
+                recipient: $recipient,
                 siteId: $siteId,
                 subject: $rendered['subject'] ?? null,
                 body: $rendered['body'] ?? null,
@@ -500,81 +577,15 @@ class NotificationService extends Component
         }
 
         $this->_logNotification(
-            userId: $user->id,
+            userId: $userId,
             type: $type,
             status: NotificationStatus::Sent,
-            recipient: $user->email,
+            recipient: $recipient,
             siteId: $siteId,
             subject: $rendered['subject'] ?? '',
             body: $rendered['body'] ?? '',
             errorMessage: null,
             resentFromId: $resentFromId,
-        );
-    }
-
-    /**
-     * Dispatch + log path for `composeFromKey` notifications (mailer-
-     * templates.php source). Subject + body capture is intentionally
-     * skipped — the rendered content lives inside the Symfony Message
-     * and isn't trivially extractable, and the operator-visibility
-     * value is low because these templates aren't admin-edited. The
-     * log row still records `status`, `recipientEmail`, and the
-     * `errorMessage` on failure — enough for the activity index to
-     * tell admins "the new-device alert went to alice@x.com on
-     * 2026-05-06" or "admin-alert send failed: connection refused."
-     *
-     * Phase G adds `new-device-alert` + `admin-security-alert` to
-     * the editable-templates surface; at that point those paths
-     * move to `_dispatch()` and gain full subject + body capture.
-     *
-     * @param int|null $userId user-scoped row, null for admin alerts (no specific user)
-     * @param string $type machine-key matching `notification_log.notificationType`
-     * @param string $recipient address the message goes to
-     * @param \craft\mail\Message $sender prepared mailer message
-     * @return void
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _dispatchMailerKey(
-        ?int $userId,
-        string $type,
-        string $recipient,
-        \craft\mail\Message $sender,
-    ): void {
-        try {
-            $sender->setTo($recipient)->send();
-        } catch (Throwable $e) {
-            Craft::error(
-                "Failed to send {$type} notification (userId {$userId}): " . $e->getMessage(),
-                'password-policy',
-            );
-
-            $this->_logNotification(
-                userId: $userId,
-                type: $type,
-                status: NotificationStatus::Failed,
-                recipient: $recipient,
-                siteId: null,
-                subject: null,
-                body: null,
-                errorMessage: $e->getMessage(),
-                resentFromId: null,
-            );
-
-            return;
-        }
-
-        $this->_logNotification(
-            userId: $userId,
-            type: $type,
-            status: NotificationStatus::Sent,
-            recipient: $recipient,
-            siteId: null,
-            subject: null,
-            body: null,
-            errorMessage: null,
-            resentFromId: null,
         );
     }
 
@@ -788,10 +799,23 @@ class NotificationService extends Component
     /**
      * Returns the editable-templates handle for a given
      * `notificationType` machine-key, or null when the type isn't
-     * resendable. Currently only the editable-template-driven types
-     * (`expiry_reminder`, `breach_detected`) are resendable; mailer-
-     * key-driven types (`new_device`, `admin_alert_*`) need the
-     * original event payload to re-render and aren't snapshotted.
+     * resendable.
+     *
+     * Since G12 every key in this service renders against the
+     * editable-templates surface (handles `expiry-reminder`,
+     * `breach-detected`, `new-device-alert`, `admin-security-alert`).
+     * Resendability is a separate axis: only the types whose input
+     * vars can be recomputed from current state qualify
+     * (`expiry_reminder` recomputes `daysUntilExpiry` from
+     * `users.lastPasswordChangeDate`; `breach_detected` reuses
+     * `detectedAt = now`). The remaining types — `new_device` and
+     * every `admin_alert_*` — depend on inputs that aren't snapshotted
+     * on the log row (`deviceLabel`, `maskedIp`, the event `context`
+     * payload), so they return null here and `resend()` short-circuits.
+     *
+     * Forward-pointer: a `templateVarsJson` snapshot column on the log
+     * row would unlock resend for the other types (additive enhancement
+     * — no schema rewrites, no data migration — appropriate for 5.3+).
      *
      * @param string $type
      * @return string|null
