@@ -2,17 +2,17 @@
 title: Password Policy v5.2.0 — Master Plan
 version: 5.2.0
 branch: 5.x
-last_updated: 2026-05-06
+last_updated: 2026-05-14
 status:
   pro_ui: feature_complete
-  pest_suite: 551 passing / 0 skipped / 1151 assertions
-  manual_tests: 78/79 PASS active pass; T1.2 + TX.2 + T9.7 now covered by Pest (E6); T12.6 + T13.6 + T13.11 require Enterprise/browser/SR gates
+  pest_suite: 786 passing / 0 skipped / 1875 assertions
+  manual_tests: 78/79 PASS active pass; T1.2 + TX.2 + T9.7 now covered by Pest (E6); T12.6 + T13.6 + T13.11 + Phase G T-rows pending Enterprise QA
   p1_remaining: 0
   p2_remaining: 0 (P2.1 + P2.2 done as Phase D; P2.4 absorbed into P1.12; P2.5 done as Phase E; P2.6 absorbed into Phase D verification gate; P2.8 drafted 2026-05-06 → phase-g-build-plan.md; P2.9 done as Phase F2 2026-05-06)
-  enterprise: not_started
+  enterprise: phase_g_complete (G1–G12 shipped on `5.x`)
   bug_fix_sweep_2026_05_02: 11_bugs_landed_zero_pest_coverage_now_pinned_by_E4_E5
 release_strategy: single_5_2_0_includes_all_editions (5.1.x backports parked on branch — tag-or-park decision pending)
-gate: enterprise_must_complete_before_release_prep
+gate: phase_h_release_prep_ready_to_start
 read_order_active: [1, 2, 3, 4]
 companion: reference.md (sections 5–7 — completed work, architecture decisions, source-code inventory)
 ---
@@ -56,13 +56,35 @@ State legend: `active` = read now, `pending` = scheduled, `done` = built, `block
 - P3 (Enterprise — Phase 10/11/12) blocked on D + F. P4: future.
 - **5.1.x backports parked.** Three commits on the `5.1.x` branch (TLS verify, fail-open log level, sensitive-key strip — all backports from 5.x bug fix work). NOT pushed, NOT tagged. Tag-or-park decision pending — discuss before resuming.
 - **Release strategy:** 5.2.0 ships as a single release covering Lite + Pro + Enterprise. Nothing tags / publishes until Enterprise (Phase 10–12) is complete and tested. Once the Phase G build plan is drafted (P2.8), revisit whether any G subset can defer to 5.3 if scope expands beyond a comfortable build cycle.
-- Hard gate: Phase D + Phase F + Enterprise build (G) must pass before release prep (H).
+- **Phase G closed 2026-05-14.** G1–G12 shipped on `5.x`. Twelve features across 17K+ lines + Phase G post-review remediation Steps 1–8 (bundled fix-pack, dedicated `CRAFT_AUDIT_PII_KEY`, verify-then-decide pass on I4/I6/I7/N1–N6, NotificationLog/AuditLog/Policy element-ifications, G12 mailer-key regression resolution, G11 custom template paths, G3 compliance dashboard + reports). **Pest suite: 786 passing / 0 skipped / 1875 assertions.** Schema version `2.11.0`. ECS + PHPStan clean. Foundation-first principle held throughout — three record→element refactors landed before downstream features so user data never carries 5.2.0 → 5.3 migration debt. Phase G session log spans commits `cf3e2f1` → `be33546`. Release prep (Phase H) is now unblocked.
+- Hard gate: Phase D + Phase F + Enterprise build (G) must pass before release prep (H). **All gates cleared.**
 
-### Known regressions (deferred to G12)
+### Known regressions — resolved
 
-- **Mailer-key SystemMessages registration missing for `password-policy:new-device-alert` + `password-policy:admin-security-alert`.** Both keys are called via `composeFromKey()` in `NotificationService` (lines 180, 235) but only `password-policy:audit-export-ready` (G10) is registered with `SystemMessages::EVENT_REGISTER_MESSAGES`. Practical effect: the F2 admin security alerts and HIBP-on-login new-device alerts deliver empty subject/body or the send fails outright (depending on Craft version). Not band-aided via a quick `EVENT_REGISTER_MESSAGES` row because the existing comments at `NotificationService.php:177-179` and `EmailDefaults.php:104` both target G12 for the proper fix: move both keys to the editable-templates path (`_dispatch()`) with per-site DB-stored templates seeded via `EmailDefaults::all()` + the propagation listener. A band-aid registration would be reverted in G12. **Surfaced 2026-05-07 during G10 review.** Resolution: G12.
+- **Mailer-key SystemMessages registration missing for `password-policy:new-device-alert` + `password-policy:admin-security-alert`.** **Resolved by G12 (commit `ede5071`, 2026-05-13).** Both keys moved from `composeFromKey()` (mailer-templates path) to `_dispatch()` (editable-templates path) with per-site DB-stored seeds via `EmailDefaults::all()`. `_dispatchMailerKey()` deleted. `composeFromTemplate()` widened to `?User` for admin-alert mode. Resend deferred (these types are non-resendable until 5.3+ adds a `templateVarsJson` column — additive future work, foundation-positive).
 
-### Phase G post-review remediation (2026-05-07)
+### Phase G post-review remediation (2026-05-07 → 2026-05-14) — done
+
+All eight steps shipped. Final commit `be33546` (G3). Cumulative session range `4ca1c0a` (Step 1 fix-pack) → `be33546` (G3 finale). Detailed step-by-step status:
+
+| Step | Title | Commit | Date |
+|---|---|---|---|
+| 1 | Bundled fix-pack (C1, C2, C3, I1, I2) | `4ca1c0a` | 2026-05-08 |
+| 2 | I5 dedicated `CRAFT_AUDIT_PII_KEY` + CLI generator | `dc5bbd1` | 2026-05-09 |
+| 3 | Verify-then-decide on I4, I7, N1–N6 | `87149dd` | 2026-05-10 |
+| 4 | `NotificationLogRecord` → `NotificationLogElement` | `2d0144e` | 2026-05-10 |
+| 5 | `AuditLogRecord` → `AuditLogElement` | `ba520a5` | 2026-05-11 |
+| —  | FK dedup follow-up | `f800d72` | 2026-05-11 |
+| 6 | `PolicyRecord` → `PolicyElement` | `2809614` | 2026-05-12 |
+| 7 | G12 — mailer-key regression resolution | `ede5071` | 2026-05-13 |
+| 8a | G11 — Enterprise custom email template paths | `fd2c806` | 2026-05-14 |
+| 8b | G3 — Compliance dashboard + reports | `be33546` | 2026-05-14 |
+
+Original review summary preserved below for the historical record.
+
+---
+
+
 
 Code review across the 9 Phase G commits (cf3e2f1 → 3dccebafa, 17K+ lines) surfaced 9 verified issues + 1 false positive (the reviewer claimed `AuditExportCompleteEvent` was missing from `events.md`; it's at line 402). Each finding manually verified against the cited file:line before logging here.
 
@@ -141,9 +163,9 @@ Per-test results in `manual-tests.md`. Phases A + B closed; nothing remains in t
 - TX.3 — PASS via analysis + earlier T0.4 empirical grep (no sensitive keys reach logs)
 - T1.2 + TX.2 — covered by Pest 2026-05-02 (Phase E6 commit `c164646` — `tests/Integration/Migrations/UpgradeTo520MigrationTest.php`)
 
-### Enterprise — 6 blocked
+### Enterprise — pending QA pass
 
-T4.1–T4.6 (audit logging) gated on Phase 10–12.
+T4.1–T4.6 (audit logging) unblocked 2026-05-14 — Phase G shipped. T14.x–T19.x rows for the new Phase G surfaces (hash chain, verifier CLI, compliance dashboard, SIEM forwarder, webhook forwarder, audit export, custom template paths, Enterprise notification keys) need authoring in `manual-tests.md` as part of Phase H QA prep — ~25-30 new T-row entries per the build plan's "Final deliverables" section.
 
 ---
 
@@ -218,8 +240,8 @@ T4.1–T4.6 (audit logging) gated on Phase 10–12.
 | F | Polish + UI sweep (2026-05-03 / 2026-05-06) — `Cp::statusLabelHtml()` rewrite, expiry-gated columns, `EVENT_DEFINE_EDIT_SCREENS` (replaced sidebar pointer workaround), `EVENT_DEFINE_ACTION_MENU_ITEMS` listener, modal styling + elevation, `passwordResetRequired` hydration fix. **P2.4 absorbed into P1.12; P2.6 absorbed into D.** | done 2026-05-06 (1 commit) |
 | F2 | Notifications activity surface (P2.9) — `notification_log` schema rewrite, capture-on-failure, resend pipeline, CP activity index, per-user panel | done 2026-05-06 (1 commit, +3 Pest test files; suite at 551 / 1151) |
 | F3 | P2.8 — draft Phase G build plan → [`internal/phase-g-build-plan.md`](./phase-g-build-plan.md) | done 2026-05-06 (1238-line layered plan covering G1–G12; deferral recommendation pending user confirmation) |
-| G | Enterprise (Phase 10, 11, 12) — driven by P2.8 build plan | blocked on D + F + F2 + F3 |
-| H | Release prep + deployment docs (P1.8) — tag 5.2.0, Plugin Store listing, marketing copy, migration guide review, deployment/cron docs (Enterprise required to write authoritative docs) | blocked on A–G |
+| G | Enterprise (Phase 10, 11, 12) — driven by P2.8 build plan. G1–G12 + post-review remediation Steps 1–8 all shipped. | done 2026-05-14 (suite at 786 / 1875; commits `cf3e2f1` → `be33546`) |
+| H | Release prep + deployment docs (P1.8) — tag 5.2.0, Plugin Store listing, marketing copy, migration guide review, deployment/cron docs, Enterprise QA pass (T12.6 + T14.x–T19.x), authoritative editions comparison table | **unblocked 2026-05-14** — ready to start |
 | **(parallel)** | **5.1.x backports — parked.** Three commits on `5.1.x` branch (TLS verify, fail-open log level, sensitive-key strip). Tag-or-park decision pending — discuss before resuming. Independent of the linear A → H sequence. | parked |
 
 Gates:
@@ -228,8 +250,8 @@ Gates:
 - E cannot start until C2 is complete (Pest covers the C2 surface; that surface had to land first). **Closed 2026-05-02.**
 - D cannot start until E is complete (Phase D extends the codebase with new CP surfaces; Pest must cover the existing C2 surface before new code lands on top). **Closed 2026-05-03.**
 - F cannot start until D is complete (P2.8 Phase G build plan benefits from the user-index work being in-hand for cross-references). **F + F2 + F3 all closed 2026-05-06.**
-- G cannot start until F is complete (Phase G needs the P2.8 build plan to lock architectural decisions before code).
-- H cannot start until G is complete (single 5.2.0 release covers all editions; nothing tags until Enterprise is built and tested).
+- G cannot start until F is complete (Phase G needs the P2.8 build plan to lock architectural decisions before code). **Closed 2026-05-14.**
+- H cannot start until G is complete (single 5.2.0 release covers all editions; nothing tags until Enterprise is built and tested). **Unblocked 2026-05-14.**
 
 ---
 
