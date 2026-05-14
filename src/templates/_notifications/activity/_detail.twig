@@ -9,7 +9,14 @@
  # @since 5.2.0
  #}
 
-{% requirePermission "pp:notification-templates-manage" %}
+{# Activity surface is gated on the new view permission (P3-10); the
+   controller `beforeAction()` accepts EITHER `pp:notification-log-view`
+   OR the broader `pp:notification-templates-manage`. The Twig
+   `requirePermission` tag here mirrors the read gate — controller is
+   the source of truth, this is a defense-in-depth render gate. #}
+{% if not (currentUser.can('pp:notification-log-view') or currentUser.can('pp:notification-templates-manage')) %}
+    {% requirePermission "pp:notification-log-view" %}
+{% endif %}
 
 {% extends "password-policy/_layouts/password-policy-cp.twig" %}
 

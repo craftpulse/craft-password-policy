@@ -505,12 +505,30 @@ class PasswordPolicy extends Plugin
         // "Sent Notifications" split) — separate page for delivery /
         // failure history that ops want to land on directly without an
         // extra click through Templates.
+        //
+        // The two subnavs gate on DIFFERENT permissions since P3-10:
+        //  - Notifications (template editor) → `pp:notification-
+        //    templates-manage` (write surface, edit per-(key, site)
+        //    templates).
+        //  - Activity (delivery log reader) → `pp:notification-log-
+        //    view` (audit-read surface). Template-manage also grants
+        //    activity view since an admin editing templates needs to
+        //    see how they perform; reverse not implied (an auditor
+        //    can read activity without editing).
         if ($this->getIsPro() && $currentUser->can('pp:notification-templates-manage')) {
             $subNavs['notifications'] = [
                 'label' => Craft::t('password-policy', 'Notifications'),
                 'url' => 'password-policy/notifications',
             ];
+        }
 
+        if (
+            $this->getIsPro()
+            && (
+                $currentUser->can('pp:notification-log-view')
+                || $currentUser->can('pp:notification-templates-manage')
+            )
+        ) {
             $subNavs['notification-activity'] = [
                 'label' => Craft::t('password-policy', 'Activity'),
                 'url' => 'password-policy/notifications/activity',
@@ -799,6 +817,12 @@ class PasswordPolicy extends Plugin
                     ],
                     'pp:notification-templates-manage' => [
                         'label' => Craft::t('password-policy', 'Manage email notification templates.'),
+                    ],
+                    'pp:notification-log-view' => [
+                        'label' => Craft::t(
+                            'password-policy',
+                            'View the notification activity log (delivery history, errors). Auditor-grantable without template-edit rights.',
+                        ),
                     ],
                     'pp:audit-view' => [
                         'label' => Craft::t(

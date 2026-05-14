@@ -13,6 +13,7 @@ namespace craftpulse\passwordpolicy\controllers;
 use Craft;
 use craft\helpers\Json;
 use craft\helpers\StringHelper;
+use craft\helpers\UrlHelper;
 use craft\web\Controller;
 use craftpulse\passwordpolicy\data\EmailDefaults;
 use craftpulse\passwordpolicy\models\NotificationTemplateModel;
@@ -110,8 +111,20 @@ class NotificationTemplateController extends Controller
             ];
         }
 
+        // Breadcrumbs back to the plugin landing — P2-08. Match the
+        // shape used by `SiemForwarderController` /
+        // `WebhookEndpointController` so every CP index in the
+        // password-policy surface roots back to the same landing
+        // crumb.
+        $pluginName = 'Password Policy';
         return $this->renderTemplate('password-policy/_notifications/_index', [
             'rows' => $rows,
+            'crumbs' => [
+                [
+                    'label' => $pluginName,
+                    'url' => UrlHelper::cpUrl('password-policy'),
+                ],
+            ],
         ]);
     }
 
