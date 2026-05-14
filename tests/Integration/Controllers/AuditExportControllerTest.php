@@ -371,7 +371,10 @@ it('returns NotFoundHttpException on cache hit but missing file', function() {
             'filePath' => '/nonexistent/path/file.csv',
             'filesystemHandle' => null,
             'format' => 'csv',
-            'requestedById' => 0,
+            // Match the acting admin so the per-admin binding check
+            // passes and the file-missing path is what triggers the
+            // exception. Binding test below covers the mismatch case.
+            'requestedById' => $this->actingAdmin->id,
             'requestedAt' => Carbon::now('UTC')->format(\DateTime::ATOM),
         ],
         3600,
@@ -379,5 +382,60 @@ it('returns NotFoundHttpException on cache hit but missing file', function() {
 
     expect(fn() => runExportAction('download', ['token' => $token]))
         ->toThrow(NotFoundHttpException::class);
+});
+
+it('rejects download by an admin other than the export requester', function() {
+    $token = StringHelper::randomString(64);
+
+    // Seed the cache entry as if a DIFFERENT admin requested the export.
+    // Using `actingAdmin->id + 9999` guarantees no collision with the
+    // current authenticated user; the file path is real-enough to
+    // survive the cache lookup so we know it's the binding check
+    // throwing, not the file-missing fallback.
+    $path = sys_get_temp_dir() . '/pp-audit-export-binding-' . $token . '.csv';
+    file_put_contents($path, "id,event\n1,test_event\n");
+
+    Craft::$app->getCache()->set(
+        'pp:audit-export-token:' . $token,
+        [
+            'filePath' => $path,
+            'filesystemHandle' => null,
+            'format' => 'csv',
+            'requestedById' => $this->actingAdmin->id + 9999,
+            'requestedAt' => Carbon::now('UTC')->format(\DateTime::ATOM),
+        ],
+        3600,
+    );
+
+    expect(fn() => runExportAction('download', ['token' => $token]))
+        ->toThrow(\yii\web\ForbiddenHttpException::class);
+
+    // The legitimate requester must still be able to pull the file —
+    // the binding rejection does NOT burn the cache entry.
+    expect(Craft::$app->getCache()->get('pp:audit-export-token:' . $token))
+        ->toBeArray();
+
+    @unlink($path);
+});
+
+it('rejects download when cache entry omits requestedById', function() {
+    $token = StringHelper::randomString(64);
+
+    // Legacy cache entry shape (no `requestedById` key). Fail-closed:
+    // rather than treat missing-binding as permissive, reject with 403.
+    // Worst case is one re-enqueue while the legacy entry expires.
+    Craft::$app->getCache()->set(
+        'pp:audit-export-token:' . $token,
+        [
+            'filePath' => '/some/path.csv',
+            'filesystemHandle' => null,
+            'format' => 'csv',
+            'requestedAt' => Carbon::now('UTC')->format(\DateTime::ATOM),
+        ],
+        3600,
+    );
+
+    expect(fn() => runExportAction('download', ['token' => $token]))
+        ->toThrow(\yii\web\ForbiddenHttpException::class);
 });
 
