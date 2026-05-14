@@ -12,6 +12,8 @@ namespace craftpulse\passwordpolicy\models;
 
 use Craft;
 use craft\base\Model;
+use craft\enums\Color;
+use craft\helpers\Cp;
 use craft\helpers\DateTimeHelper;
 use craftpulse\passwordpolicy\records\SiemForwarderRecord;
 use DateTime;
@@ -192,6 +194,60 @@ class SiemForwarderModel extends Model
      * @var string|null
      */
     public ?string $uid = null;
+
+    // Public Methods
+    // =========================================================================
+
+    /**
+     * Returns the HTML for this forwarder's "Enabled" status pill —
+     * green when enabled, gray when disabled. Routes through
+     * `Cp::statusLabelHtml()` so the pill matches Craft's native
+     * Status column shape (introduced in CMS 5.2.0).
+     *
+     * @return string
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getEnabledLabelHtml(): string
+    {
+        return (string)Cp::statusLabelHtml([
+            'color' => $this->enabled ? Color::Green : Color::Gray,
+            'label' => $this->enabled
+                ? Craft::t('app', 'Enabled')
+                : Craft::t('app', 'Disabled'),
+        ]);
+    }
+
+    /**
+     * Returns the HTML for this forwarder's circuit-breaker status
+     * pill — green when closed, red when open. The open variant
+     * includes the consecutive-failure count inline so operators
+     * see severity at a glance from the index.
+     *
+     * @return string
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getCircuitLabelHtml(): string
+    {
+        if ($this->circuitOpenAt === null) {
+            return (string)Cp::statusLabelHtml([
+                'color' => Color::Green,
+                'label' => Craft::t('password-policy', 'Closed'),
+            ]);
+        }
+
+        return (string)Cp::statusLabelHtml([
+            'color' => Color::Red,
+            'label' => Craft::t(
+                'password-policy',
+                'Open ({n} {n, plural, =1{failure} other{failures}})',
+                ['n' => $this->consecutiveFailures],
+            ),
+        ]);
+    }
 
     // Protected Methods
     // =========================================================================

@@ -37,17 +37,10 @@
                             <a href="{{ detailUrl }}">{{ row.sentAt|datetime('short') }}</a>
                         </td>
                         <td>
-                            {% if row.status == 'failed' %}
-                                <span class="status-label red">
-                                    <span class="status red"></span>
-                                    <span class="status-label-text">{{ 'Failed'|t('password-policy') }}</span>
-                                </span>
-                            {% else %}
-                                <span class="status-label green">
-                                    <span class="status green"></span>
-                                    <span class="status-label-text">{{ 'Sent'|t('password-policy') }}</span>
-                                </span>
-                            {% endif %}
+                            {# Routes through `NotificationLogElement::getStatusLabelHtml()`
+                               so the per-user-panel pill stays in lockstep with the
+                               element-index + detail-view pills. #}
+                            {{ row.statusLabelHtml|raw }}
                         </td>
                         <td><code>{{ row.notificationType }}</code></td>
                         <td>

@@ -62,36 +62,17 @@
                         {% set displayName = forwarder.name ?: "#{forwarder.host}:#{forwarder.port}" %}
                         {% set editUrl = cpUrl("password-policy/siem/#{forwarder.id}") %}
 
-                        {# Circuit pill — green=clean, yellow=half-open
-                           (past cooldown, awaiting probe), red=open. #}
-                        {% if forwarder.circuitOpenAt is null %}
-                            {% set circuitLabel = 'Closed'|t('password-policy') %}
-                            {% set circuitColor = 'green' %}
-                        {% else %}
-                            {% set circuitLabel = "Open ({n} {n, plural, =1{failure} other{failures}})"|t('password-policy', { n: forwarder.consecutiveFailures }) %}
-                            {% set circuitColor = 'red' %}
-                        {% endif %}
-
                         <tr>
                             <td>
                                 <a href="{{ editUrl }}">{{ displayName }}</a>
                             </td>
                             <td class="code">{{ forwarder.host }}:{{ forwarder.port }}</td>
                             <td>{{ forwarder.protocol }}</td>
-                            <td>
-                                {% set enabledColor = forwarder.enabled ? 'green' : 'grey' %}
-                                {% set enabledLabel = forwarder.enabled ? 'Enabled'|t('app') : 'Disabled'|t('app') %}
-                                <span class="status-label {{ enabledColor }}">
-                                    <span class="status {{ enabledColor }}"></span>
-                                    <span class="status-label-text">{{ enabledLabel }}</span>
-                                </span>
-                            </td>
-                            <td>
-                                <span class="status-label {{ circuitColor }}">
-                                    <span class="status {{ circuitColor }}"></span>
-                                    <span class="status-label-text">{{ circuitLabel }}</span>
-                                </span>
-                            </td>
+                            {# Routes through `SiemForwarderModel::getEnabledLabelHtml()`
+                               and `getCircuitLabelHtml()` so the pills match Craft's
+                               native Status column shape via `Cp::statusLabelHtml()`. #}
+                            <td>{{ forwarder.enabledLabelHtml|raw }}</td>
+                            <td>{{ forwarder.circuitLabelHtml|raw }}</td>
                             <td class="thin">
                                 <a href="{{ editUrl }}" class="btn small" data-icon="edit">
                                     {{ 'Edit'|t('app') }}

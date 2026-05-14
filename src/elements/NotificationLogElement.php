@@ -521,6 +521,40 @@ class NotificationLogElement extends Element
         return in_array($this->notificationType, ['expiry_reminder', 'breach_detected'], true);
     }
 
+    /**
+     * Returns the HTML for this row's status pill — the same shape
+     * `attributeHtml('status')` renders on the element index. Exposed
+     * for the per-detail view + the per-user panel so they don't
+     * hand-roll `<span class="status-label">` markup that drifts from
+     * the index over time.
+     *
+     * Falls back to `Html::encode($this->status)` when the raw string
+     * doesn't map to a known `NotificationStatus` case — defensive for
+     * any future status value not yet covered by the enum.
+     *
+     * @return string
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getStatusLabelHtml(): string
+    {
+        if ($this->status === null) {
+            return '';
+        }
+
+        $statusCase = NotificationStatus::tryFrom($this->status);
+
+        if ($statusCase === null) {
+            return Html::encode($this->status);
+        }
+
+        return (string)Cp::statusLabelHtml([
+            'color' => $statusCase->color(),
+            'label' => $statusCase->label(),
+        ]);
+    }
+
     // Protected Methods
     // =========================================================================
 
@@ -544,6 +578,12 @@ class NotificationLogElement extends Element
                     Craft::$app->getFormatter()->asDatetime($this->sentAt, 'short'),
                     $href,
                 );
+
+            case 'status':
+                // Routes through `getStatusLabelHtml()` so the index
+                // pill and the detail / per-user panel pills stay
+                // in lockstep — same `Cp::statusLabelHtml()` call.
+                return $this->getStatusLabelHtml();
 
             case 'notificationType':
                 if ($this->notificationType === null) {
