@@ -200,12 +200,19 @@ class PasswordHistoryService extends Component
             }
         }
 
-        // Constant-time comparison — no early break
+        // Constant-time comparison — no early break. Route through
+        // Craft's Security service rather than `password_verify()`
+        // directly so a site-level pepper (or any future Security
+        // service customisation) applies uniformly across the active
+        // password check and the history check — the two paths must
+        // agree on hash settings or peppered hashes become silently
+        // unverifiable across rotation.
+        $security = Craft::$app->getSecurity();
         $found = false;
         $iterations = 0;
 
         foreach ($hashes as $hash) {
-            if (password_verify($plaintext, $hash)) {
+            if ($security->validatePassword($plaintext, $hash)) {
                 $found = true;
             }
             $iterations++;
@@ -214,7 +221,7 @@ class PasswordHistoryService extends Component
         // Pad iterations to configured limit for consistent timing
         $dummyHash = '$2y$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012';
         while ($iterations < $limit) {
-            password_verify($plaintext, $dummyHash);
+            $security->validatePassword($plaintext, $dummyHash);
             $iterations++;
         }
 
