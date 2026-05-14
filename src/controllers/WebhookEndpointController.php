@@ -316,7 +316,22 @@ class WebhookEndpointController extends Controller
         try {
             $newSecret = $service->rotateSecret($endpoint);
         } catch (Throwable $e) {
-            return $this->asFailure($e->getMessage());
+            // Defense-in-depth: don't surface the raw exception to the
+            // CP admin. `WebhookService::rotateSecret()` throws on model
+            // validation failure; the message can embed DB field names,
+            // model internals, or transitive details that don't belong
+            // in a UI response. Mirror `actionTestFire()` — log the
+            // exception via the plugin channel, return a generic
+            // breadcrumb pointing the operator at the log.
+            Craft::error(
+                'Webhook secret rotation failed: ' . $e->getMessage(),
+                'password-policy',
+            );
+
+            return $this->asFailure(Craft::t(
+                'password-policy',
+                "Couldn't rotate secret. Check the plugin log for details.",
+            ));
         }
 
         // Schedule the previous-secret reaper to run after the
