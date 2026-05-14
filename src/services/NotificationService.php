@@ -16,6 +16,7 @@ use craft\db\Query;
 use craft\elements\User;
 use craft\helpers\App;
 use craft\helpers\DateTimeHelper;
+use craft\web\View;
 use craftpulse\passwordpolicy\elements\NotificationLogElement;
 use craftpulse\passwordpolicy\enums\NotificationStatus;
 use craftpulse\passwordpolicy\models\NotificationTemplateModel;
@@ -388,6 +389,18 @@ class NotificationService extends Component
      * re-running Twig (`renderString()` has potential side effects in
      * admin-edited templates — calling it twice per send is wasteful).
      *
+     * **G11 — Enterprise custom template paths.** When the template has a
+     * non-empty `$templatePath` AND the plugin is running the Enterprise
+     * edition, the body renders from a site Twig file
+     * (`View::TEMPLATE_MODE_SITE`) instead of the DB-stored `$body`
+     * field. Subject ALWAYS renders from the DB `$subject` field — admins
+     * want to edit subject without touching a Twig file. The Enterprise
+     * gate lives at the renderer (not at field load) so a downgrade from
+     * Enterprise to Pro silently falls back to the DB body without
+     * rewriting any rows. Missing-template errors propagate naturally —
+     * `renderTemplate()` throws and the dispatch path's catch block
+     * captures `status = failed` with the Twig exception message.
+     *
      * @param NotificationTemplateModel $template the template to render
      * @param User|null $user the recipient when the template is user-scoped;
      *     null for admin-recipient templates (G12 — `admin-security-alert`).
@@ -412,9 +425,16 @@ class NotificationService extends Component
         ?array &$rendered = null,
     ): \craft\mail\Message {
         $view = Craft::$app->getView();
+        $plugin = PasswordPolicy::$plugin;
+
+        $useTemplateFile = $template->templatePath !== null
+            && $template->templatePath !== ''
+            && $plugin->getIsEnterprise();
 
         $subject = $view->renderString($template->subject, $vars);
-        $body = $view->renderString($template->body, $vars);
+        $body = $useTemplateFile
+            ? $view->renderTemplate($template->templatePath, $vars, View::TEMPLATE_MODE_SITE)
+            : $view->renderString($template->body, $vars);
 
         if ($rendered !== null) {
             $rendered = ['subject' => $subject, 'body' => $body];

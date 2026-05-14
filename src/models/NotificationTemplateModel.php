@@ -10,10 +10,12 @@
 
 namespace craftpulse\passwordpolicy\models;
 
+use Craft;
 use craft\base\Model;
 use craft\helpers\DateTimeHelper;
 use craft\helpers\Json;
 use craft\helpers\UrlHelper;
+use craft\web\View;
 use craftpulse\passwordpolicy\records\NotificationTemplateRecord;
 use DateTime;
 
@@ -72,6 +74,24 @@ class NotificationTemplateModel extends Model
      * @var string|null optional reply-to override; null means no Reply-To header
      */
     public ?string $replyTo = null;
+
+    /**
+     * @var string|null optional path to a site Twig template that renders
+     *     the email body in place of the DB-stored `$body` field. Enterprise
+     *     edition only — see `NotificationService::composeFromTemplate()`
+     *     for the renderer-side gate and `NotificationTemplateController::
+     *     actionSave()` for the input-side strip. Subject continues to
+     *     render from the DB `$subject` field even when this is set —
+     *     admins want to edit subject without touching a Twig file.
+     *
+     *     The path is validated at save time via
+     *     `Craft::$app->getView()->resolveTemplate()` so a typo fails the
+     *     save loudly instead of silently dispatching empty bodies. The
+     *     Enterprise gate is enforced at the renderer, not at field load,
+     *     so a downgrade from Enterprise to Pro silently falls back to the
+     *     DB body without rewriting any rows.
+     */
+    public ?string $templatePath = null;
 
     /**
      * @var DateTime|null
@@ -140,6 +160,9 @@ class NotificationTemplateModel extends Model
             $model->replyTo = isset($decoded['replyTo']) && $decoded['replyTo'] !== ''
                 ? (string)$decoded['replyTo']
                 : null;
+            $model->templatePath = isset($decoded['templatePath']) && $decoded['templatePath'] !== ''
+                ? (string)$decoded['templatePath']
+                : null;
         }
 
         return $model;
@@ -147,6 +170,45 @@ class NotificationTemplateModel extends Model
 
     // Public Methods
     // =========================================================================
+
+    /**
+     * Validates that `$templatePath`, when set, resolves to a real site
+     * Twig template. Save fails loudly on typos / missing files instead
+     * of silently dispatching empty bodies at send time.
+     *
+     * Resolves under `View::TEMPLATE_MODE_SITE` — these are site
+     * templates (admin-written, brand-owned), not CP-internal templates.
+     *
+     * Edition is not gated here. The Enterprise strip in
+     * `NotificationTemplateController::actionSave()` nulls the value
+     * before this rule runs on a non-Enterprise install, so the rule
+     * only fires on Enterprise input. (Validating on every edition would
+     * be fine too — the rule is correct in either gate — but the strip
+     * order makes a Pro save with a crafted `templatePath` POST a no-op,
+     * which is the desired defense-in-depth shape.)
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function validateTemplatePath(): void
+    {
+        if ($this->templatePath === null || $this->templatePath === '') {
+            return;
+        }
+
+        $resolved = Craft::$app->getView()
+            ->resolveTemplate($this->templatePath, View::TEMPLATE_MODE_SITE);
+
+        if ($resolved === false) {
+            $this->addError('templatePath', Craft::t(
+                'password-policy',
+                'Twig template not found at "{templatePath}".',
+                ['templatePath' => $this->templatePath],
+            ));
+        }
+    }
 
     /**
      * Returns the CP edit URL for this template (notification key + site).
@@ -185,6 +247,7 @@ class NotificationTemplateModel extends Model
             'senderName' => $this->senderName === '' ? null : $this->senderName,
             'senderEmail' => $this->senderEmail === '' ? null : $this->senderEmail,
             'replyTo' => $this->replyTo === '' ? null : $this->replyTo,
+            'templatePath' => $this->templatePath === '' ? null : $this->templatePath,
         ];
     }
 
@@ -208,6 +271,8 @@ class NotificationTemplateModel extends Model
             [['senderName'], 'string', 'max' => 255],
             [['senderEmail', 'replyTo'], 'email'],
             [['senderEmail', 'replyTo'], 'string', 'max' => 255],
+            [['templatePath'], 'string', 'max' => 255],
+            [['templatePath'], 'validateTemplatePath'],
         ]);
     }
 }

@@ -238,6 +238,21 @@ class NotificationTemplateController extends Controller
         $template->senderEmail = $this->_nullable($request->getBodyParam('senderEmail'));
         $template->replyTo = $this->_nullable($request->getBodyParam('replyTo'));
 
+        // G11 — custom Twig template path is Enterprise-only. The CP UI
+        // renders the field disabled on Lite/Pro, but a crafted POST
+        // could still carry the param. Strip unconditionally when the
+        // plugin isn't running Enterprise. Defense-in-depth: log a
+        // warning when a value was stripped so operators can spot the
+        // crafted-POST signal.
+        $template->templatePath = $this->_nullable($request->getBodyParam('templatePath'));
+        if (!PasswordPolicy::$plugin->getIsEnterprise() && $template->templatePath !== null) {
+            Craft::warning(
+                "Stripped templatePath from notification template save on non-Enterprise edition (key={$template->notificationKey}, siteId={$template->siteId})",
+                'password-policy',
+            );
+            $template->templatePath = null;
+        }
+
         if (!$service->saveTemplate($template)) {
             return $this->asModelFailure(
                 $template,
@@ -304,6 +319,24 @@ class NotificationTemplateController extends Controller
         $previewBody = (string)$request->getBodyParam('body', $template->body);
         $template->subject = $previewSubject;
         $template->body = $previewBody;
+
+        // G11 — strip a posted templatePath on non-Enterprise editions so a
+        // crafted POST can't reach the Twig-file renderer. On Enterprise we
+        // still honour the saved DB value (admins testing existing config);
+        // a fresh value typed into a disabled field has no field on this AJAX
+        // surface anyway — kept as defense-in-depth.
+        $postedTemplatePath = $this->_nullable($request->getBodyParam('templatePath'));
+        if (!PasswordPolicy::$plugin->getIsEnterprise()) {
+            if ($postedTemplatePath !== null) {
+                Craft::warning(
+                    "Stripped templatePath from notification test-send on non-Enterprise edition (key={$key}, siteId={$siteId})",
+                    'password-policy',
+                );
+            }
+            $template->templatePath = null;
+        } elseif ($postedTemplatePath !== null) {
+            $template->templatePath = $postedTemplatePath;
+        }
 
         $site = Craft::$app->getSites()->getSiteById($siteId);
         $vars = [
