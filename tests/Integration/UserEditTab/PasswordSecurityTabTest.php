@@ -248,11 +248,12 @@ it('keeps the force-reset button enabled when admin changes are allowed', functi
 });
 
 // =============================================================================
-// POST target alignment — defensive; ForcePasswordResetActionTest covers
-// the action's behaviour, but the URL needs to match in the template
+// POST target alignment — defensive; the action lives on
+// UserSecurityController since 5.2.0 (moved out of RetentionController
+// so the admin-on-user surface owns the write that drives it).
 // =============================================================================
 
-it('points the form at the existing retention/force-reset POST target', function() {
+it('points the form at the user-security/force-reset POST target', function() {
     $this->userStub->setIdentity(UserFactory::admin());
 
     $target = UserFactory::nonAdmin();
@@ -260,7 +261,7 @@ it('points the form at the existing retention/force-reset POST target', function
 
     expect($body)
         ->toBeString()
-        ->and($body)->toContain('password-policy/retention/force-reset');
+        ->and($body)->toContain('password-policy/user-security/force-reset');
 });
 
 // =============================================================================

@@ -18,7 +18,6 @@ use craftpulse\passwordpolicy\services\RetentionService;
 use Throwable;
 use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
-use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
 /**
@@ -75,39 +74,6 @@ class RetentionController extends Controller
         PasswordPolicy::$plugin->retention->resetPasswords();
 
         return $this->_getSuccessResponse('Users which will receive a password reset successfully queued.');
-    }
-
-    /**
-     * Forces a password reset for a single user — the action target of the
-     * "Force Password Reset" button on the user edit tab template at
-     * `_users/password-security.twig`. Admin users are silently skipped by
-     * `RetentionService::requirePasswordReset()`.
-     *
-     * @return Response|null
-     *
-     * @throws BadRequestHttpException
-     * @throws NotFoundHttpException
-     * @throws Throwable
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    public function actionForceReset(): ?Response
-    {
-        if (!PasswordPolicy::$plugin->getSettings()->retentionUtilities) {
-            return $this->_getFailureResponse('Password retention features are disabled.');
-        }
-
-        $userId = (int)Craft::$app->getRequest()->getRequiredBodyParam('userId');
-        $user = Craft::$app->getUsers()->getUserById($userId);
-
-        if ($user === null) {
-            throw new NotFoundHttpException('User not found.');
-        }
-
-        PasswordPolicy::$plugin->retention->requirePasswordReset($user);
-
-        return $this->_getSuccessResponse('Password reset has been requested for this user.');
     }
 
     // Private Methods

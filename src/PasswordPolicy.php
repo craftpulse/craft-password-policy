@@ -1920,9 +1920,11 @@ class PasswordPolicy extends Plugin
      * Items registered:
      *
      *  - **Force password reset** (Pro, gated on `pp:force-reset-passwords`)
-     *    — POST to `password-policy/retention/force-reset` with the
-     *    target userId. Idempotent flip; admin users are silently
-     *    skipped server-side.
+     *    — POST to `password-policy/user-security/force-reset` with
+     *    the target userId. Idempotent flip; admin users are silently
+     *    skipped server-side. Moved out of `RetentionController` in
+     *    5.2.0 (pre-tag fix-pack) so the admin-on-user surface owns
+     *    the write that drives it.
      *  - **Send password reset email** (gated on `pp:change-user-passwords`)
      *    — POST to `password-policy/user-password/send-reset-email`,
      *    elevated session required (the controller's `beforeAction()`
@@ -1975,7 +1977,7 @@ class PasswordPolicy extends Plugin
                     $event->items[] = [
                         'icon' => 'asterisk',
                         'label' => Craft::t('password-policy', 'Force password reset'),
-                        'action' => 'password-policy/retention/force-reset',
+                        'action' => 'password-policy/user-security/force-reset',
                         'params' => ['userId' => $userId],
                         'redirect' => $editScreenUrl,
                         'confirm' => Craft::t(
