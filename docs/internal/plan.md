@@ -11,7 +11,7 @@ status:
   p2_remaining: 0 (P2.1 + P2.2 done as Phase D; P2.4 absorbed into P1.12; P2.5 done as Phase E; P2.6 absorbed into Phase D verification gate; P2.8 drafted 2026-05-06 → phase-g-build-plan.md; P2.9 done as Phase F2 2026-05-06)
   enterprise: phase_g_complete (G1–G12 shipped on `5.x`)
   bug_fix_sweep_2026_05_02: 11_bugs_landed_zero_pest_coverage_now_pinned_by_E4_E5
-release_strategy: single_5_2_0_includes_all_editions (5.1.x backports parked on branch — tag-or-park decision pending)
+release_strategy: single_5_2_0_includes_all_editions (5.1.x maintenance line shipped 5.1.2 on 2026-05-02 — tag + push complete; channel idle until a new security signal arrives)
 gate: phase_h_release_prep_ready_to_start
 read_order_active: [1, 2, 3, 4]
 companion: reference.md (sections 5–7 — completed work, architecture decisions, source-code inventory)
@@ -54,7 +54,7 @@ State legend: `active` = read now, `pending` = scheduled, `done` = built, `block
 - P1.8 (deployment docs) moved to Phase H — Enterprise must exist before authoritative deployment docs can be written.
 - **P2 backlog: 1 item remaining** — P2.8 (Phase F, Phase G build plan draft). P2.1 + P2.2 closed as Phase D (2026-05-03). P2.4 absorbed into P1.12. **P2.5 closed as Phase E (2026-05-02).** P2.6 absorbed into Phase D verification gate (satisfied throughout).
 - P3 (Enterprise — Phase 10/11/12) blocked on D + F. P4: future.
-- **5.1.x backports parked.** Three commits on the `5.1.x` branch (TLS verify, fail-open log level, sensitive-key strip — all backports from 5.x bug fix work). NOT pushed, NOT tagged. Tag-or-park decision pending — discuss before resuming.
+- **5.1.x maintenance line — 5.1.2 shipped 2026-05-02.** Three backports (TLS verify `e58f0d7`, fail-open log level `dbe050c`, sensitive-key strip `b85a6c9`) released as `5.1.2` (`833a038`). Tag pushed to origin. `origin/5.1.x` HEAD = `5.1.2` tag. Channel idle until a new security signal arrives — post-5.1.2 fixes on `5.x` (Phase D/E/F/F2/F3/G surfaces) all target code paths that don't exist in 5.1.x, so no backport candidates are currently outstanding.
 - **Release strategy:** 5.2.0 ships as a single release covering Lite + Pro + Enterprise. Nothing tags / publishes until Enterprise (Phase 10–12) is complete and tested. Once the Phase G build plan is drafted (P2.8), revisit whether any G subset can defer to 5.3 if scope expands beyond a comfortable build cycle.
 - **Phase G closed 2026-05-14.** G1–G12 shipped on `5.x`. Twelve features across 17K+ lines + Phase G post-review remediation Steps 1–8 (bundled fix-pack, dedicated `CRAFT_AUDIT_PII_KEY`, verify-then-decide pass on I4/I6/I7/N1–N6, NotificationLog/AuditLog/Policy element-ifications, G12 mailer-key regression resolution, G11 custom template paths, G3 compliance dashboard + reports). **Pest suite: 786 passing / 0 skipped / 1875 assertions.** Schema version `2.11.0`. ECS + PHPStan clean. Foundation-first principle held throughout — three record→element refactors landed before downstream features so user data never carries 5.2.0 → 5.3 migration debt. Phase G session log spans commits `cf3e2f1` → `be33546`. Release prep (Phase H) is now unblocked.
 - Hard gate: Phase D + Phase F + Enterprise build (G) must pass before release prep (H). **All gates cleared.**
@@ -242,7 +242,7 @@ T4.1–T4.6 (audit logging) unblocked 2026-05-14 — Phase G shipped. T14.x–T1
 | F3 | P2.8 — draft Phase G build plan → [`internal/phase-g-build-plan.md`](./phase-g-build-plan.md) | done 2026-05-06 (1238-line layered plan covering G1–G12; deferral recommendation pending user confirmation) |
 | G | Enterprise (Phase 10, 11, 12) — driven by P2.8 build plan. G1–G12 + post-review remediation Steps 1–8 all shipped. | done 2026-05-14 (suite at 786 / 1875; commits `cf3e2f1` → `be33546`) |
 | H | Release prep + deployment docs (P1.8) — tag 5.2.0, Plugin Store listing, marketing copy, migration guide review, deployment/cron docs, Enterprise QA pass (T12.6 + T14.x–T19.x), authoritative editions comparison table | **unblocked 2026-05-14** — ready to start |
-| **(parallel)** | **5.1.x backports — parked.** Three commits on `5.1.x` branch (TLS verify, fail-open log level, sensitive-key strip). Tag-or-park decision pending — discuss before resuming. Independent of the linear A → H sequence. | parked |
+| **(parallel)** | **5.1.x maintenance line — 5.1.2 shipped 2026-05-02.** Three backports (TLS verify, fail-open log level, sensitive-key strip) released as `5.1.2` (`833a038`) and pushed to origin. Channel idle until a new security signal warrants a 5.1.3 — post-5.1.2 5.x fixes all target 5.2.0-only surfaces, so no current backport candidates. Independent of the linear A → H sequence. | done 2026-05-02 |
 
 Gates:
 - B cannot start until A is complete (don't run security tests against known-broken code).
