@@ -14,6 +14,7 @@ use Craft;
 use craft\helpers\Json;
 use craft\helpers\StringHelper;
 use craft\helpers\UrlHelper;
+use craft\web\assets\admintable\AdminTableAsset;
 use craft\web\Controller;
 use craftpulse\passwordpolicy\data\EmailDefaults;
 use craftpulse\passwordpolicy\models\NotificationTemplateModel;
@@ -110,6 +111,10 @@ class NotificationTemplateController extends Controller
                 'totalOtherSites' => max(0, $totalSites - 1),
             ];
         }
+
+        // P3-09 — `AdminTableAsset` registers here so the controller
+        // owns the bundle dependency (was inline in the template).
+        Craft::$app->getView()->registerAssetBundle(AdminTableAsset::class);
 
         // Breadcrumbs back to the plugin landing — P2-08. Match the
         // shape used by `SiemForwarderController` /

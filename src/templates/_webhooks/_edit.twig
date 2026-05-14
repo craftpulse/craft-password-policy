@@ -233,7 +233,7 @@
                           }
                       })
                       .catch(function() {
-                          Craft.cp.displayError({{ "Couldn’t rotate the secret."|t('password-policy')|json_encode|raw }});
+                          Craft.cp.displayError({{ "Couldn't rotate the secret."|t('password-policy')|json_encode|raw }});
                       })
                       .finally(function() { rotateBtn.disabled = false; });
                 });
@@ -277,7 +277,7 @@
                           }
                       })
                       .catch(function() {
-                          Craft.cp.displayError({{ "Couldn’t send the test event."|t('password-policy')|json_encode|raw }});
+                          Craft.cp.displayError({{ "Couldn't send the test event."|t('password-policy')|json_encode|raw }});
                       })
                       .finally(function() { testBtn.disabled = false; });
                 });

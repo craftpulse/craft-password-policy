@@ -13,6 +13,7 @@ namespace craftpulse\passwordpolicy\services;
 use Carbon\Carbon;
 use Craft;
 use craft\db\Query;
+use craft\helpers\DateTimeHelper;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use DateTime;
 use InvalidArgumentException;
@@ -447,11 +448,16 @@ class BlocklistService extends Component
             ->limit(1)
             ->scalar();
 
-        if ($date === false) {
+        if ($date === false || !is_string($date)) {
             return null;
         }
 
-        return new DateTime($date);
+        // Hydrate via `DateTimeHelper::toDateTime()` so the returned
+        // value is anchored to the system timezone (matches every
+        // other ActiveRecord-to-Model boundary in the plugin and
+        // P3-06 — prevents off-by-one Today/Yesterday comparisons
+        // near midnight when the server timezone differs from UTC).
+        return DateTimeHelper::toDateTime($date) ?: null;
     }
 
     /**

@@ -11,7 +11,7 @@
  # @since 5.2.0
  #}
 
-<div class="pane" style="margin-top: 24px;">
+<div class="pane mt-l">
     <h2>{{ 'Notifications'|t('password-policy') }}</h2>
 
     {% if rows|length == 0 %}
@@ -56,7 +56,7 @@
             </tbody>
         </table>
 
-        <p class="light" style="margin-top: 12px;">
+        <p class="light mt-s">
             <a href="{{ cpUrl('password-policy/notifications/activity', { userId: user.id }) }}">
                 {{ 'See all notifications for this user →'|t('password-policy') }}
             </a>

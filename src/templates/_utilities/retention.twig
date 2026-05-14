@@ -14,7 +14,7 @@
 {% for action in actions %}
     {% if currentUser.can('pp:' ~ action.id) %}
         {% set form %}
-            <div style="margin: 10px 0;">
+            <div class="my-s">
                 <form class="utility" method="post" accept-charset="UTF-8">
                     <input type="hidden" name="action" value="password-policy/retention/{{ action.id }}">
                     <input type="hidden" name="utility" value="1">

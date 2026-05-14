@@ -264,47 +264,50 @@
             return;
         }
 
-        sendButton.addEventListener('click', async function() {
+        sendButton.addEventListener('click', function() {
             sendButton.disabled = true;
             spinner.classList.remove('hidden');
             successEl.style.display = 'none';
             errorEl.style.display = 'none';
 
-            try {
-                var formData = new FormData();
-                formData.append(Craft.csrfTokenName, Craft.csrfTokenValue);
-                formData.append('notificationKey', {{ key|json_encode|raw }});
-                formData.append('siteId', {{ currentSite.id|json_encode|raw }});
-                formData.append('subject', document.getElementById('subject').value);
-                formData.append('body', document.getElementById('body').value);
+            var formData = new FormData();
+            formData.append(Craft.csrfTokenName, Craft.csrfTokenValue);
+            // `json_encode` produces a JSON-string literal — `|raw` here
+            // is safe because the helper handles all special characters
+            // including embedded quotes and Unicode (P2-11).
+            formData.append('notificationKey', {{ key|json_encode|raw }});
+            formData.append('siteId', {{ currentSite.id|json_encode|raw }});
+            formData.append('subject', document.getElementById('subject').value);
+            formData.append('body', document.getElementById('body').value);
 
-                var response = await fetch(
-                    Craft.getActionUrl('password-policy/notification-template/test-send'),
-                    {
-                        method: 'POST',
-                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                        body: formData,
-                    }
-                );
-
-                var data = await response.json();
-
-                if (data.success) {
-                    successMsgEl.textContent = data.message;
-                    subjectEl.textContent = data.renderedSubject || '';
-                    bodyEl.textContent = data.renderedBodyExcerpt || '';
-                    successEl.style.display = '';
-                } else {
-                    errorMsgEl.textContent = data.message || {{ 'Send failed.'|t('password-policy')|json_encode|raw }};
-                    errorEl.style.display = '';
+            fetch(
+                Craft.getActionUrl('password-policy/notification-template/test-send'),
+                {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData,
                 }
-            } catch (err) {
-                errorMsgEl.textContent = {{ 'Send failed: network error.'|t('password-policy')|json_encode|raw }};
-                errorEl.style.display = '';
-            } finally {
-                spinner.classList.add('hidden');
-                sendButton.disabled = false;
-            }
+            )
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    if (data.success) {
+                        successMsgEl.textContent = data.message;
+                        subjectEl.textContent = data.renderedSubject || '';
+                        bodyEl.textContent = data.renderedBodyExcerpt || '';
+                        successEl.style.display = '';
+                    } else {
+                        errorMsgEl.textContent = data.message || {{ 'Send failed.'|t('password-policy')|json_encode|raw }};
+                        errorEl.style.display = '';
+                    }
+                })
+                .catch(function() {
+                    errorMsgEl.textContent = {{ 'Send failed: network error.'|t('password-policy')|json_encode|raw }};
+                    errorEl.style.display = '';
+                })
+                .finally(function() {
+                    spinner.classList.add('hidden');
+                    sendButton.disabled = false;
+                });
         });
     })();
 {% endjs %}
