@@ -1,0 +1,75 @@
+{# ============================================================================
+ # Retention projection report (G3) — current retention settings + oldest
+ # surviving row + projected next-prune date for both retention-managed
+ # logs (audit + notification).
+ #
+ # @var aggregates  ComplianceAggregateService
+ # @var report      string
+ #
+ # @author    CraftPulse
+ # @since     5.2.0
+ # =========================================================================== #}
+
+{% extends "_layouts/cp" %}
+
+{% set title = 'Retention projection report'|t('password-policy') %}
+{% set fullPageForm = false %}
+
+{% block content %}
+    {% set retention = aggregates.getRetentionStatus() %}
+
+    <h1>{{ title }}</h1>
+
+    <p class="info">
+        {{ 'Generated:'|t('password-policy') }} {{ now|datetime('long') }}
+    </p>
+
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th scope="col">{{ 'Log'|t('password-policy') }}</th>
+                <th scope="col">{{ 'Retention (days)'|t('password-policy') }}</th>
+                <th scope="col">{{ 'Oldest row age'|t('password-policy') }}</th>
+                <th scope="col">{{ 'Projected next prune'|t('password-policy') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <th scope="row">{{ 'Audit log'|t('password-policy') }}</th>
+                <td>{{ retention.auditLogRetentionDays }}</td>
+                <td>
+                    {% if retention.auditLogOldestAge %}
+                        {{ retention.auditLogOldestAge }}
+                    {% else %}
+                        <em>{{ 'No rows yet.'|t('password-policy') }}</em>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if retention.auditLogProjectedNextPrune %}
+                        {{ retention.auditLogProjectedNextPrune|datetime('short') }}
+                    {% else %}
+                        <em>—</em>
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">{{ 'Notification log'|t('password-policy') }}</th>
+                <td>{{ retention.notificationLogRetentionDays }}</td>
+                <td>
+                    {% if retention.notificationLogOldestAge %}
+                        {{ retention.notificationLogOldestAge }}
+                    {% else %}
+                        <em>{{ 'No rows yet.'|t('password-policy') }}</em>
+                    {% endif %}
+                </td>
+                <td><em>—</em></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p>
+        <a href="{{ cpUrl('password-policy/reports/retention-projection/csv') }}" class="btn">
+            {{ 'Download as CSV'|t('password-policy') }}
+        </a>
+    </p>
+{% endblock %}

@@ -78,6 +78,7 @@ use craftpulse\passwordpolicy\rules\UserRules;
 use craftpulse\passwordpolicy\services\ServicesTrait;
 use craftpulse\passwordpolicy\utilities\AuditExportUtility;
 use craftpulse\passwordpolicy\utilities\AuditSchemaUtility;
+use craftpulse\passwordpolicy\utilities\ComplianceDashboardUtility;
 use craftpulse\passwordpolicy\utilities\RetentionUtility;
 use craftpulse\passwordpolicy\variables\PasswordPolicyVariable;
 use Monolog\Formatter\LineFormatter;
@@ -746,6 +747,13 @@ class PasswordPolicy extends Plugin
                         'password-policy/webhooks/<endpointId:\d+>' => 'password-policy/webhook-endpoint/edit',
                         'password-policy/audit-export/export' => 'password-policy/audit-export/export',
                         'password-policy/audit-export/download/<token:[A-Za-z0-9_\-]+>' => 'password-policy/audit-export/download',
+                        // G3 compliance reports. The URL path uses plural
+                        // `/reports/...`; the rewrite target uses the
+                        // singular `report` controller-id per Yii's
+                        // action-name mapping (Craft routes
+                        // `kebab-case` → `actionCamelCase`).
+                        'password-policy/reports/<report:[\w\-]+>/html' => 'password-policy/report/html',
+                        'password-policy/reports/<report:[\w\-]+>/csv' => 'password-policy/report/csv',
                         'password-policy/user-password/change' => 'password-policy/user-password/change',
                         'password-policy/user-password/send-reset-email' => 'password-policy/user-password/send-reset-email',
                         'password-policy/users/<userId:\d+>/security' => 'password-policy/user-security/index',
@@ -957,6 +965,28 @@ class PasswordPolicy extends Plugin
                     }
 
                     $event->types[] = AuditExportUtility::class;
+                }
+            );
+
+            // Compliance Dashboard utility (G3) — Enterprise-only
+            // visible-exposure surface on top of the Phase G audit
+            // infrastructure. Permission gate `pp:audit-view` (read
+            // access) rather than `pp:audit-export` (write) — the
+            // dashboard is read-only; the per-aggregate "Run report"
+            // links go through `ReportController` which enforces the
+            // same `pp:audit-view` permission on its actions.
+            Event::on(Utilities::class, Utilities::EVENT_REGISTER_UTILITIES,
+                function(RegisterComponentTypesEvent $event) {
+                    $currentUser = Craft::$app->getUser()->getIdentity();
+                    if ($currentUser === null) {
+                        return;
+                    }
+
+                    if (!$currentUser->admin && !$currentUser->can('pp:audit-view')) {
+                        return;
+                    }
+
+                    $event->types[] = ComplianceDashboardUtility::class;
                 }
             );
         }

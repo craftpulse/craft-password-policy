@@ -22,6 +22,7 @@ use yii\base\InvalidConfigException;
  * @property AlertCooldownService $alertCooldown
  * @property AuditLogService $auditLog
  * @property BlocklistService $blocklist
+ * @property ComplianceAggregateService $complianceAggregates
  * @property HibpClientInterface $hibpClient
  * @property PasswordHistoryService $passwordHistory
  * @property NotificationService $notification
@@ -59,6 +60,7 @@ trait ServicesTrait
                 'alertCooldown' => AlertCooldownService::class,
                 'auditLog' => AuditLogService::class,
                 'blocklist' => BlocklistService::class,
+                'complianceAggregates' => ComplianceAggregateService::class,
                 'hibpClient' => GuzzleHibpClient::class,
                 'passwordHistory' => PasswordHistoryService::class,
                 'notification' => NotificationService::class,
@@ -137,6 +139,26 @@ trait ServicesTrait
     public function getBlocklist(): BlocklistService
     {
         return $this->get('blocklist');
+    }
+
+    /**
+     * Returns the compliance-aggregate service (G3 dashboard + reports).
+     *
+     * Runs read-only aggregates over the Phase G audit infrastructure.
+     * Capture is universal across editions; the service does NOT gate on
+     * `getIsEnterprise()`. Edition gating lives on the utility +
+     * controller surfaces one layer above.
+     *
+     * @return ComplianceAggregateService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getComplianceAggregates(): ComplianceAggregateService
+    {
+        return $this->get('complianceAggregates');
     }
 
     /**
