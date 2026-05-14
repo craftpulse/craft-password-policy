@@ -1,0 +1,79 @@
+{# ============================================================================
+ # Audit summary report (G3) — totals + by-event-class breakdown.
+ #
+ # Renders inline for review + browser print-to-PDF (evidence packages).
+ # Sister CSV variant lives at the same path with `/csv` suffix.
+ #
+ # @var aggregates  ComplianceAggregateService
+ # @var report      string
+ #
+ # @author    CraftPulse
+ # @since     5.2.0
+ # =========================================================================== #}
+
+{% extends "_layouts/cp" %}
+
+{% set title = 'Audit summary report'|t('password-policy') %}
+{% set fullPageForm = false %}
+
+{% block content %}
+    {% set totals = aggregates.getTotals() %}
+
+    <h1>{{ title }}</h1>
+
+    <p class="info">
+        {{ 'Generated:'|t('password-policy') }} {{ now|datetime('long') }}
+    </p>
+
+    <h2>{{ 'Totals'|t('password-policy') }}</h2>
+
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th scope="col">{{ 'Metric'|t('password-policy') }}</th>
+                <th scope="col">{{ 'Value'|t('password-policy') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <th scope="row">{{ 'Total audit rows'|t('password-policy') }}</th>
+                <td>{{ totals.total }}</td>
+            </tr>
+            <tr>
+                <th scope="row">{{ 'Rows in last 30 days'|t('password-policy') }}</th>
+                <td>{{ totals.last30Days }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>{{ 'By event class'|t('password-policy') }}</h2>
+
+    {% if totals.byEventClass|length %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th scope="col">{{ 'Event class'|t('password-policy') }}</th>
+                    <th scope="col">{{ 'Count'|t('password-policy') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for eventClass, count in totals.byEventClass %}
+                    <tr>
+                        <th scope="row"><code>{{ eventClass }}</code></th>
+                        <td>{{ count }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <blockquote class="note">
+            <p>{{ 'No audit rows yet.'|t('password-policy') }}</p>
+        </blockquote>
+    {% endif %}
+
+    <p>
+        <a href="{{ cpUrl('password-policy/reports/audit-summary/csv') }}" class="btn">
+            {{ 'Download as CSV'|t('password-policy') }}
+        </a>
+    </p>
+{% endblock %}
