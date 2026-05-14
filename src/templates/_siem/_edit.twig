@@ -84,7 +84,7 @@
 
     {{ forms.lightswitchField({
         label: 'Verify TLS certificate'|t('password-policy'),
-        instructions: 'Require the SIEM endpoint’s certificate chain to verify against the system trust store (or the bundled CA below). Default on. Turn off only when terminating against a self-signed endpoint that you trust by network path.'|t('password-policy'),
+        instructions: "Require the SIEM endpoint's certificate chain to verify against the system trust store (or the bundled CA below). Default on. Turn off only when terminating against a self-signed endpoint that you trust by network path."|t('password-policy'),
         id: 'tlsCertVerify',
         name: 'tlsCertVerify',
         on: forwarder.tlsCertVerify,
@@ -180,7 +180,11 @@
                         <button type="submit" class="btn">{{ 'Reset circuit'|t('password-policy') }}</button>
                     </form>
 
-                    <button type="button" class="btn submit" id="pp-siem-send-test">
+                    {# Secondary action — the primary "Save" sits at the
+                       screen header. Test-send + Reset circuit are both
+                       secondary; using `btn submit` (blue) would invert
+                       the visual hierarchy. #}
+                    <button type="button" class="btn" id="pp-siem-send-test">
                         {{ 'Send test event'|t('password-policy') }}
                     </button>
                 </div>
@@ -216,7 +220,7 @@
                       }
                   })
                   .catch(function() {
-                      Craft.cp.displayError({{ "Couldn’t send the test event."|t('password-policy')|json_encode|raw }});
+                      Craft.cp.displayError({{ "Couldn't send the test event."|t('password-policy')|json_encode|raw }});
                   })
                   .finally(function() { btn.disabled = false; });
             });

@@ -33,7 +33,7 @@
     { field: 'hibp', label: 'Check HIBP breaches'|t('password-policy'), instructions: 'Reject passwords found in the Have I Been Pwned breach database.'|t('password-policy'), policyValue: policy.hibp, globalValue: globalSettings.hibp },
     { field: 'checkSequentialChars', label: 'Block sequential characters'|t('password-policy'), instructions: 'Reject sequences like "abc" or "123".'|t('password-policy'), policyValue: policy.checkSequentialChars, globalValue: globalSettings.checkSequentialChars },
     { field: 'checkRepeatedChars', label: 'Block repeated characters'|t('password-policy'), instructions: 'Reject runs like "aaaa".'|t('password-policy'), policyValue: policy.checkRepeatedChars, globalValue: globalSettings.checkRepeatedChars },
-    { field: 'checkContextual', label: 'Block contextual passwords'|t('password-policy'), instructions: 'Reject passwords containing the user’s name, username, or email.'|t('password-policy'), policyValue: policy.checkContextual, globalValue: globalSettings.checkContextual },
+    { field: 'checkContextual', label: 'Block contextual passwords'|t('password-policy'), instructions: "Reject passwords containing the user's name, username, or email."|t('password-policy'), policyValue: policy.checkContextual, globalValue: globalSettings.checkContextual },
     { field: 'checkCommonPasswords', label: 'Block common passwords'|t('password-policy'), instructions: 'Reject passwords found in the common-password blocklist.'|t('password-policy'), policyValue: policy.checkCommonPasswords, globalValue: globalSettings.checkCommonPasswords },
 ] %}
 
@@ -376,12 +376,15 @@
     --outline-color: var(--white);
 }
 
-/* Divergent-from-preset indicator — blue left border on changed fields.
-   Mirrors Craft's pattern for "this field differs from its source". */
+/* Divergent-from-preset indicator — blue left "border" on changed fields.
+   Mirrors Craft's pattern for "this field differs from its source". Uses
+   `box-shadow` (out-of-flow) instead of `border-left + negative margin-left`
+   (P2-09 — the negative margin hack compensates for the field container's
+   natural padding and breaks when Craft adjusts content padding; the
+   shadow approach is robust). */
 .field.pp-divergent {
-    border-left: 2px solid var(--blue-600);
-    padding-left: 12px;
-    margin-left: -14px;
+    box-shadow: -2px 0 0 0 var(--blue-600);
+    padding-left: 2px;
 }
 #pp-rules tr.pp-divergent th {
     border-left: 2px solid var(--blue-600);

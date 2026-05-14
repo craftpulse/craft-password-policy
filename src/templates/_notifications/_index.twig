@@ -8,7 +8,9 @@
 {% set selectedSubnavItem = 'notifications' %}
 {% set title = 'Notifications'|t('password-policy') %}
 
-{% do view.registerAssetBundle('craft\\web\\assets\\admintable\\AdminTableAsset') %}
+{# AdminTable asset bundle registers in `NotificationTemplateController::actionIndex()`
+   since P3-09 — asset registration is a controller concern, not a
+   template one. Matches the pattern other index controllers use. #}
 
 {% block content %}
     <div class="readable">

@@ -81,7 +81,7 @@
         </table>
     </div>
 
-    <div class="pane" style="margin-top: 24px;">
+    <div class="pane mt-l">
         <h2>{{ 'Subject'|t('password-policy') }}</h2>
         {% if row.subject %}
             <pre class="pp-activity-subject" style="white-space: pre-wrap; padding: 12px; background: var(--gray-050); border-radius: 4px;">{{ row.subject }}</pre>
@@ -90,7 +90,7 @@
         {% endif %}
     </div>
 
-    <div class="pane" style="margin-top: 24px;">
+    <div class="pane mt-l">
         <h2>{{ 'Body'|t('password-policy') }}</h2>
         {% if row.body %}
             <pre class="pp-activity-body" style="white-space: pre-wrap; padding: 12px; background: var(--gray-050); border-radius: 4px; max-height: 400px; overflow: auto;">{{ row.body }}</pre>
@@ -100,7 +100,7 @@
     </div>
 
     {% if row.status == 'failed' and row.errorMessage %}
-        <div class="pane" style="margin-top: 24px;">
+        <div class="pane mt-l">
             <h2>{{ 'Error'|t('password-policy') }}</h2>
             <blockquote class="note warning">
                 <pre style="white-space: pre-wrap; margin: 0;">{{ row.errorMessage }}</pre>
@@ -116,7 +116,7 @@
      #}
     {% set resendable = row.notificationType in ['expiry_reminder', 'breach_detected'] %}
     {% if resendable %}
-        <div class="pane" style="margin-top: 24px;">
+        <div class="pane mt-l">
             <h2>{{ 'Actions'|t('password-policy') }}</h2>
             <p class="light">
                 {{ 'Resend re-renders the template fresh from current state — if the template was edited since the original send, the new copy reflects those edits. The new row links back to this one.'|t('password-policy') }}
