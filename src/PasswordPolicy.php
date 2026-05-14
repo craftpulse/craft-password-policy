@@ -1501,9 +1501,14 @@ class PasswordPolicy extends Plugin
      * Defensive: HIBP API failures (timeout, 429, 5xx, TLS issue) are caught
      * and logged at WARNING level — login is never blocked.
      *
-     * Dedup cache: 24h on `(userId, sha1Prefix)`. Same user + same password
-     * within a day produces a single notification; lets daily-active users
-     * sign in repeatedly without spamming HIBP or themselves.
+     * Dedup cache: 24h per user. Same user signing in repeatedly within a
+     * day produces a single HIBP API call and a single notification.
+     * The cache key intentionally omits the SHA-1 prefix — embedding it
+     * alongside `userId` in an inspectable cache key (Redis/Memcache)
+     * produces a `(userId, prefix)` ledger that recreates the linkability
+     * property k-anonymity is designed to eliminate. One-call-per-user-per-
+     * day is the effective dedup; per-prefix granularity isn't worth the
+     * privacy trade-off.
      *
      * @return void
      *
@@ -1580,7 +1585,13 @@ class PasswordPolicy extends Plugin
         }
 
         $sha1Prefix = strtoupper(substr(sha1($plaintext), 0, 5));
-        $cacheKey = "pp:hibp-login:{$user->id}:{$sha1Prefix}";
+        // Cache key uses userId only — see the dedup-cache note in the
+        // listener registration docblock. The 5-char k-anonymity prefix
+        // is computed here for the API call but intentionally NOT
+        // embedded in the cache key; storing it alongside userId in
+        // Redis/Memcache produces a privacy regression that the
+        // k-anonymity model exists to prevent.
+        $cacheKey = "pp:hibp-login:{$user->id}";
 
         // 24h dedup window. Yii's cache `get()` returns `false` for missing
         // keys, so we encode the cached state as a string ("breached" /
