@@ -28,17 +28,10 @@
                 <tr>
                     <th scope="row" style="width: 200px;">{{ 'Status'|t('password-policy') }}</th>
                     <td>
-                        {% if row.status == 'failed' %}
-                            <span class="status-label red">
-                                <span class="status red"></span>
-                                <span class="status-label-text">{{ 'Failed'|t('password-policy') }}</span>
-                            </span>
-                        {% else %}
-                            <span class="status-label green">
-                                <span class="status green"></span>
-                                <span class="status-label-text">{{ 'Sent'|t('password-policy') }}</span>
-                            </span>
-                        {% endif %}
+                        {# Routes through `NotificationLogElement::getStatusLabelHtml()`
+                           so the detail-view pill stays in lockstep with the
+                           element-index pill (both call `Cp::statusLabelHtml`). #}
+                        {{ row.statusLabelHtml|raw }}
                     </td>
                 </tr>
                 <tr>

@@ -62,36 +62,16 @@
                         {% set displayName = endpoint.name ?: endpoint.url %}
                         {% set editUrl = cpUrl("password-policy/webhooks/#{endpoint.id}") %}
 
-                        {# Circuit pill — green=clean, red=open. The
-                           half-open state is invisible at the UI
-                           layer (next dispatch is the probe). #}
-                        {% if endpoint.circuitOpenAt is null %}
-                            {% set circuitLabel = 'Closed'|t('password-policy') %}
-                            {% set circuitColor = 'green' %}
-                        {% else %}
-                            {% set circuitLabel = "Open ({n} {n, plural, =1{failure} other{failures}})"|t('password-policy', { n: endpoint.consecutiveFailures }) %}
-                            {% set circuitColor = 'red' %}
-                        {% endif %}
-
                         <tr>
                             <td>
                                 <a href="{{ editUrl }}">{{ displayName }}</a>
                             </td>
                             <td class="code">{{ endpoint.url }}</td>
-                            <td>
-                                {% set enabledColor = endpoint.enabled ? 'green' : 'grey' %}
-                                {% set enabledLabel = endpoint.enabled ? 'Enabled'|t('app') : 'Disabled'|t('app') %}
-                                <span class="status-label {{ enabledColor }}">
-                                    <span class="status {{ enabledColor }}"></span>
-                                    <span class="status-label-text">{{ enabledLabel }}</span>
-                                </span>
-                            </td>
-                            <td>
-                                <span class="status-label {{ circuitColor }}">
-                                    <span class="status {{ circuitColor }}"></span>
-                                    <span class="status-label-text">{{ circuitLabel }}</span>
-                                </span>
-                            </td>
+                            {# Routes through `WebhookEndpointModel::getEnabledLabelHtml()`
+                               and `getCircuitLabelHtml()` so the pills match Craft's
+                               native Status column shape via `Cp::statusLabelHtml()`. #}
+                            <td>{{ endpoint.enabledLabelHtml|raw }}</td>
+                            <td>{{ endpoint.circuitLabelHtml|raw }}</td>
                             <td class="code">
                                 {{ endpoint.lastDeliveredRowId ?? '—' }}
                             </td>
