@@ -222,9 +222,21 @@ Extend `AuditController::actionExport` to defer to a queue job for any export wi
 
 **Why:** Audit log exports for SOC 2 / NIS2 evidence packages routinely cover 12+ months on busy installs. PHP memory ceilings make synchronous CSV generation fragile at that volume.
 
+### Supported SIEM destinations
+
+The Enterprise edition ships SIEM forwarders (`Settings → SIEM forwarders` subnav). The protocol on the wire is syslog-over-TLS in RFC 5424 framing, with a parallel HTTP destination class for SIEM platforms whose ingestion path is HTTP-based. **Buyers searching by name:** the following destinations are reached via the HTTP destination with appropriate custom headers (`Authorization`, `X-Splunk-Request-Channel`, `DD-API-KEY`, etc.):
+
+- **Splunk HEC (HTTP Event Collector)** — point the HTTP destination at `https://<your-splunk>/services/collector/event` and configure the `Authorization: Splunk <token>` header in the custom-headers field.
+- **Datadog Logs** — point the HTTP destination at `https://http-intake.logs.datadoghq.com/api/v2/logs` (or the regional equivalent) and configure the `DD-API-KEY: <your-key>` header.
+- **Sumo Logic HTTP source** — point at the configured collector URL; no auth header required (the URL embeds the source ID).
+- **Generic HTTP-based SIEM platforms** — any platform that accepts JSON over POST with configurable headers (NewRelic, Logstash HTTP input, Elastic ingest pipelines, etc.) works through the same HTTP destination class.
+
+The native syslog-TLS destination is the right path for: rsyslog/syslog-ng pull-in setups, Graylog, IBM QRadar, and any SIEM that accepts RFC 5424 over TLS on the standard IANA port (6514).
+
+The wire format is identical across destinations — only the transport class (syslog-tls vs HTTP) and the header/auth config differ.
+
 ### Items deliberately not adopted from Trails
 
 - **RFC 3161 external timestamping** — overkill for password-event volume. Hash-chain + independent verifier covers the same auditor question (tamper evidence). RFC 3161 belongs in a future standalone audit-log plugin if/when that ships.
 - **AWS S3 Object Lock anchoring** — same rationale as above.
 - **GeoIP enrichment on audit rows** — outside Password Policy's lane (would belong in a separate device/anomaly plugin).
-- **Splunk HEC / Datadog destinations** — already in Phase 12's SIEM scope, not a Trails-derived addition.
