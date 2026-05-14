@@ -132,7 +132,15 @@ class NotificationTemplateController extends Controller
     public function actionEdit(string $key, ?int $siteId = null, ?NotificationTemplateModel $template = null): Response
     {
         if (!isset(EmailDefaults::all()[$key])) {
-            throw new NotFoundHttpException("Unknown notification key: $key");
+            // Log the attacker-controlled value to the plugin log channel
+            // (operationally useful for spotting crafted URLs) while
+            // returning the generic 404 message to the client. Same
+            // shape used by `actionSave()` / `actionTestSend()`.
+            Craft::warning(
+                "NotificationTemplate: unknown notification key requested (key={$key})",
+                'password-policy',
+            );
+            throw new NotFoundHttpException();
         }
 
         $sites = Craft::$app->getSites()->getAllSites();
@@ -142,7 +150,11 @@ class NotificationTemplateController extends Controller
         // Confirm the target site exists / is enabled.
         $targetSite = Craft::$app->getSites()->getSiteById($siteId);
         if ($targetSite === null) {
-            throw new NotFoundHttpException("Unknown site ID: $siteId");
+            Craft::warning(
+                "NotificationTemplate: unknown site requested (siteId={$siteId})",
+                'password-policy',
+            );
+            throw new NotFoundHttpException();
         }
 
         $service = PasswordPolicy::$plugin->getNotificationTemplates();
@@ -216,16 +228,34 @@ class NotificationTemplateController extends Controller
     {
         $this->requirePostRequest();
 
+        // Mirror `SettingsController::actionSave` — when admin changes
+        // are disabled (typical production posture), the entire write
+        // surface is off, regardless of the user's plugin permissions.
+        $general = Craft::$app->getConfig()->getGeneral();
+        if (!$general->allowAdminChanges) {
+            throw new ForbiddenHttpException(
+                'Unable to edit notification templates because admin changes are disabled in this environment.',
+            );
+        }
+
         $request = Craft::$app->getRequest();
         $key = (string)$request->getRequiredBodyParam('notificationKey');
         $siteId = (int)$request->getRequiredBodyParam('siteId');
 
         if (!isset(EmailDefaults::all()[$key])) {
-            throw new BadRequestHttpException("Unknown notification key: $key");
+            Craft::warning(
+                "NotificationTemplate: unknown notification key on save (key={$key})",
+                'password-policy',
+            );
+            throw new BadRequestHttpException();
         }
 
         if (Craft::$app->getSites()->getSiteById($siteId) === null) {
-            throw new NotFoundHttpException("Unknown site ID: $siteId");
+            Craft::warning(
+                "NotificationTemplate: unknown site on save (siteId={$siteId})",
+                'password-policy',
+            );
+            throw new NotFoundHttpException();
         }
 
         $service = PasswordPolicy::$plugin->getNotificationTemplates();
@@ -288,12 +318,26 @@ class NotificationTemplateController extends Controller
         $this->requirePostRequest();
         $this->requireAcceptsJson();
 
+        // Test-send mutates nothing in the DB but the UX intent matches
+        // `actionSave()` — when admin changes are disabled, the entire
+        // write/test surface is off.
+        $general = Craft::$app->getConfig()->getGeneral();
+        if (!$general->allowAdminChanges) {
+            throw new ForbiddenHttpException(
+                'Unable to test notification templates because admin changes are disabled in this environment.',
+            );
+        }
+
         $request = Craft::$app->getRequest();
         $key = (string)$request->getRequiredBodyParam('notificationKey');
         $siteId = (int)$request->getRequiredBodyParam('siteId');
 
         if (!isset(EmailDefaults::all()[$key])) {
-            throw new BadRequestHttpException("Unknown notification key: $key");
+            Craft::warning(
+                "NotificationTemplate: unknown notification key on test-send (key={$key})",
+                'password-policy',
+            );
+            throw new BadRequestHttpException();
         }
 
         $admin = Craft::$app->getUser()->getIdentity();
@@ -350,15 +394,22 @@ class NotificationTemplateController extends Controller
                 ->composeFromTemplate($template, $admin, $vars);
             $message->setTo($admin->email)->send();
         } catch (Throwable $e) {
+            // Don't leak the underlying exception message to the client
+            // — `$e->getMessage()` can carry mailer transport details
+            // (SMTP host, auth failures, internal paths from a Twig
+            // render error). Operators get the full message via the
+            // plugin log channel; the client gets a static breadcrumb
+            // pointing them at the log.
             Craft::error(
                 "Test-send failed: " . $e->getMessage(),
                 'password-policy',
             );
             return $this->asJson([
                 'success' => false,
-                'message' => Craft::t('password-policy', 'Send failed: {error}', [
-                    'error' => $e->getMessage(),
-                ]),
+                'message' => Craft::t(
+                    'password-policy',
+                    'Send failed — see the password-policy log for details.',
+                ),
             ]);
         }
 
