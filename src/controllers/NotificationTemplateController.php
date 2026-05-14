@@ -177,6 +177,13 @@ class NotificationTemplateController extends Controller
             '{{ siteName }}',
         ];
 
+        // Mirror the `SettingsController` read-only convention so the
+        // template fields and test-send affordance render disabled when
+        // `allowAdminChanges` is off. `actionSave()` and `actionTestSend()`
+        // already enforce a 403 server-side — this is the visible-affordance
+        // half of the read-only contract.
+        $readOnly = !Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
+
         return $this->asCpScreen()
             ->title($this->_displayNameForKey($key))
             ->selectedSubnavItem('notifications')
@@ -208,6 +215,7 @@ class NotificationTemplateController extends Controller
                 'primarySiteId' => $primarySiteId,
                 'tokens' => $tokens,
                 'displayName' => $this->_displayNameForKey($key),
+                'readOnly' => $readOnly,
             ]);
     }
 

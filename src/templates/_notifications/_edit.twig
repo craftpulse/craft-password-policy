@@ -6,11 +6,17 @@
 {# @var primarySiteId int #}
 {# @var tokens string[] #}
 {# @var displayName string #}
+{# @var readOnly bool #}
 
 {% import '_includes/forms.twig' as forms %}
 
 {% set isEnterprise = craft.app.plugins.getPlugin('password-policy').getIsEnterprise() %}
 {% set templatePathLocked = not isEnterprise %}
+{% set readOnly = readOnly ?? false %}
+
+{% if readOnly %}
+    {{ readOnlyNotice() }}
+{% endif %}
 
 {{ hiddenInput('notificationKey', key) }}
 {{ hiddenInput('siteId', currentSite.id) }}
@@ -64,6 +70,7 @@
         value: template.subject,
         required: true,
         errors: template.getErrors('subject'),
+        disabled: readOnly,
     }) }}
 
     {{ forms.textareaField({
@@ -76,6 +83,7 @@
         class: 'code',
         required: true,
         errors: template.getErrors('body'),
+        disabled: readOnly,
     }) }}
 
     {% if isEnterprise and template.templatePath %}
@@ -99,7 +107,7 @@
         name: 'templatePath',
         value: template.templatePath,
         placeholder: '_emails/expiry-reminder.twig',
-        disabled: templatePathLocked,
+        disabled: readOnly or templatePathLocked,
         suggestEnvVars: true,
         errors: template.getErrors('templatePath'),
     }) }}
@@ -138,7 +146,7 @@
     <hr>
 
     <p>
-        <button type="button" class="btn" id="pp-test-send-button">
+        <button type="button" class="btn" id="pp-test-send-button"{% if readOnly %} disabled{% endif %}>
             {{ 'Send test email'|t('password-policy') }}
         </button>
         <span class="spinner hidden" id="pp-test-send-spinner"></span>
@@ -174,6 +182,7 @@
         value: template.senderName,
         suggestEnvVars: true,
         errors: template.getErrors('senderName'),
+        disabled: readOnly,
     }) }}
 
     {{ forms.autosuggestField({
@@ -184,6 +193,7 @@
         value: template.senderEmail,
         suggestEnvVars: true,
         errors: template.getErrors('senderEmail'),
+        disabled: readOnly,
     }) }}
 
     {{ forms.autosuggestField({
@@ -194,6 +204,7 @@
         value: template.replyTo,
         suggestEnvVars: true,
         errors: template.getErrors('replyTo'),
+        disabled: readOnly,
     }) }}
 </div>
 

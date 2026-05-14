@@ -22,7 +22,9 @@
 
 {% import '_includes/forms.twig' as forms %}
 
-<h1>{{ 'Audit log export'|t('password-policy') }}</h1>
+{# `_layouts/utilities.twig` already renders the <h1> from the utility's
+   `displayName()`. Adding another here causes a duplicate heading and
+   screen-reader noise. #}
 
 <blockquote class="note">
     <p>
@@ -30,11 +32,19 @@
     </p>
     {% if auditExportFilesystem %}
         <p>
-            {{ 'Exports route through the {handle} filesystem.'|t('password-policy', { handle: '<code>' ~ auditExportFilesystem ~ '</code>' })|raw }}
+            {{ 'Exports route through the {handle} filesystem.'|t('password-policy', {
+                handle: tag('code', { text: auditExportFilesystem }),
+            })|raw }}
         </p>
     {% else %}
+        {# Compose `<code>` HTML via `tag()` rather than injecting through
+           the translated source — keeps the contract that translation
+           strings only carry plain text. #}
         <p>
-            {{ 'Exports write to the local <code>@runtime/password-policy/exports/</code> directory. Set <code>auditExportFilesystem</code> in plugin settings to route through a Craft filesystem (e.g. an S3 bucket) for defense-in-depth on huge dumps.'|t('password-policy')|raw }}
+            {{ 'Exports write to the {dir} directory. Set {setting} in plugin settings to route through a Craft filesystem (e.g. an S3 bucket) for defense-in-depth on huge dumps.'|t('password-policy', {
+                dir: tag('code', { text: '@runtime/password-policy/exports/' }),
+                setting: tag('code', { text: 'auditExportFilesystem' }),
+            })|raw }}
         </p>
     {% endif %}
 </blockquote>
