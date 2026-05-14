@@ -16,7 +16,9 @@
  # @since     5.2.0
  # =========================================================================== #}
 
-<h1>{{ 'Audit event PII allowlist'|t('password-policy') }}</h1>
+{# `_layouts/utilities.twig` already renders the <h1> from the utility's
+   `displayName()`. Adding another here causes a duplicate heading and
+   screen-reader noise. #}
 
 <blockquote class="note">
     <p>

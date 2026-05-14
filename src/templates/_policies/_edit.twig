@@ -219,9 +219,22 @@
         </div>
     {% endset %}
 
+    {# Compose `<strong>` HTML via `tag()` (auto-escapes contents) rather
+       than injecting the markup through a translated source string —
+       translators can't inject script-shaped HTML when each `<strong>`
+       is built in Twig. #}
+    {% set rulesInstructions %}
+        {{ 'Each rule defaults to'|t('password-policy') }}
+        {{ tag('strong', { text: 'Global'|t('password-policy') }) }}{{ ', inheriting your global setting. Choose'|t('password-policy') }}
+        {{ tag('strong', { text: 'Off'|t('password-policy') }) }}
+        {{ 'or'|t('password-policy') }}
+        {{ tag('strong', { text: 'On'|t('password-policy') }) }}
+        {{ 'to explicitly override.'|t('password-policy') }}
+    {% endset %}
+
     {{ forms.field({
         label: 'Rule overrides'|t('password-policy'),
-        instructions: 'Each rule defaults to <strong>Global</strong>, inheriting your global setting. Choose <strong>Off</strong> or <strong>On</strong> to explicitly override.'|t('password-policy')|raw,
+        instructions: rulesInstructions|raw,
         id: 'pp-rules-field',
     }, rulesTable) }}
 </div>
@@ -281,7 +294,7 @@
             <p>
                 {{ "Words added here are blocked only for users this policy applies to. For plugin-wide custom words, see the {link} subnav."|t('password-policy', {
                     link: tag('a', {
-                        href: url('password-policy/blocklist'),
+                        href: cpUrl('password-policy/blocklist'),
                         text: 'Blocklist'|t('password-policy'),
                     }),
                 })|raw }}
@@ -421,6 +434,54 @@
                 ev.preventDefault();
                 setRuleValue(tr, btn.getAttribute('data-pp-value'));
             });
+        });
+
+        // Keyboard navigation per WAI-ARIA Radio Group pattern
+        // (https://www.w3.org/WAI/ARIA/apg/patterns/radio/). The
+        // container `<div class="btngroup" role="radiogroup">` is
+        // focusable via `tabindex="0"`; arrow keys + Home/End move
+        // focus and activate the adjacent radio. Space/Enter on the
+        // currently-focused container activates the current radio.
+        var group = tr.querySelector('.btngroup[role="radiogroup"]');
+        if (!group) return;
+
+        group.addEventListener('keydown', function(ev) {
+            var radios = Array.prototype.slice.call(
+                group.querySelectorAll('[role="radio"]')
+            );
+            if (radios.length === 0) return;
+
+            var currentIndex = radios.findIndex(function(r) {
+                return r.getAttribute('aria-checked') === 'true';
+            });
+            // Fall back to first radio when no value is checked yet
+            // — keeps the keyboard contract working from a fresh
+            // "Inherit Global" → "Off" flip.
+            if (currentIndex === -1) currentIndex = 0;
+
+            var nextIndex = null;
+            switch (ev.key) {
+                case 'ArrowRight':
+                case 'ArrowDown':
+                    nextIndex = (currentIndex + 1) % radios.length;
+                    break;
+                case 'ArrowLeft':
+                case 'ArrowUp':
+                    nextIndex = (currentIndex - 1 + radios.length) % radios.length;
+                    break;
+                case 'Home':
+                    nextIndex = 0;
+                    break;
+                case 'End':
+                    nextIndex = radios.length - 1;
+                    break;
+                default:
+                    return;
+            }
+
+            ev.preventDefault();
+            var target = radios[nextIndex];
+            setRuleValue(tr, target.getAttribute('data-pp-value'));
         });
     });
 

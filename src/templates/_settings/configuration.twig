@@ -58,19 +58,26 @@
             });
         {% endjs %}
 
-        {% if craft.app.plugins.getPlugin('password-policy').getIsPro() %}
-            <hr>
+        <hr>
 
-            {% set hibpLoginInfo %}
-                <span class="info">{{ "Re-checks the user's password against the HIBP breach database every time they sign in. If a match is found, the user is forced to reset their password on the next sign-in and receives a notification email. Login is never blocked. Same k-anonymity model as HIBP-at-change-time — only the SHA-1 prefix leaves your server."|t('password-policy') }}</span>
-            {% endset %}
-            {{ forms.lightswitchField({
-                label: 'Re-check passwords against HIBP on login (Pro)'|t('password-policy'),
-                instructions: "Detect when a user's existing password leaks into a public breach after they last changed it."|t('password-policy') ~ hibpLoginInfo,
-                name: 'settings[enableHibpOnLogin]',
-                on: settings.enableHibpOnLogin,
-                disabled: readOnly,
-            }) }}
+        {# HIBP-on-login is Pro-gated. Visible-but-disabled on Lite so the
+           upgrade path stays discoverable; mirrors the `_settings/audit.twig`
+           shape (`editionLocked` + the edition-gate callout). #}
+        {% set hibpLoginLocked = not isPro %}
+
+        {% set hibpLoginInfo %}
+            <span class="info">{{ "Re-checks the user's password against the HIBP breach database every time they sign in. If a match is found, the user is forced to reset their password on the next sign-in and receives a notification email. Login is never blocked. Same k-anonymity model as HIBP-at-change-time — only the SHA-1 prefix leaves your server."|t('password-policy') }}</span>
+        {% endset %}
+        {{ forms.lightswitchField({
+            label: 'Re-check passwords against HIBP on login'|t('password-policy'),
+            instructions: "Detect when a user's existing password leaks into a public breach after they last changed it."|t('password-policy') ~ hibpLoginInfo,
+            name: 'settings[enableHibpOnLogin]',
+            on: settings.enableHibpOnLogin,
+            disabled: readOnly or hibpLoginLocked,
+        }) }}
+
+        {% if hibpLoginLocked %}
+            {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
         {% endif %}
 
         <hr>
