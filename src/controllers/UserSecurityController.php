@@ -18,8 +18,10 @@ use craft\helpers\DateTimeHelper;
 use craft\web\Controller;
 use craft\web\CpScreenResponseBehavior;
 use craftpulse\passwordpolicy\PasswordPolicy;
+use Throwable;
 use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
 /**
@@ -27,9 +29,10 @@ use yii\web\Response;
  *
  * Renders the "Password Security" screen on the User edit experience
  * (`password-policy/users/<userId>/security`). Status snapshot,
- * resolved policy summary, and the "Force Password Reset" button which
- * posts to the existing `password-policy/retention/force-reset`
- * endpoint.
+ * resolved policy summary, and the "Force Password Reset" button —
+ * the force-reset POST target lives here too (since 5.2.0 — moved
+ * from `RetentionController::actionForceReset()` so the admin-on-user
+ * surface owns the action that drives it).
  *
  * Uses Craft's {@see EditUserTrait} so the response shares the user-
  * edit screen chrome — left-nav (Profile / Permissions / Addresses /
@@ -213,6 +216,58 @@ class UserSecurityController extends Controller
         return $response;
     }
 
+    /**
+     * Forces a password reset for a single user — the action target of
+     * the "Force Password Reset" button on the user edit tab template
+     * at `_users/password-security.twig`. Admin users are silently
+     * skipped server-side by
+     * `RetentionService::requirePasswordReset()`.
+     *
+     * Moved from `RetentionController::actionForceReset()` in 5.2.0
+     * (pre-tag fix-pack) so the admin-on-user surface owns the action
+     * that drives it — retention is a settings/utility concern; this
+     * is a user-management write. URL changes from
+     * `password-policy/retention/force-reset` to
+     * `password-policy/user-security/force-reset`.
+     *
+     * Self-gated: enforces `requirePostRequest()` +
+     * `requirePermission('pp:force-reset-passwords')` independent of
+     * the controller-wide `beforeAction()` (which only checks the
+     * union-of-permissions for tab visibility).
+     *
+     * @return Response|null
+     *
+     * @throws BadRequestHttpException
+     * @throws ForbiddenHttpException
+     * @throws NotFoundHttpException
+     * @throws Throwable
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function actionForceReset(): ?Response
+    {
+        $this->requirePostRequest();
+        $this->requirePermission('pp:force-reset-passwords');
+
+        $plugin = PasswordPolicy::$plugin;
+
+        if (!$plugin->getSettings()->retentionUtilities) {
+            return $this->_forceResetFailure('Password retention features are disabled.');
+        }
+
+        $userId = (int)Craft::$app->getRequest()->getRequiredBodyParam('userId');
+        $user = Craft::$app->getUsers()->getUserById($userId);
+
+        if ($user === null) {
+            throw new NotFoundHttpException('User not found.');
+        }
+
+        $plugin->retention->requirePasswordReset($user);
+
+        return $this->_forceResetSuccess('Password reset has been requested for this user.');
+    }
+
     // Private Methods
     // =========================================================================
 
@@ -304,5 +359,80 @@ class UserSecurityController extends Controller
         return Craft::t('password-policy', 'Merged from {names}', [
             'names' => implode(', ', array_map(static fn($p) => $p->name, $policies)),
         ]);
+    }
+
+    /**
+     * Returns a success response for `actionForceReset()`. JSON for
+     * AJAX callers; redirect for form submits. Drives the plugin's
+     * log channel + a flash so the admin sees the outcome on the
+     * user edit screen.
+     *
+     * @param string $message
+     * @return Response|null
+     *
+     * @throws BadRequestHttpException
+     * @throws Throwable
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _forceResetSuccess(string $message): ?Response
+    {
+        PasswordPolicy::$plugin->log($message . ' [via password-security tab by "{username}"]');
+        $this->setSuccessFlash(Craft::t('password-policy', $message));
+
+        return $this->_forceResetResponse($message);
+    }
+
+    /**
+     * Returns a failure response for `actionForceReset()`. Mirrors
+     * the success path's shape so AJAX callers get a JSON
+     * `{success: false}` and form submits get a flash + null
+     * (caller falls back to render the same screen).
+     *
+     * @param string $message
+     * @return Response|null
+     *
+     * @throws BadRequestHttpException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _forceResetFailure(string $message): ?Response
+    {
+        $this->setFailFlash(Craft::t('password-policy', $message));
+
+        return $this->_forceResetResponse($message, false);
+    }
+
+    /**
+     * Returns a JSON or redirect response — shared by
+     * `_forceResetSuccess()` and `_forceResetFailure()`. Matches the
+     * shape `RetentionController::_getResponse()` used before the
+     * action moved here.
+     *
+     * @param string $message
+     * @param bool $success
+     * @return Response|null
+     *
+     * @throws BadRequestHttpException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _forceResetResponse(string $message, bool $success = true): ?Response
+    {
+        if (Craft::$app->getRequest()->getAcceptsJson()) {
+            return $this->asJson([
+                'success' => $success,
+                'message' => Craft::t('password-policy', $message),
+            ]);
+        }
+
+        if (!$success) {
+            return null;
+        }
+
+        return $this->redirectToPostedUrl();
     }
 }

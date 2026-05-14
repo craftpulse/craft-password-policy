@@ -2,8 +2,8 @@
 /**
  * Pest coverage for `RetentionService::requirePasswordReset()` — the
  * seam used by `PasswordResetJob` (cron-driven expiry),
- * `RetentionController::actionForceReset` (web-UI single-user trigger),
- * and `resetPasswordsByGroup()`. Phase D1.3 wired the service to
+ * `UserSecurityController::actionForceReset` (web-UI single-user
+ * trigger), and `resetPasswordsByGroup()`. Phase D1.3 wired the service to
  * `UserStateService::setPendingReason(ExpiryForced)` so the user's
  * NEXT password change records the right `changeReason` in history.
  *
