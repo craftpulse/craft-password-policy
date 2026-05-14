@@ -81,7 +81,27 @@ class NotificationActivityController extends Controller
             );
         }
 
-        $this->requirePermission('pp:notification-templates-manage');
+        // P3-10: viewing the activity log is an audit-read function
+        // gated on the new `pp:notification-log-view` permission. The
+        // template-manage permission also grants the read (admins
+        // editing templates need to see how they perform), but the
+        // reverse isn't implied — auditors can hold view-only.
+        $currentUser = Craft::$app->getUser()->getIdentity();
+
+        if (
+            $currentUser === null
+            || (
+                !$currentUser->can('pp:notification-log-view')
+                && !$currentUser->can('pp:notification-templates-manage')
+            )
+        ) {
+            throw new ForbiddenHttpException(
+                Craft::t(
+                    'password-policy',
+                    'You do not have permission to view the notification activity log.',
+                ),
+            );
+        }
 
         return true;
     }

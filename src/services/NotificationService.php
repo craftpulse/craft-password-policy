@@ -180,16 +180,27 @@ class NotificationService extends Component
      * for this type. A future `templateVarsJson` column would unlock
      * resend (additive future work, not part of G12).
      *
+     * Pro-only. The HIBP-on-login listener that drives this method
+     * only registers on Pro, but the guard duplicates here as
+     * defense-in-depth — matches the `sendPasswordExpiryReminder()` /
+     * `sendBreachDetected()` shape (P1-NotifPro).
+     *
      * @param User $user
      * @param string $deviceLabel
      * @param string $maskedIp
      * @return void
+     *
+     * @throws RuntimeException when the plugin is running the Lite edition
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function sendNewDeviceAlert(User $user, string $deviceLabel, string $maskedIp): void
     {
+        if (!PasswordPolicy::$plugin->getIsPro()) {
+            throw new RuntimeException('New-device alerts require the Pro edition.');
+        }
+
         if ($user->email === null) {
             return;
         }
