@@ -119,7 +119,18 @@ class AuditExportController extends Controller
     /**
      * Serves a previously-queued export via the cached one-time token.
      * Cache hit → file served + cache key deleted (one-time-use).
-     * Cache miss → 404.
+     * Cache miss → 404. Cache hit by a different admin than the one
+     * that enqueued the export → 403.
+     *
+     * Per-admin binding: the cache entry stores `requestedById` (pinned
+     * at enqueue time in `_enqueueAsyncExport()` and `AuditExportJob`).
+     * `requirePermission('pp:audit-export')` gates the action — but the
+     * token URL travels via email, and a forwarded email / shared
+     * inbox / archive system could put the token in front of a second
+     * admin who also holds `pp:audit-export`. Without binding, that
+     * admin could replay the URL and pull data they didn't request.
+     * The binding check rejects mismatched users with a 403; the
+     * one-time-use contract still applies on the matching path.
      *
      * @param string $token the 64-char URL-safe token from the email link
      * @return Response
@@ -137,6 +148,25 @@ class AuditExportController extends Controller
 
         if (!is_array($entry) || !isset($entry['filePath'], $entry['format'])) {
             throw new NotFoundHttpException('Export not found or token expired.');
+        }
+
+        // Per-admin binding — reject if the caller isn't the admin who
+        // enqueued this export. `requestedById` is stored at enqueue
+        // time; legacy cache entries (written by pre-fix builds) may
+        // omit it. Treat a missing `requestedById` as a fail-closed
+        // rejection rather than a permissive fallback — the worst case
+        // is one re-enqueue while the legacy entry expires.
+        $requestedById = (int)($entry['requestedById'] ?? 0);
+        $currentUserId = (int)(Craft::$app->getUser()->getId() ?? 0);
+
+        if ($requestedById === 0 || $requestedById !== $currentUserId) {
+            // Don't burn the cache entry on a mismatch — let the
+            // legitimate requester still pull their file. The wrong
+            // admin gets a 403 and the audit chain records the
+            // attempt downstream via Craft's session log.
+            throw new ForbiddenHttpException(
+                'This export was not requested by your account.',
+            );
         }
 
         // Delete the cache entry first so concurrent clicks race to a
