@@ -45,8 +45,16 @@ class BreachDetectedEvent extends Event
 
     /**
      * @var string the SHA-1 prefix (5 characters, uppercase) submitted to HIBP.
-     *     Safe to log and forward — k-anonymity guarantees an attacker cannot
-     *     reverse the prefix to a unique password.
+     *     The prefix is k-anonymous in isolation — an attacker cannot reverse it
+     *     to a unique password.
+     *
+     *     **Do not persist this value alongside `$user->id`.** A
+     *     `(userId, prefix)` ledger — in a log file, audit row, or external
+     *     observability system — recreates the linkability property the
+     *     k-anonymity model is designed to prevent. Log "breach detected for
+     *     user X" without the prefix, or log the prefix without the user, but
+     *     never both as a paired record. The plugin's own HIBP-on-login dedup
+     *     cache key omits the prefix for the same reason (commit 6703c88).
      */
     public string $sha1Prefix;
 

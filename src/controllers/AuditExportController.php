@@ -338,10 +338,17 @@ class AuditExportController extends Controller
         );
         $mimeType = $format === 'jsonl' ? 'application/x-ndjson' : 'text/csv';
 
+        // Hard `LIMIT` matching the sync threshold. The threshold check
+        // earlier in `actionExport()` uses a separate `COUNT` query;
+        // concurrent audit writes between the count and this fetch
+        // could land a result set larger than `SYNC_ROW_LIMIT` — the
+        // limit on the fetch closes that race without needing a
+        // read transaction wrapping both queries.
         $rows = (new Query())
             ->from('{{%passwordpolicy_audit_log}}')
             ->where(['>=', 'dateCreated', $threshold])
             ->orderBy(['id' => SORT_ASC])
+            ->limit(self::SYNC_ROW_LIMIT)
             ->all();
 
         // Single-source the writers — the queued job exposes

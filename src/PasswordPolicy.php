@@ -465,6 +465,15 @@ class PasswordPolicy extends Plugin
     /**
      * @inheritdoc
      *
+     * **Performance contract:** this method runs on every CP page
+     * render — every page, every user. Badge counts and conditional
+     * visibility checks must come from cached or indexed-scalar
+     * sources. **No element queries, no aggregate queries without
+     * caching.** A 5-minute cache is the floor for any badge derived
+     * from a `COUNT(*)`. The current method body only reads settings
+     * + permission checks, both of which are sub-millisecond; preserve
+     * that ceiling when adding subnav items.
+     *
      * @throws Throwable
      *
      * @author CraftPulse
