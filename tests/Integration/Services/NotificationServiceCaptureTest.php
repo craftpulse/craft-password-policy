@@ -155,6 +155,33 @@ it('suppresses a second send within the dedup window after a successful send', f
 });
 
 // =============================================================================
+// Edition — expiry reminders fire on Lite (universal since 5.2.0)
+// =============================================================================
+
+it('fires expiry-reminder on Lite without throwing', function() {
+    // Pre-5.2.0 the service guarded `sendPasswordExpiryReminder` on
+    // `getIsPro()` and threw on Lite. Universal since 5.2.0 — Lite
+    // renders the seeded template and writes the same `sent` row Pro
+    // produces. Editor + activity-log + resend remain Pro features.
+    $this->plugin->edition = PasswordPolicy::EDITION_LITE;
+
+    $user = UserFactory::admin();
+    $user->email = 'lite-recipient@example.test';
+
+    $this->plugin->getNotification()->sendPasswordExpiryReminder($user, 7);
+
+    /** @var NotificationLogRecord|null $row */
+    $row = NotificationLogRecord::find()
+        ->where(['userId' => $user->id, 'notificationType' => 'expiry_reminder'])
+        ->orderBy(['id' => SORT_DESC])
+        ->one();
+
+    expect($row)->not->toBeNull();
+    expect($row->status)->toBe(NotificationStatus::Sent->value);
+    expect($row->recipientEmail)->toBe('lite-recipient@example.test');
+});
+
+// =============================================================================
 // Helpers
 // =============================================================================
 

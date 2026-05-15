@@ -82,24 +82,21 @@ class NotificationService extends Component
      *
      * Pro-only — Lite throws because the editable templates surface (which
      * this method drives) is gated to Pro and there's no fallback shape on
-     * Lite. Callers (queue job, console command, web controller) all guard
-     * on Pro before reaching here.
+     * Universal across editions since 5.2.0. Lite installs render
+     * the seeded `expiry-reminder` template (read-only on Lite — the
+     * Notification Templates editor UI remains a Pro feature). Pro
+     * editors can override the template content per site; Enterprise
+     * gets activity-log + resend on top.
      *
      * @param User $user
      * @param int $daysRemaining
      * @return void
-     *
-     * @throws RuntimeException when the plugin is running the Lite edition
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function sendPasswordExpiryReminder(User $user, int $daysRemaining): void
     {
-        if (!PasswordPolicy::$plugin->getIsPro()) {
-            throw new RuntimeException('Password expiry reminders require the Pro edition.');
-        }
-
         if ($user->email === null) {
             return;
         }
