@@ -620,6 +620,15 @@ class AuditLogService extends Component
      * Numeric-keyed (list) arrays preserve their integer order — they
      * encode as JSON arrays where order is the contract.
      *
+     * The `array_is_list()` guard is load-bearing: without it,
+     * `ksort($value, SORT_STRING)` reorders list values for lists with
+     * ≥ 10 entries (string compare of keys: `'10' < '2'`). The writer
+     * + verifier both use this function so the chain still verifies,
+     * but a list-shaped `details` value would canonicalise into a
+     * different positional order than the caller passed — silently
+     * breaking the docblock's contract and any future external
+     * verifier that follows the rule.
+     *
      * @param array<mixed, mixed> $value
      * @return array<mixed, mixed>
      *
@@ -634,7 +643,9 @@ class AuditLogService extends Component
             }
         }
 
-        ksort($value, SORT_STRING);
+        if (!array_is_list($value)) {
+            ksort($value, SORT_STRING);
+        }
 
         return $value;
     }

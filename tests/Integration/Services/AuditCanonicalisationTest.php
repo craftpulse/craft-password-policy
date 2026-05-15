@@ -107,6 +107,21 @@ it('emits forward slashes unescaped', function() {
 });
 
 // =============================================================================
+// List-shaped values — integer order preserved even at ≥ 10 entries
+// =============================================================================
+
+it('preserves list order for numerically-indexed arrays with ≥ 10 entries', function() {
+    // String-keyed ksort on a 12-element list would reorder to
+    // [0,1,10,11,2,3,4,5,6,7,8,9] — the `array_is_list()` guard in
+    // `_sortRecursive` is what keeps positional order intact.
+    $list = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'];
+
+    $output = AuditLogService::canonicalize(['items' => $list]);
+
+    expect($output)->toBe('{"items":["a","b","c","d","e","f","g","h","i","j","k","l"]}');
+});
+
+// =============================================================================
 // Golden-string regression — full audit-shape payload, hard-coded reference
 // =============================================================================
 

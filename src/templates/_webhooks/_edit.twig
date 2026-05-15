@@ -132,6 +132,20 @@
                 <button type="button" class="btn" id="pp-webhook-rotate-secret">
                     {{ 'Rotate secret'|t('password-policy') }}
                 </button>
+                <div id="pp-webhook-rotate-confirm" style="display: none; margin-top: 1em;">
+                    <blockquote class="note warning">
+                        <p>
+                            <strong>{{ 'Rotating the secret invalidates the active signing key.'|t('password-policy') }}</strong>
+                            {{ 'Consumers must pick up the new secret within the grace window. Continue?'|t('password-policy') }}
+                        </p>
+                        <button type="button" class="btn caution" id="pp-webhook-rotate-confirm-yes">
+                            {{ 'Confirm rotation'|t('password-policy') }}
+                        </button>
+                        <button type="button" class="btn" id="pp-webhook-rotate-confirm-no">
+                            {{ 'Cancel'|t('password-policy') }}
+                        </button>
+                    </blockquote>
+                </div>
                 <div id="pp-webhook-secret-display" style="display: none; margin-top: 1em;"></div>
             {% endif %}
         </div>
@@ -199,13 +213,26 @@
             var testResult = document.getElementById('pp-webhook-test-result');
             var endpointId = {{ endpoint.id|json_encode|raw }};
 
-            if (rotateBtn) {
-                rotateBtn.addEventListener('click', function() {
-                    if (!confirm({{ "Rotating the secret invalidates the active signing key for new dispatches. Consumers must pick up the new secret within the grace window. Continue?"|t('password-policy')|json_encode|raw }})) {
-                        return;
-                    }
+            // Two-click confirmation pattern. Bypasses native confirm()
+            // which doesn't honour Garnish's UI layer / ESC stack.
+            var rotateConfirm = document.getElementById('pp-webhook-rotate-confirm');
+            var rotateConfirmYes = document.getElementById('pp-webhook-rotate-confirm-yes');
+            var rotateConfirmNo = document.getElementById('pp-webhook-rotate-confirm-no');
 
-                    rotateBtn.disabled = true;
+            if (rotateBtn && rotateConfirm && rotateConfirmYes && rotateConfirmNo) {
+                rotateBtn.addEventListener('click', function() {
+                    rotateBtn.style.display = 'none';
+                    rotateConfirm.style.display = 'block';
+                });
+
+                rotateConfirmNo.addEventListener('click', function() {
+                    rotateConfirm.style.display = 'none';
+                    rotateBtn.style.display = '';
+                });
+
+                rotateConfirmYes.addEventListener('click', function() {
+                    rotateConfirmYes.disabled = true;
+                    rotateConfirmNo.disabled = true;
 
                     var formData = new FormData();
                     formData.append(Craft.csrfTokenName, Craft.csrfTokenValue);
@@ -235,7 +262,12 @@
                       .catch(function() {
                           Craft.cp.displayError({{ "Couldn't rotate the secret."|t('password-policy')|json_encode|raw }});
                       })
-                      .finally(function() { rotateBtn.disabled = false; });
+                      .finally(function() {
+                          rotateConfirmYes.disabled = false;
+                          rotateConfirmNo.disabled = false;
+                          rotateConfirm.style.display = 'none';
+                          rotateBtn.style.display = '';
+                      });
                 });
             }
 
