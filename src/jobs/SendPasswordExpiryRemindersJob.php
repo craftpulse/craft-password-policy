@@ -18,17 +18,18 @@ use craft\elements\User;
 use craft\queue\BaseBatchedJob;
 use craftpulse\passwordpolicy\batchers\ExpiringPasswordUserBatcher;
 use craftpulse\passwordpolicy\PasswordPolicy;
-use RuntimeException;
 use Throwable;
 use yii\queue\RetryableJobInterface;
 
 /**
  * Class SendPasswordExpiryRemindersJob
  *
- * Pro-only batched job that sends password-expiry reminders to every
- * user whose `lastPasswordChangeDate` puts them inside the
+ * Batched job that sends password-expiry reminders to every user
+ * whose `lastPasswordChangeDate` puts them inside the
  * `expiryReminderDays` window AND who hasn't received a reminder in
- * the dedup window.
+ * the dedup window. Universal across editions since 5.2.0 — Lite
+ * renders the seeded `expiry-reminder` template, Pro renders whatever
+ * the Notification Templates editor wrote.
  *
  * Pattern: Campaign-style. Each batch's `getSlice()` re-runs the
  * pending-recipients query, so retries are naturally idempotent —
@@ -97,21 +98,16 @@ class SendPasswordExpiryRemindersJob extends BaseBatchedJob implements Retryable
     /**
      * @inheritdoc
      *
-     * Pro-gated at the very top so a queue picker on Lite (e.g. an
-     * environment that downgraded post-enqueue) explodes loudly rather
-     * than running silently with no template surface.
-     *
-     * @throws RuntimeException when the plugin is running the Lite edition
+     * Universal across editions since 5.2.0. The job renders against
+     * the seeded `expiry-reminder` template — Lite operators get the
+     * default copy, Pro operators get whatever the Notification
+     * Templates editor wrote.
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function execute($queue): void
     {
-        if (!PasswordPolicy::$plugin->getIsPro()) {
-            throw new RuntimeException('Password expiry reminders require the Pro edition.');
-        }
-
         parent::execute($queue);
     }
 

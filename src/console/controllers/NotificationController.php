@@ -67,9 +67,10 @@ class NotificationController extends Controller
      * `getSlice()` so retries are naturally idempotent — already-notified
      * users drop out via the dedup subquery.
      *
-     * Pro-only — Lite exits with `ExitCode::UNSPECIFIED_ERROR` and a
-     * stderr message so cron monitoring catches the misconfiguration
-     * loudly rather than silently no-op'ing.
+     * Universal across editions since 5.2.0. Lite operators can wire
+     * this command to cron and get the seeded default template
+     * rendered; Pro operators get whatever their Notification
+     * Templates editor wrote.
      *
      * @return int
      *
@@ -78,11 +79,6 @@ class NotificationController extends Controller
      */
     public function actionSendExpiryReminders(): int
     {
-        if (!PasswordPolicy::$plugin->getIsPro()) {
-            $this->stderr("Pro edition required.\n");
-            return ExitCode::UNSPECIFIED_ERROR;
-        }
-
         Queue::push(new SendPasswordExpiryRemindersJob([
             'userId' => $this->user,
         ]));
