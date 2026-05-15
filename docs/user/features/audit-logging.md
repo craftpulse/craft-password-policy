@@ -1,86 +1,234 @@
-# Phase 4 — Audit Logging Service + Craft Event Listeners
+# Audit Logging
 
-## Overview
+The Enterprise edition ships a tamper-evident audit log that records every password-related security event in your Craft install. It's hash-chained from the row level up, verifiable end-to-end by a bundled console command, and built privacy-first — no raw IPs, no plaintext emails, no PII outside a fail-closed per-event allowlist.
 
-Phase 4 adds comprehensive audit logging for password-related security events. The audit log records who, what, when, where, and outcome — without ever storing password data.
+> 📷 *Screenshot: The Audit Log element index in the control panel, with the status pill column showing successful and failed events, and the inline detail panel for a selected row.*
 
-## AuditLogService
+This page covers what the audit log captures, the schema, the privacy guarantees, the hash chain mechanics, and the verifier CLI. For the visible Enterprise UI on top of this infrastructure, see [Compliance Dashboard](./compliance-dashboard.md). For SIEM and webhook integration, see [SIEM forwarders](./siem-forwarders.md) and [Webhooks](./webhooks.md).
 
-### `logEvent()`
+## What's captured
 
-Central logging method. Key behaviors:
-- **Edition gated**: No-ops silently on Lite/Pro
-- **Try/catch wrapped**: Never blocks the parent operation
-- **Runtime-enforced detail allowlist**: `array_intersect_key()` strips any key not on the approved list
-- **IP hashing**: Stores SHA-256 of IP, never raw
-- **User identifier**: HMAC-SHA-256 of email using Craft's security key for post-deletion correlation
+| Event | When it fires | Source |
+|---|---|---|
+| `password_changed` | After a successful password save | `User::EVENT_AFTER_SAVE` |
+| `password_reset_forced` | An admin or automation forces a reset | `UserStateService` |
+| `account_locked` | Craft locks a user after failed attempts | `Users::EVENT_AFTER_LOCK_USER` |
+| `account_unlocked` | An admin unlocks a user | `Users::EVENT_AFTER_UNLOCK_USER` |
+| `hibp_breach_detected` | A user's password is found in the HIBP breach database (change-time or login) | `PasswordService` |
+| `hibp_check_failed` | The HIBP API is unreachable | `PasswordService` |
+| `policy_changed` | A Pro named policy is saved (Enterprise captures the field-level diff) | `PolicyService::EVENT_AFTER_SAVE_POLICY` |
+| `chain_rotated` | An admin-initiated audit-chain rotation event (rare) | `AuditLogService` |
+| `audit_export_completed` | A queued audit export finishes | `AuditExportJob` |
+| `alert_cooldown_fired` | An alert was suppressed by the cooldown service | `AlertCooldownService` |
+| `siem_forward_attempted` | A row was forwarded (or failed) to a SIEM endpoint | `SiemForwardJob` |
+| `webhook_delivery_attempted` | A webhook was delivered (or failed) | `WebhookForwardJob` |
 
-### Allowed Detail Keys
+Every event is captured on every edition. Edition gating applies to **exposure** — the CP audit-log index, the verifier CLI, the dashboard, the forwarders, the export utility all require Enterprise. The underlying capture happens whether or not you have Enterprise installed, so upgrading a site from Pro to Enterprise mid-life surfaces the audit history you already had.
 
-`deviceLabel`, `groupId`, `groupName`, `reason`, `violationType`, `source`, `outcome`, `method`, `failMode`
+## Schema
 
-Any other key in the `$details` array is silently stripped.
+The `passwordpolicy_audit_log` table backs the `AuditLogElement` Craft element. Each row stores:
 
-### Query Methods
+| Column | Type | Purpose |
+|---|---|---|
+| `id` | int (FK to `craft_elements.id`) | Element identity. |
+| `event` | string(64) | One of the event types above. |
+| `userIdentifier` | string(64) | HMAC-SHA-256 of the affected user's email, keyed by `CRAFT_AUDIT_PII_KEY`. See [Privacy guarantees](#privacy-guarantees). |
+| `userId` | int, nullable | FK to `craft_users.id` (`SET NULL` on user hard-delete). |
+| `ipHash` | string(64), nullable | SHA-256 of the request IP. Never raw. |
+| `outcome` | enum | `success`, `failure`, `denied`, `pending`. |
+| `details` | JSON | Per-event structured fields (allowlisted; see below). |
+| `previousHash` | char(64) | `rowHash` of the immediately preceding row (`'0' × 64` for the genesis row). |
+| `rowHash` | char(64) | SHA-256 of the canonical JSON of this row plus `previousHash`. |
+| `forwardedAt` | datetime, nullable | Set by the SIEM forwarder when this row has been delivered. `NULL` means unforwarded. |
+| `forwardAttempts` | int | Retry counter for the SIEM forwarder. |
+| `dateCreated`, `dateUpdated`, `uid` | standard Craft columns | |
 
-- `getEventsForUser($userId, $limit)` — User-scoped timeline
-- `getRecentEvents($limit, $eventFilter)` — Global feed with optional filter
-- `purgeOldEntries($daysToKeep)` — Retention cleanup
+The table grows append-only — `AuditLogElement::canSave()` returns `false` after the initial insert, so rows cannot be edited in place. Retention purges hard-delete rows that fall outside the configured window (see [Retention](#retention)).
 
-## Events Logged
+## Privacy guarantees
 
-| Event | When | Source |
-|-------|------|--------|
-| `password_changed` | After successful password save | PasswordPolicy.php EVENT_AFTER_SAVE |
-| `password_reset_forced` | After force reset | RetentionService (future) |
-| `hibp_breach_detected` | Password found in HIBP | PwnedValidator |
-| `hibp_check_failed` | HIBP API unreachable | PwnedValidator |
-| `account_locked` | Craft locks user after failed attempts | Users::EVENT_AFTER_LOCK_USER |
-| `account_unlocked` | Admin unlocks user | Users::EVENT_AFTER_UNLOCK_USER |
+The audit log was designed so that a copy of the table — leaked, shared with an auditor, or exported to a SIEM — does not double as a user-tracking dataset.
 
-## PwnedValidator Updates
+### HMAC-hashed `userIdentifier`
 
-- Now returns `null` on API failure (distinct from `false` = not breached)
-- Supports fail-open (default) and fail-closed modes via `pwnedFailMode` setting
-- Logs `hibp_breach_detected` and `hibp_check_failed` to audit log
-- `#[SensitiveParameter]` added to `pwned()` method
+The `userIdentifier` column stores `hash_hmac('sha256', $email, $auditPiiKey)`. A row carries no email address. An auditor who already knows a target user's email can re-hash with the same key and find their rows; an attacker with table read access cannot enumerate emails from the column.
 
-## AuditController (Console)
+The key is `CRAFT_AUDIT_PII_KEY` — an env var **independent of Craft's `securityKey`**. Rotating it destroys historical correlation against newly-written rows without breaking sessions, CSRF tokens, asset URLs, or anything else `securityKey` anchors. See [Provisioning `CRAFT_AUDIT_PII_KEY`](#provisioning-the-pii-key) below for the one-shot setup.
 
-- `password-policy/audit/purge --days=365` — Purge old entries
-- `password-policy/audit/export --format=csv --days=90` — Export to stdout
-- `--include-user-details` flag resolves user emails for export
+### SHA-256-hashed `ipHash`
 
-## GDPR Notes
+The `ipHash` column stores `hash('sha256', $request->getRemoteIP())`. Raw IPs never reach the database. Two requests from the same IP produce the same hash; an auditor investigating a single-IP attack pattern can correlate within the dataset without seeing the IP itself.
 
-- IP addresses stored as SHA-256 hashes only
-- User identifier uses HMAC-SHA-256 keyed with a dedicated audit-PII secret (`CRAFT_AUDIT_PII_KEY`) that can be rotated independently of `securityKey` — see [Rotating the PII key](#rotating-the-pii-key) below
-- User deletion: SET NULL preserves anonymous audit records
-- Configurable retention period (default 365 days)
+### User-Agent is dropped
 
-### Rotating the PII key
+Browser and OS fingerprints don't enter the audit row. The plugin's parallel new-device-alert notification captures a redacted `deviceLabel` (e.g. `"Chrome on macOS"`) — that's the operational-visibility surface, not the audit log.
 
-The `userIdentifier` column on every audit-log row is `HMAC-SHA256(email, $key)` where `$key` is a dedicated audit-PII secret independent of Craft's site `securityKey`. Auditors with knowledge of a target user's email can re-hash and match historical rows — essential for GDPR Article 17 deletion verification and incident-response timelines.
+### Per-event PII allowlist (G5)
 
-The key is **rotatable**. Rotation destroys correlation against new rows; old rows remain hashable against the previous key (which the operator may retain or destroy depending on compliance policy). Critically, rotating this key does **not** invalidate sessions, CSRF tokens, asset URLs, or anything else `securityKey` anchors.
+The `details` JSON column is filtered against a per-event allowlist before write. `AuditLogService::logEvent()` runs every payload through:
 
-#### Initial setup
+```php
+$details = array_intersect_key($details, self::ALLOWED_DETAILS_BY_EVENT[$event] ?? []);
+```
 
-Generate the key on install:
+An event type not in `ALLOWED_DETAILS_BY_EVENT` is **fail-closed**: the row is dropped and a warning logged. Adding a new event type without declaring its allowlist is a static defect — the test suite has an assertion that fails if any fired event class lacks a registry entry.
+
+Inspect the live allowlist via the **Audit Log Schema** utility (`Utilities → Audit Log Schema`) or the console command:
 
 ```bash
-ddev craft password-policy/audit/generate-pii-key
+./craft password-policy/audit/schema
+```
+
+Both surface the same `event → allowed-keys` mapping as static evidence for auditors.
+
+## Hash chain (G1)
+
+Every row stores the SHA-256 of its canonical JSON plus the previous row's `rowHash`. Tampering with any historical row breaks the chain at that point — detectable by the [verifier](#verifier-cli).
+
+### Canonical payload
+
+`AuditLogService::canonicalize($row)` produces deterministic bytes:
+
+- Keys serialised in alphabetical order.
+- Datetimes formatted as `Y-m-d\TH:i:s\Z` (UTC, no microseconds).
+- `JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE` flags applied.
+- Null values preserved (not stripped).
+- The `id` column **excluded** — auto-increment isn't deterministic across database restores. Chain order is established by `dateCreated` + insertion order.
+- The `rowHash` and `previousHash` columns themselves excluded from the canonical payload (they're outputs of the hash, not inputs).
+
+### Genesis row
+
+The first row in the table uses `previousHash = '0' × 64` (sixty-four zeros). `AuditLogService::GENESIS_PREVIOUS_HASH` is the canonical source — both the writer and the verifier reference it.
+
+### Write transaction
+
+`AuditLogService::logEvent()` runs inside a database transaction:
+
+1. `SELECT ... FOR UPDATE` on the latest row's `rowHash` (single indexed query).
+2. Compute the new row's `rowHash` from the canonical payload + the latest hash.
+3. Insert.
+
+The `FOR UPDATE` row lock prevents concurrent writers from chaining off the same `previousHash` (which would fork the chain at that point).
+
+### Privacy + chain interaction
+
+The `userIdentifier` column is part of the canonical payload. Rotating `CRAFT_AUDIT_PII_KEY` does **not** invalidate the chain for existing rows — those rows still carry the hash they were written with, and the verifier reads them as-is. Rotation affects future writes; it doesn't rewrite history.
+
+> ::: warning Don't log the canonical payload
+> Logging `AuditLogService::canonicalize($row)` at debug level would compromise the chain's tamper-detection property — an attacker reading logs could reconstruct the canonical string and forge matching rows. The plugin never logs the canonical payload. Don't add a `Craft::debug()` call on it.
+> :::
+
+## Verifier CLI (G2)
+
+Run from your Craft project root:
+
+```bash
+./craft password-policy/audit/verify
+```
+
+The verifier walks the chain row-by-row, recomputes each `rowHash` from the stored payload, and compares against the stored value. It reads raw `Query` cursors — not Craft element queries — so retention-purge artifacts and element soft-delete states don't trip it up.
+
+### Output
+
+On a clean pass:
+
+```
+OK: 12347 rows verified.
+```
+
+Exit code `0`.
+
+On a chain break:
+
+```
+FAILED at row id=8821 (dateCreated 2026-04-12T09:33:14Z)
+    stored rowHash:   8e3a4f2d…
+    computed rowHash: c91d7a8b…
+    previous rowHash matched: yes
+```
+
+Exit code `1`. The verifier stops at the first break — re-run with `--from=<date>` after fixing or investigating to verify the rest of the chain.
+
+On an unreadable row (malformed JSON, missing column, etc.):
+
+Exit code `2`.
+
+### Flags
+
+| Flag | Purpose |
+|---|---|
+| `--from=<date>` | Start verification from this date. Useful for daily verification crons that only check yesterday's writes. |
+| `--to=<date>` | Stop verification at this date. |
+| `--json` | Emit machine-readable JSON output instead of the human-readable report. Designed for CI / monitoring integration. |
+
+### Cron recipe
+
+Add a daily verifier run to your production cron:
+
+```cron
+# Verify yesterday's audit chain every morning at 03:00
+0 3 * * * cd /path/to/project && ./craft password-policy/audit/verify --from=$(date -d yesterday +%Y-%m-%d) --to=$(date -d yesterday +%Y-%m-%d) --json
+```
+
+Pipe the JSON output to your monitoring stack. A non-zero exit code is an alertable event — chain integrity has been compromised either by tampering or by a disk error.
+
+### Auditor usage
+
+The verifier source lives in `src/console/controllers/AuditController.php` and is part of the plugin's public GitHub repository. An auditor can clone the repo, run `composer install`, point the config at your database, and run the verifier from a fresh checkout — independent of your running Craft install. This is the credibility multiplier on the hash chain: a hash chain with no public verifier is just marketing; the verifier turns it into evidence.
+
+Permission `pp:audit-verify` is required to run the command from a CP-authenticated console; the same command also runs without a CP user identity for the auditor-from-fresh-checkout case.
+
+## Policy change diffs (G4)
+
+When an admin saves a Pro named policy, the audit row's `details.diff` captures a field-level before/after:
+
+```json
+{
+    "policyId": 4,
+    "policyName": "Editors",
+    "diff": {
+        "minLength": {"old": 8, "new": 12},
+        "hibp": {"old": false, "new": true},
+        "groupIds": {"old": [3, 5], "new": [3, 5, 7]}
+    }
+}
+```
+
+Unchanged fields are omitted. Boolean tri-state and array-valued fields use the same shape. The diff is computed in `PolicyService::beforeSavePolicy()` by comparing the loaded record against the request payload, captured into the audit context, and emitted on the `policy_changed` event after a successful save.
+
+This is the literal change-management evidence compliance buyers want: every policy modification is captured with what changed, who changed it, and when — not just "something was edited."
+
+## Retention
+
+The audit log is retention-managed. Configure the window in **Settings → Password Policy → Audit → Audit log retention days** (default `365`). The `password-policy/gc/run` console command hard-deletes rows older than the configured window.
+
+```cron
+# Run retention nightly at 02:00
+0 2 * * * cd /path/to/project && ./craft password-policy/gc/run
+```
+
+> ::: warning Retention is a hard delete
+> The audit log is append-only for write but retention is a hard delete (via `craft_elements` `DELETE` + FK CASCADE on `passwordpolicy_audit_log`). Soft-delete via `dateDeleted` is not used — compliance frameworks require that retention windows actually remove the data, not just hide it. The verifier CLI tolerates this: it walks the surviving rows and verifies the chain among them.
+> :::
+
+Default retention satisfies PCI DSS v4.0.1 §10.5.1 (≥12 months of audit logs). For longer retention requirements, increase the setting and provision additional database storage.
+
+## Provisioning the PII key
+
+Generate the audit-PII key on first install:
+
+```bash
+./craft password-policy/audit/generate-pii-key
 ```
 
 The command:
 
-- Generates 32 cryptographically-random bytes (64 hex chars, same shape as Craft's `securityKey`).
-- Writes `CRAFT_AUDIT_PII_KEY` to the local `.env`.
+- Generates 32 cryptographically-random bytes (64 hex chars — the same shape as Craft's `securityKey`).
+- Writes `CRAFT_AUDIT_PII_KEY` to your local `.env` file.
 - Prints the key so you can copy it to your production environment.
 
-Set the same env var on every environment that runs this plugin — staging, production, CI for tests that touch audit-log rows. Rows hashed in one environment with a different key are not correlate-able from another environment.
-
-The plugin reads `$auditPiiKey` from `config/password-policy.php`; the default template wires the env var through:
+The default `config/password-policy.php` reads the env var:
 
 ```php
 <?php
@@ -92,10 +240,12 @@ return [
 ];
 ```
 
-#### Rotation procedure
+Set the same env var on every environment that runs the plugin — local, staging, production, CI for tests that touch audit-log rows. Rows hashed in one environment with a different key are not correlatable from another.
+
+### Rotating the key
 
 ```bash
-ddev craft password-policy/audit/generate-pii-key --force
+./craft password-policy/audit/generate-pii-key --force
 ```
 
 The `--force` flag is required to overwrite an existing key. Without it, the command refuses (accidental rotation orphans historical correlation).
@@ -103,148 +253,77 @@ The `--force` flag is required to overwrite an existing key. Without it, the com
 After rotation:
 
 - New audit rows hash `userIdentifier` with the new key.
-- Existing audit rows still carry hashes from the previous key. Those rows are correlate-able only by an auditor who retains the previous key value.
-- The verifier CLI (`password-policy/audit/verify`) continues to verify the chain integrity — `userIdentifier` is part of the canonical row payload, so rotating the key for new rows does not break the chain of existing rows. Rotation affects PII correlation only.
+- Existing audit rows still carry hashes from the previous key. Those rows remain correlatable only by an auditor who retains the previous key value.
+- The verifier CLI continues to verify the chain integrity unchanged — `userIdentifier` is part of the canonical payload, so rotating the key for new rows does not break the chain of existing rows. Rotation affects PII correlation only.
 
-#### Fallback when unset
+### When the key is unset
 
-If `CRAFT_AUDIT_PII_KEY` is unset, the plugin falls back to `securityKey`. This is for dev-install convenience — fresh installs still produce hashable rows without the env var. The privacy USP (rotation without site breakage) only applies once you've run the generator and deployed the env var. Production deployments should always set it explicitly.
+If `CRAFT_AUDIT_PII_KEY` is unset, the plugin falls back to Craft's `securityKey` for HMAC. This is for dev-install convenience — fresh installs still produce hashable rows without the env var. **The privacy property (rotation without site breakage) only applies once you've run the generator and deployed the env var.** Production deployments should always set it explicitly.
 
----
+## HIBP-on-login
 
-## Compliance-grade enhancements (Phase 11–12)
+HIBP-on-login is a Pro feature that re-checks every signing-in user's password against the Have I Been Pwned breach database via the same k-anonymity protocol used at password-change time. The listener at `User::EVENT_BEFORE_AUTHENTICATE` is the only Craft 5 hook with synchronous plaintext-in-scope access during login. On a match the plugin:
 
-Added 2026-05-01 from competitive analysis of the Trails plugin. These six items elevate the Enterprise audit log from "log table" to "tamper-evident audit trail with auditor-runnable verification" — the difference matters for compliance evidence packages. Specific clause anchors:
+1. Sets `passwordResetRequired = true` on the user (saved with `muteEvents` to avoid recursion).
+2. Sends a `breach-detected` notification email.
+3. Fires `BreachDetectedEvent` for consumer hooks.
+4. Writes an audit-log entry (`hibp_breach_detected`) on Enterprise + audit-toggle.
 
-- **NIS2** — Article 21(2)(g) basic cyber hygiene practices; Article 21(2)(i) human resources security, access control, asset management. Not Article 21(2)(j) (that's MFA, which is Craft core's territory, not this plugin's).
-- **SOC 2 (AICPA TSC 2017 + 2022 revised points of focus)** — CC6.1 logical access security; CC6.3 access provisioning/de-provisioning; CC7.2 system monitoring + anomaly detection; CC8.1 change management evidence (the policy-change diffs in (c) below).
-- **ISO 27001:2022 / 27002:2022** — A.5.15 access control; A.5.17 authentication information; A.5.33 protection of records (direct map for hash chain); A.8.5 secure authentication; A.8.15 logging (the single most directly applicable control); A.8.16 monitoring activities.
-- **PCI DSS v4.0.1** — §10.2 audit log content requirements; §10.3 audit logs protected from destruction (hash chain); §10.5.1 retention (≥12 months; default 365 days satisfies); §8.3.4 lockout (delegated to Craft core); §8.3.5 breach-driven change (HIBP-on-login); §8.3.6 12-char min; §8.3.7 last-4 history; §8.3.9 90-day rotation.
-- **GDPR** — Article 5(1)(f) integrity and confidentiality; Article 17 right to erasure (the `SET NULL` + HMAC userIdentifier pattern); Article 25 data protection by design and by default (separate `CRAFT_AUDIT_PII_KEY`, per-event allowlist); Article 32(1)(b) ongoing confidentiality/integrity/availability; Article 32(1)(d) regular testing of effectiveness (the independent verifier CLI).
+**The login is never blocked.** The user can sign in; they're prompted to change their password on the same session.
 
-These citations are anchors for an operator's evidence package — not certifications. The plugin provides specific technical measures that controllers can rely on as part of their framework obligations. See `PLAN.md` Phase 11/12 rows for build sequencing.
+### Privacy invariant
 
-### (a) Hash-chained audit rows — Phase 11
+The listener never logs the plaintext password, the full SHA-1 hash, or the bucket suffix. Only the 5-char k-anonymity prefix and a "match found" boolean ever leave the listener. The dedup cache key uses `userId` only — embedding the SHA-1 prefix in an inspectable cache key would reconstruct the linkability property k-anonymity is designed to eliminate.
 
-Each row stores the SHA-256 hash of `(canonical JSON of this row) + (previousHash)`, forming an append-only chain. Schema additions to `passwordpolicy_audit_log`:
+### Failure modes
 
-- `rowHash` — `CHAR(64) NOT NULL` — sha256 hex of `canonicalJson(row) + previousHash`
-- `previousHash` — `CHAR(64) NOT NULL` — `rowHash` of the immediately preceding row (`'0' x 64` for genesis row)
+| Condition | Behaviour | Log level |
+|---|---|---|
+| API reachable, no breach found | Silent | — |
+| API reachable, breach found | Above flow runs | INFO |
+| API unreachable (timeout, 5xx) | Fail open (login proceeds) | WARNING |
+| API rate-limited (429) | Site-wide backoff cache key set; every caller short-circuits until the backoff expires | WARNING |
+| TLS verification failure | Fail open | WARNING |
 
-Canonical JSON serialises in a fixed key order (alphabetical) so the hash is reproducible. The `id` column is **excluded** from the hash payload (auto-increment isn't deterministic across restores) — the chain order is established by `dateCreated` + insertion order.
+## Compliance framework anchors
 
-No Merkle batching needed at password-event volume (~10–100 events/day for typical Enterprise installs). A flat per-row chain is sufficient and simpler to verify.
+These citations are anchors for an operator's evidence package — not certifications. The plugin provides specific technical measures that controllers can rely on as part of their framework obligations.
 
-`AuditLogService::logEvent()` becomes responsible for:
-1. Loading the latest row's `rowHash` (single indexed query)
-2. Computing the new row's `rowHash`
-3. Inserting inside a transaction with `SELECT ... FOR UPDATE` on the latest row to prevent concurrent insert races
+| Framework | Clauses the audit log addresses |
+|---|---|
+| **NIS2** | Article 21(2)(g) basic cyber hygiene practices; Article 21(2)(i) human resources security, access control, asset management. (Not 21(2)(j) — that's MFA, which is Craft core's territory.) |
+| **SOC 2** | CC6.1 logical access security; CC6.3 access provisioning/de-provisioning; CC7.2 system monitoring + anomaly detection; CC8.1 change management evidence (policy change diffs). |
+| **ISO 27001:2022 / 27002:2022** | A.5.15 access control; A.5.17 authentication information; A.5.33 protection of records (direct map for hash chain); A.8.5 secure authentication; A.8.15 logging; A.8.16 monitoring activities. |
+| **PCI DSS v4.0.1** | §10.2 audit log content requirements; §10.3 audit logs protected from destruction (hash chain); §10.5.1 retention (≥12 months; default 365 days satisfies); §8.3.4 lockout (delegated to Craft core); §8.3.5 breach-driven change (HIBP-on-login). |
+| **GDPR** | Article 5(1)(f) integrity and confidentiality; Article 17 right to erasure (`SET NULL` on user hard-delete + HMAC userIdentifier preserves audit trail without retaining the email); Article 25 data protection by design and by default; Article 32(1)(b) ongoing confidentiality/integrity/availability; Article 32(1)(d) regular testing (the verifier CLI). |
 
-**Auditor pitch:** "Every row in our audit log cryptographically chains to the previous row. Tampering with any historical entry breaks the chain at that point and is detected by the verifier."
+For the full framework-by-framework mapping including all Pro+Enterprise features, see [Compliance frameworks](../operations/compliance-frameworks.md).
 
-### (b) Independent verifier CLI — Phase 11
+## Hooking into events
 
-New console command: `password-policy/audit/verify [--from=<date>] [--to=<date>]`.
+The plugin fires structured events for every audit write. Listen for them to mirror the audit trail into your own systems.
 
-Walks the chain in insertion order, recomputes `rowHash` for each row, compares to the stored value. On the first mismatch, prints the offending row's id + dateCreated + computed hash + stored hash, exits with `ExitCode::DATAERR`. On clean pass, prints `OK: N rows verified` and exits `ExitCode::OK`.
+```php
+use craftpulse\passwordpolicy\events\AuditChainRotatedEvent;
+use craftpulse\passwordpolicy\services\AuditLogService;
+use yii\base\Event;
 
-The verifier code path must be **open-source** (live in the public repo, not behind any paywall) so auditors can read it and run it independently. This is the credibility multiplier on (a) — a hash chain with no public verifier is just marketing.
-
-**Auditor pitch:** "Run `php craft password-policy/audit/verify` yourself. The verifier is in our public repo. If it returns OK, the audit log is intact."
-
-### (c) Field-level before/after diffs on policy changes — Phase 11
-
-When an admin saves a Pro named policy, the audit row's `details` JSON includes a structured diff:
-
-```json
-{
-    "policyId": 4,
-    "policyName": "Editors",
-    "diff": {
-        "minLength": {"old": 8, "new": 12},
-        "enableHibp": {"old": false, "new": true},
-        "groupIds": {"old": [3, 5], "new": [3, 5, 7]}
+Event::on(
+    AuditLogService::class,
+    AuditLogService::EVENT_AUDIT_CHAIN_ROTATED,
+    function(AuditChainRotatedEvent $event) {
+        // Notify the on-call channel; the audit chain has been administratively rotated.
     }
-}
+);
 ```
 
-Diff is computed in `PolicyService::beforeSavePolicy()` by comparing the loaded record against the request payload, captured into the audit context, and emitted on `policy_changed` event after successful save. Unchanged fields are omitted. Boolean tri-state and array-valued fields use the same shape.
+See [Events reference](../reference/events.md) for the full catalog with payload tables.
 
-**Maps to:** ISO 27002:2022 A.5.37 (documented operating procedures); SOC 2 CC8.1 (change management evidence); NIS2 Article 21(2)(g) (basic cyber hygiene practices) — the policy-change diff is the literal "change to a basic security control" the (g) framing expects. Article 21(2)(e) is supply chain; do not cite it here.
+## See also
 
-New event type added to the table above:
-
-| `policy_changed` | After Pro named-policy save | PolicyService::EVENT_AFTER_SAVE_POLICY |
-
-### (d) Explicit PII allowlist registered per event type — Phase 11
-
-Today the allowlist (`deviceLabel, groupId, groupName, reason, violationType, source, outcome, method, failMode`) is a single global list applied via `array_intersect_key()`. For Enterprise compliance evidence, codify it as a **per-event-class registration** so each event type declares exactly what details it's permitted to log:
-
-```php
-final class AuditLogService
-{
-    private const ALLOWED_DETAILS = [
-        'password_changed' => ['source', 'method', 'reason'],
-        'hibp_breach_detected' => ['source', 'failMode'],
-        'policy_changed' => ['policyId', 'policyName', 'diff'],
-        // ...one entry per event type
-    ];
-}
-```
-
-Behaviour:
-- **Fail closed** — an event type not in the registry is rejected (logs a warning + drops the audit row, never silently allows arbitrary keys through)
-- **Inspectable** — exposed via a CP utility ("Audit Log Schema") and a console command `password-policy/audit/schema` so auditors can read the full per-event allowlist as static evidence
-- **Test-enforced** — Pest fixture verifies every fired event class has a registry entry
-
-**Why:** "We never log PII" is a claim. "Here's the per-event allowlist, here's the test that fails if you add a new event without declaring its allowlist, here's the verifier that drops anything unrecognised" is evidence. Same shift as (a)/(b).
-
-### (e) `AlertCooldownService` — Phase 12
-
-Generalised cooldown/dedup for alert emails. Pattern lives next to `NotificationService`, reuses the `passwordpolicy_notification_log` table or adds a parallel `passwordpolicy_alert_cooldown` table (decision deferred to Phase 12 implementation).
-
-Public API:
-
-```php
-$alertCooldown->shouldSend(string $alertKey, string $scope, int $cooldownSeconds): bool;
-$alertCooldown->markSent(string $alertKey, string $scope): void;
-```
-
-`scope` is a free-form discriminator (`"user:123"`, `"group:5"`, `"global"`) so the same alert key can have independent cooldowns per affected entity.
-
-**Use cases registered in Phase 12:**
-- HIBP-on-login mass detection (credential stuffing pattern) — global scope, 1h cooldown
-- Group-deletion cascade alerts — per-group scope, no cooldown (rare event)
-- Force-reset bursts — global scope, 15min cooldown
-
-Without this, P1.13 + Phase 11 alerts each reinvent throttling and we end up with three slightly different dedup mechanisms. Service-ify it once.
-
-### (f) Streaming audit-log exports — Phase 12
-
-Extend `AuditController::actionExport` to defer to a queue job for any export with `--days > 30` or no date filter. New job: `ExportAuditLogJob extends BaseBatchedJob`, mirrors P1.4's `SendPasswordExpiryRemindersJob` pattern.
-
-- `batchSize: 1000` rows
-- Streams to a temporary file in `storage/runtime/password-policy/exports/<uid>.csv`
-- On completion, fires `AuditExportCompleteEvent` — admins can hook to upload to S3, attach to a ticket, etc.
-- Email notification to the requesting admin with a one-time download link (Pro: in-CP delivery; Enterprise extends with signed-URL S3 delivery in a future phase)
-
-**Why:** Audit log exports for SOC 2 / NIS2 evidence packages routinely cover 12+ months on busy installs. PHP memory ceilings make synchronous CSV generation fragile at that volume.
-
-### Supported SIEM destinations
-
-The Enterprise edition ships SIEM forwarders (`Settings → SIEM forwarders` subnav). The protocol on the wire is syslog-over-TLS in RFC 5424 framing, with a parallel HTTP destination class for SIEM platforms whose ingestion path is HTTP-based. **Buyers searching by name:** the following destinations are reached via the HTTP destination with appropriate custom headers (`Authorization`, `X-Splunk-Request-Channel`, `DD-API-KEY`, etc.):
-
-- **Splunk HEC (HTTP Event Collector)** — point the HTTP destination at `https://<your-splunk>/services/collector/event` and configure the `Authorization: Splunk <token>` header in the custom-headers field.
-- **Datadog Logs** — point the HTTP destination at `https://http-intake.logs.datadoghq.com/api/v2/logs` (or the regional equivalent) and configure the `DD-API-KEY: <your-key>` header.
-- **Sumo Logic HTTP source** — point at the configured collector URL; no auth header required (the URL embeds the source ID).
-- **Generic HTTP-based SIEM platforms** — any platform that accepts JSON over POST with configurable headers (NewRelic, Logstash HTTP input, Elastic ingest pipelines, etc.) works through the same HTTP destination class.
-
-The native syslog-TLS destination is the right path for: rsyslog/syslog-ng pull-in setups, Graylog, IBM QRadar, and any SIEM that accepts RFC 5424 over TLS on the standard IANA port (6514).
-
-The wire format is identical across destinations — only the transport class (syslog-tls vs HTTP) and the header/auth config differ.
-
-### Items deliberately not adopted from Trails
-
-- **RFC 3161 external timestamping** — overkill for password-event volume. Hash-chain + independent verifier covers the same auditor question (tamper evidence). RFC 3161 belongs in a future standalone audit-log plugin if/when that ships.
-- **AWS S3 Object Lock anchoring** — same rationale as above.
-- **GeoIP enrichment on audit rows** — outside Password Policy's lane (would belong in a separate device/anomaly plugin).
+- [Audit verifier CLI](./audit-verifier.md) — deeper detail on the verifier, including the auditor-from-fresh-checkout workflow.
+- [Compliance Dashboard](./compliance-dashboard.md) — the Enterprise UI on top of the audit log.
+- [SIEM forwarders](./siem-forwarders.md) — Syslog-over-TLS to Splunk HEC, Datadog Logs, and any RFC 5424 receiver.
+- [Webhooks](./webhooks.md) — HMAC-signed delivery for consumer integrations.
+- [Audit export](./audit-export.md) — Streaming CSV/JSONL export with per-admin download tokens.
+- [Compliance frameworks](../operations/compliance-frameworks.md) — Per-clause mapping for evidence packages.
