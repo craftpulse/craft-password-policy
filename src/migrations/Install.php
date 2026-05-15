@@ -18,6 +18,9 @@ use craft\db\Table;
 use craft\helpers\Json;
 use craft\helpers\StringHelper;
 use craftpulse\passwordpolicy\data\EmailDefaults;
+use craftpulse\passwordpolicy\elements\AuditLogElement;
+use craftpulse\passwordpolicy\elements\NotificationLogElement;
+use craftpulse\passwordpolicy\elements\PolicyElement;
 use craftpulse\passwordpolicy\enums\ChangeReason;
 
 /**
@@ -62,6 +65,24 @@ class Install extends Migration
      */
     public function safeDown(): bool
     {
+        // Delete `craft_elements` rows for our element types before
+        // dropping the per-element record tables. The record tables FK
+        // to `craft_elements.id` with ON DELETE CASCADE, but dropping
+        // a record table doesn't cascade in the other direction —
+        // `craft_elements` rows would be orphaned on uninstall.
+        // `craft_elements_sites` has its own FK on
+        // `craft_elements.id` with ON DELETE CASCADE so it cleans up
+        // automatically.
+        $this->db->createCommand()
+            ->delete(Table::ELEMENTS, [
+                'type' => [
+                    AuditLogElement::class,
+                    NotificationLogElement::class,
+                    PolicyElement::class,
+                ],
+            ])
+            ->execute();
+
         $this->dropTableIfExists('{{%passwordpolicy_webhook_endpoints}}');
         $this->dropTableIfExists('{{%passwordpolicy_siem_forwarders}}');
         $this->dropTableIfExists('{{%passwordpolicy_alert_cooldowns}}');
