@@ -114,7 +114,15 @@ If `CRAFT_AUDIT_PII_KEY` is unset, the plugin falls back to `securityKey`. This 
 
 ## Compliance-grade enhancements (Phase 11–12)
 
-Added 2026-05-01 from competitive analysis of the Trails plugin. These six items elevate the Enterprise audit log from "log table" to "tamper-evident audit trail with auditor-runnable verification" — the difference matters for NIS2, SOC 2, ISO 27001, and PCI-DSS evidence packages. See `PLAN.md` Phase 11/12 rows for build sequencing.
+Added 2026-05-01 from competitive analysis of the Trails plugin. These six items elevate the Enterprise audit log from "log table" to "tamper-evident audit trail with auditor-runnable verification" — the difference matters for compliance evidence packages. Specific clause anchors:
+
+- **NIS2** — Article 21(2)(g) basic cyber hygiene practices; Article 21(2)(i) human resources security, access control, asset management. Not Article 21(2)(j) (that's MFA, which is Craft core's territory, not this plugin's).
+- **SOC 2 (AICPA TSC 2017 + 2022 revised points of focus)** — CC6.1 logical access security; CC6.3 access provisioning/de-provisioning; CC7.2 system monitoring + anomaly detection; CC8.1 change management evidence (the policy-change diffs in (c) below).
+- **ISO 27001:2022 / 27002:2022** — A.5.15 access control; A.5.17 authentication information; A.5.33 protection of records (direct map for hash chain); A.8.5 secure authentication; A.8.15 logging (the single most directly applicable control); A.8.16 monitoring activities.
+- **PCI DSS v4.0.1** — §10.2 audit log content requirements; §10.3 audit logs protected from destruction (hash chain); §10.5.1 retention (≥12 months; default 365 days satisfies); §8.3.4 lockout (delegated to Craft core); §8.3.5 breach-driven change (HIBP-on-login); §8.3.6 12-char min; §8.3.7 last-4 history; §8.3.9 90-day rotation.
+- **GDPR** — Article 5(1)(f) integrity and confidentiality; Article 17 right to erasure (the `SET NULL` + HMAC userIdentifier pattern); Article 25 data protection by design and by default (separate `CRAFT_AUDIT_PII_KEY`, per-event allowlist); Article 32(1)(b) ongoing confidentiality/integrity/availability; Article 32(1)(d) regular testing of effectiveness (the independent verifier CLI).
+
+These citations are anchors for an operator's evidence package — not certifications. The plugin provides specific technical measures that controllers can rely on as part of their framework obligations. See `PLAN.md` Phase 11/12 rows for build sequencing.
 
 ### (a) Hash-chained audit rows — Phase 11
 
@@ -162,7 +170,7 @@ When an admin saves a Pro named policy, the audit row's `details` JSON includes 
 
 Diff is computed in `PolicyService::beforeSavePolicy()` by comparing the loaded record against the request payload, captured into the audit context, and emitted on `policy_changed` event after successful save. Unchanged fields are omitted. Boolean tri-state and array-valued fields use the same shape.
 
-**Maps to:** ISO 27002:2022 A.5.37 (documented operating procedures), SOC 2 CC8.1 (change management evidence), NIS2 Article 21(2)(e) (basic cyber hygiene practices).
+**Maps to:** ISO 27002:2022 A.5.37 (documented operating procedures); SOC 2 CC8.1 (change management evidence); NIS2 Article 21(2)(g) (basic cyber hygiene practices) — the policy-change diff is the literal "change to a basic security control" the (g) framing expects. Article 21(2)(e) is supply chain; do not cite it here.
 
 New event type added to the table above:
 
