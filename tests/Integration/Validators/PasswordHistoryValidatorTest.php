@@ -48,10 +48,12 @@ afterEach(function() {
 });
 
 // =============================================================================
-// Edition gate — Lite skips entirely
+// Edition — Lite enforces history when feature is enabled (5.2.0+)
 // =============================================================================
 
-it('returns early on Lite regardless of history count', function() {
+it('rejects reused passwords on Lite when passwordHistoryCount is set', function() {
+    // History moved from Pro-only to universal in 5.2.0. The validator
+    // no longer gates on edition — only on the per-feature count.
     $this->plugin->edition = PasswordPolicy::EDITION_LITE;
     $this->settings->passwordHistoryCount = 5;
 
@@ -61,7 +63,7 @@ it('returns early on Lite regardless of history count', function() {
     $user->newPassword = 'oldpass1';
     $this->validator->validateAttribute($user, 'newPassword');
 
-    expect($user->getErrors('newPassword'))->toBeEmpty();
+    expect($user->getErrors('newPassword'))->not->toBeEmpty();
 });
 
 // =============================================================================

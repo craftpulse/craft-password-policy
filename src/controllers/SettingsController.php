@@ -162,8 +162,6 @@ class SettingsController extends Controller
         /** @var PasswordPolicy $plugin */
         if (!$plugin->getIsPro()) {
             unset(
-                $settings['passwordHistoryCount'],
-                $settings['passwordHistoryExpiryDays'],
                 $settings['checkSequentialChars'],
                 $settings['checkRepeatedChars'],
                 $settings['checkContextual'],

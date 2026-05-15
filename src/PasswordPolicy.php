@@ -335,7 +335,7 @@ class PasswordPolicy extends Plugin
         $settings = $this->getSettings();
         $results = [];
 
-        if ($this->getIsPro() && $settings->passwordHistoryCount > 0) {
+        if ($settings->passwordHistoryCount > 0) {
             $results['passwordHistory'] = $this->getPasswordHistory()->purgeExpiredHistory(
                 $settings->passwordHistoryExpiryDays,
                 $settings->passwordHistoryCount,
@@ -1107,8 +1107,9 @@ class PasswordPolicy extends Plugin
                 // request-derived self-service (web) or CLI (console).
                 $context = $plaintext !== null ? $this->_resolveAuditContext($user) : null;
 
-                // Store password hash in history if Pro and history enabled
-                if ($context !== null && $this->getIsPro() && $settings->passwordHistoryCount > 0) {
+                // Store password hash in history when feature is enabled
+                // (count > 0). Universal across editions since 5.2.0.
+                if ($context !== null && $settings->passwordHistoryCount > 0) {
                     try {
                         $hash = Craft::$app->getSecurity()->hashPassword($plaintext);
                         $this->getPasswordHistory()->savePasswordHash($user->id, $hash, $context);

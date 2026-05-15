@@ -53,8 +53,11 @@ class PasswordHistoryValidator extends Validator
         $plugin = PasswordPolicy::$plugin;
         $settings = $plugin->getSettings();
 
-        // Gate: Pro edition + history enabled
-        if (!$plugin->getIsPro() || $settings->passwordHistoryCount <= 0) {
+        // Gate: history feature enabled (count > 0). Available on every
+        // edition since 5.2.0 — per-group history merge stays Pro via
+        // `PolicyResolverService`, but the global setting applies to
+        // every edition.
+        if ($settings->passwordHistoryCount <= 0) {
             return;
         }
 
