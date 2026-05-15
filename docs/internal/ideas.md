@@ -148,3 +148,199 @@ Brainstorming notes from the v5.2.0 build sessions. Not committed to any of thes
 **Why deferred:** non-blocker for 5.2.0; no current-correctness issue; better to ship after a Phase 12 REST surface lands and operators have real production traffic to inform the default choice.
 
 **Estimated effort:** Half-day. One column, one enum, one branch in `_writeToSocket`, one CP form field.
+
+---
+
+## 5.3 candidate bundle — auth-event coverage (MFA / passkey / SSO)
+
+**Date:** 2026-05-15
+
+**Context:** The plugin's 5.2.0 audit log captures password change, blocklist hit, HIBP match, settings save, retention purge, policy change, alert cooldown fire, SIEM forward attempt, webhook delivery, audit export. **Auth-method lifecycle is a complete blind spot** — TOTP setup/removal, passkey registration/use/deletion, recovery-code generation/download, elevated-session events. The user flagged this gap explicitly: "we barely touch grounds on MFA/Passkey generation. Or SSO there are SSO traces in core and I know P&T only sets it up under enterprise accounts."
+
+**The headline finding from May 2026 research:** Craft 5 fires **no events** on the auth-method lifecycle. The entire auth surface ships exactly one event, `User::EVENT_BEFORE_AUTHENTICATE` (password attempts only — `$password === null` for the passkey flow). `craft\controllers\AuthController` actions (`actionVerifyTotp`, `actionVerifyPasskey`, `actionDeletePasskey`, `actionRemoveMethod`, `actionGenerateRecoveryCodes`, `actionDownloadRecoveryCodes`) are silent. `craft\services\Auth` exposes only `EVENT_REGISTER_METHODS` (extension hook, not audit signal).
+
+This is verified against the live `craftcms/cms` 5.x source (May 2026). Trails — our nearest competitor on the audit-log surface — has the same ceiling. WordPress's parallel audit-log plugins capture passkey/TOTP events because WordPress fires explicit events; Craft is the gap.
+
+**Compliance framework anchor:** NIST 800-63B Rev 4 (finalised 31 July 2025) requires phishing-resistant MFA at AAL2 (offer) and AAL3 (require). NIS2 ENISA Q1 2026 guidance reads Article 21(2)(j) as "MFA where appropriate" — and clarifies that "appropriate" means a documented risk assessment, not optional. BSI January 2026 implementation guide names FIDO2 / WebAuthn passkeys / smartcards as acceptable; SMS-OTP excluded post-January 2026. **12-month forensic auth trail retention** is a published bar. PCI DSS v4.0.1 §8.4 requires logging of MFA admin access.
+
+So: there's a verified gap in Craft core, a verified gap in the closest competitor, a verified compliance framework anchor, and our shipping `AuditLogElement` + retention infrastructure to slot the captures into. This is the strongest 5.3 wedge.
+
+---
+
+### Auth-event audit: MFA + passkey + recovery-code lifecycle capture (5.3 lead feature)
+
+**The idea:** Capture every auth-method lifecycle action as an `AuditLogElement` row. Twelve new event types covering TOTP setup completed / removed, passkey registered / used / deleted, recovery codes generated / downloaded, auth method added / removed, elevated session started / failed / extended.
+
+**How it would work:**
+1. Listener on `yii\base\Controller::EVENT_AFTER_ACTION` filtered to `auth/*` action segments (`Craft::$app->getRequest()->getActionSegments()`).
+2. Inspect `Craft::$app->getResponse()->statusCode` + the resolved action name to classify the outcome — 200 + `verify-passkey-creation` → passkey registered; 200 + `delete-passkey` → passkey deleted; 200 + `remove-method` → TOTP/recovery removed; 400/429 → failed attempt.
+3. New `AuditEvent::AUTH_METHOD_*` constant family with twelve members.
+4. Map captured events into the existing `ALLOWED_DETAILS_BY_EVENT` allowlist (fail-closed per the G5 invariant).
+5. Document the controller-action → audit-event mapping in `docs/user/reference/audit-events.md`. This is the brittle seam — controller action names are documented but not contract-guaranteed across Craft minor releases.
+6. **Open an upstream PR** proposing `Auth::EVENT_AFTER_METHOD_SETUP` / `EVENT_AFTER_METHOD_REMOVED` / `EVENT_AFTER_PASSKEY_CREATED` / `EVENT_AFTER_PASSKEY_DELETED` + `AuthController::EVENT_AFTER_VERIFY_TOTP` / `EVENT_AFTER_VERIFY_PASSKEY` to Craft core. Capture the PR URL in our docs so we can swap from the action-segment seam to first-party events once they merge (likely Craft 5.7 or 6.0). Until then, we run the seam — Craft has been responsive to ecosystem audit-log requests historically (`UserGroups::EVENT_BEFORE_APPLY_GROUP_DELETE` landed in 4.x specifically for our case).
+
+**What makes it interesting:** Nobody in the Craft ecosystem captures this. Trails doesn't. The 12-month forensic-trail bar (NIS2 + ENISA) is published, not speculative. Pure additive — no schema changes (uses the existing `AuditLogElement`). Builds entirely on shipped 5.2.0 surfaces (`AuditLogElement`, `AuditLogService`, retention GC, `ALLOWED_DETAILS_BY_EVENT` allowlist).
+
+**Edition:** Enterprise (audit log is Enterprise; this extends the same table). Capture remains universal per `project_audit_capture_principle.md` — the listener fires on every edition; the exposure (CP audit-log index + reports) is Enterprise-only.
+
+**Risk:** Controller-action-name coupling. Craft renames an action → we drop a capture silently. Mitigate by pinning the Craft version range we've tested against in the plugin's `composer.json` and running an integration test that asserts the action segments still resolve. Document the mapping prominently.
+
+**Estimated effort:** 3–5 days. Listener wiring + twelve event constants + the docblock+test for each mapping + the upstream PR.
+
+**Status:** Strongest single 5.3 candidate. Recommended as the 5.3.0 lead feature.
+
+---
+
+### Phishing-resistance posture report
+
+**The idea:** Compliance dashboard widget + console command that classifies each user's strongest active auth method into NIST AAL tiers and surfaces the population posture. "X% AAL1, Y% AAL2, Z% passkey-AAL2+."
+
+**How it would work:**
+1. New `AuthPostureService::classifyUser(User $u): AuthAssuranceLevel` enum mapping.
+2. Reads `Craft::$app->getAuth()->getActiveMethods($u)` + `hasPasskeys($u)` — both are cheap cached lookups in Craft core.
+3. AAL mapping: password-only → AAL1; password + TOTP → AAL2; passkey → AAL2+ (we can't distinguish synced vs device-bound from server-side per the WebAuthn spec — report as "passkey AAL2+").
+4. Compliance dashboard widget (G3 — already shipped): stacked-bar widget, drill-through to user-index filtered view.
+5. `password-policy/auth-posture/report --json` console command for CI / compliance pipelines.
+
+**What makes it interesting:** Compliance-buyer GTM — NIS2 + NIST AAL framing maps directly to a population posture metric the buyer can hand to an auditor.
+
+**Caveats:** Document the synced-vs-device-bound passkey distinction prominently. Server-side passkey verification can't tell which kind it's verifying.
+
+**Edition:** Enterprise.
+
+**Estimated effort:** 1-2 days. Read-only on Craft's auth state; no new tables. Pairs naturally with the auth-event audit candidate above.
+
+**Status:** Quick win. Ships 5.3.
+
+---
+
+### Per-policy MFA requirement (`requireMfa` on PolicyElement)
+
+**The idea:** Add `requireMfa` (bool) and `requireMfaMethodTypes` (JSON enum list, e.g. `['passkey']` or `['passkey', 'totp']`) to `PolicyElement`. Pro-tier policies can mandate MFA for their assigned groups; the resolver merges these like every other field.
+
+**How it would work:**
+1. New nullable columns on the `passwordpolicy_policies` table (`requireMfa TINYINT(1)`, `requireMfaMethodsJson JSON`).
+2. `PolicyResolverService::resolveForUser()` merges these — most-restrictive-wins like the rest of the model.
+3. Reuse the HIBP-on-login listener wiring (`User::EVENT_BEFORE_AUTHENTICATE`): when the resolved policy requires MFA *and* the user has no active method, write an audit event (`MFA_REQUIRED_BUT_MISSING`) and optionally redirect to setup. **Don't block the login** — Craft core's system-level `requireTwoStepVerification = 'admins' | groups` already handles enforcement when toggled. Our value-add is the per-policy granularity + the audit trail.
+4. CP edit-policy screen: new "MFA" tab with the lightswitch + method-type multi-select.
+5. Compliance dashboard surfaces non-compliant-user counts per policy.
+
+**What makes it interesting:** Layers per-policy MFA on Craft's system-level enforcement — finer grain than core offers. The audit-trail-for-non-compliance pattern is the differentiator vs the binary core toggle.
+
+**Foundation-first check:** `PolicyElement` ships in 5.2.0 (commit `2809614`). Adding nullable columns in 5.3 is additive (no rename, no restructuring). Safe per `feedback_foundation_first_no_refactor_deferrals.md`.
+
+**Edition:** Pro for per-policy `requireMfa`; Enterprise for the audit-event side.
+
+**Estimated effort:** 3–5 days. Schema + resolver merge + CP UI + audit-event integration + tests.
+
+**Status:** Ships 5.3.
+
+---
+
+### Recovery-code re-issue audit + throttle
+
+**The idea:** Audit recovery-code generation and download events; add an optional throttle on re-issue per N hours per user; send a tamper-evident notification to the user when their recovery codes are re-generated (independent of who triggered it).
+
+**Why this matters:** Recovery-code re-issue is one of the highest-signal indicators of account compromise on a 2FA-protected account. A compromised admin session can re-generate codes (invalidating existing ones) and download them with zero audit signal today.
+
+**How it would work:**
+- Folds into the auth-event audit listener above — `RECOVERY_CODES_GENERATED`, `RECOVERY_CODES_DOWNLOADED` are two of the twelve event types covered.
+- Add `recoveryCodeReissueRateLimit` setting (default off; configurable max generations per N hours). Soft-block via 429 + `RECOVERY_CODES_RATE_LIMITED` audit event when hit.
+- Reuse `NotificationLogElement` + the existing `_dispatch()` path for the user-notification side. New template key `recovery-codes-reissued` seeded via `EmailDefaults::all()`.
+
+**Edition:** Audit + throttle = Enterprise. User notification = Pro (security-hygiene affordance).
+
+**Estimated effort:** Half-day on top of the auth-event audit work. Folds in.
+
+**Status:** Sub-feature of the auth-event audit candidate. Ships 5.3.
+
+---
+
+### Auth-attempt anomaly detection: new-country / new-device flags
+
+**The idea:** Geo-IP enrich auth events (post-5.2.0 `AuditLogElement` row), flag "first auth from this country" / "first auth from this device fingerprint." Pure observation — no blocking, no adaptive MFA (that's IdP territory).
+
+**How it would work:**
+1. New optional column on `AuditLogElement` for `geoCountry` / `geoCity`. Lazy enrichment from a configurable provider — default to MaxMind GeoLite2 self-hosted file (FOSS data file; license permits self-hosted lookup).
+2. `AuthAnomalyService::isFirstAuthFromCountry($user, $country): bool` queries the audit log history.
+3. If anomalous, emit `AUTH_NEW_GEO` event + optional email-to-user notification.
+4. Device fingerprint angle: hash of `(User-Agent + Accept-Language + IPs /24 network)` — same kind of indicator the existing new-device-alert path uses.
+
+**Foundation-first check:** Adding nullable columns to `AuditLogElement` (shipped in 5.2.0) is additive. Safe.
+
+**Edition:** Enterprise.
+
+**Estimated effort:** Multi-day (3-5). Provider abstraction + lazy enrichment + new column + tests.
+
+**Status:** Defer-or-ship depending on 5.3 capacity. Ships when it ships.
+
+---
+
+### SSO event-bridge: surface Flipbox SAML / miniOrange auth attempts in our audit log
+
+**The idea:** Self-hosted Craft 5 SSO is fragmented — Flipbox saml-sp ($69/yr, current 5.1.3 on 2025-01-29) and miniOrange single-sign-on ($paid, multi-protocol) are the dominant pair, neither a FOSS leader. Both ultimately call `Craft::$app->getUser()->login($user)` after SAML assertion validation — that path does NOT trigger `User::EVENT_BEFORE_AUTHENTICATE` because the password path isn't taken. So SSO logins are invisible to our existing auth-event listeners.
+
+**How it would work:**
+1. New optional `SsoBridgeService`. At plugin init, check `Craft::$app->getPlugins()->isPluginEnabled('saml-sp')` and `'craft-single-sign-on'`.
+2. If enabled, attach listeners on those plugins' own events (e.g. Flipbox's `flipbox\saml\sp\events\AuthEvent`). We'd document the supported event surface per plugin in our docs.
+3. Map their assertions to our new `AuditEvent::AUTH_SSO_*` family: `SSO_AUTH_REQUESTED`, `SSO_USER_PROVISIONED`, `SSO_MAPPING_CHANGED`, `SSO_GROUP_RESOLVED`.
+4. Pin the supported plugin version ranges in our docs; fall back to a request-log heuristic if the third-party events disappear.
+
+**Why interesting:** The only way to unify "MFA + SSO + password" audit trails in one Enterprise compliance view on self-hosted Craft. Doesn't require P&T to build first-party SSO into core — we cover the existing ecosystem.
+
+**Risk:** Coupling to third-party plugin event names. Mitigate via version pinning + integration tests + fallback heuristic.
+
+**Status:** **Spike-then-decide.** Half-day spike to confirm event surfaces in Flipbox + miniOrange source. Multi-day implementation if viable. Surface the spike result before committing.
+
+**Edition:** Enterprise.
+
+---
+
+### Auth posture Twig surface: `craft.passwordPolicy.posture(user)`
+
+**The idea:** Site builders want to render a compliance banner on the front end ("Your account is missing MFA. Set it up here."). Today they'd write the logic by hand. Wrap it into a single answer.
+
+**How it would work:**
+- New `AuthPostureService` (also reusable by the dashboard widget above).
+- `posture(currentUser)` returns a `PostureReport` value object: `hasPassword`, `hasMfa`, `mfaIsPhishingResistant`, `passwordIsExpired`, `passwordIsBreached`, `recommendedActions[]`.
+- Variable method on `PasswordPolicyVariable` (both `craft.passwordpolicy` + `craft.passwordPolicy` handles).
+- Optional Twig tag that renders a default no-framework HTML banner with edition-aware affordances.
+
+**What makes it interesting:** Builds on the P1.12 front-end Twig surface we already ship. Lite gets read-only `hasMfa`; Pro/Enterprise get the rich phishing-resistance / expiry flags.
+
+**Edition:** Lite (read-only flag) + Pro (rich report).
+
+**Estimated effort:** 1-2 days. Pure additive.
+
+**Status:** Quick win. Ships 5.3.
+
+---
+
+### Rejected: custom auth method shipping a "TOTP secret blocklist"
+
+Surfaced and rejected during the May 2026 research. TOTP shared secrets are 80 bits from `random_bytes`, not user-chosen — a "blocklist for TOTP secrets" doesn't address a real threat. This is the kind of "reinvent MFA inside our plugin" the constraints flag against. Captured here so it's not re-proposed.
+
+---
+
+## 5.3.0 scope recommendation
+
+**Lead feature:** Auth-event audit (MFA + passkey + recovery code lifecycle capture). Biggest competitive wedge; addresses verified gaps in both Craft core and Trails; lines up with NIS2 ENISA Q1 2026 guidance; additive only; seeds three follow-on features.
+
+**Pair with:**
+- Phishing-resistance posture report (1-2 days; reuses Auth service reads)
+- Recovery-code re-issue audit + throttle (folds into auth-event audit; half-day)
+- Auth posture Twig surface (1-2 days; front-end-side reuse of AuthPostureService)
+
+**Stretch:**
+- Per-policy `requireMfa` on `PolicyElement` (3-5 days; schema add + CP UI + resolver merge)
+- Geo-IP anomaly enrichment (3-5 days; new column + provider abstraction)
+- SSO event-bridge (spike first; multi-day if viable)
+
+**Out of scope:**
+- First-party SSO implementation. We're a password-policy plugin, not an IdP. Stay in observation lane.
+- Replacing Craft core's TOTP / WebAuthn implementations. Augment, don't replace.
+
+**Upstream PR:** Open one against `craftcms/cms` proposing `Auth::EVENT_AFTER_METHOD_SETUP` + friends. Capture the PR URL in our docs. If it merges, we graduate off the controller-action-segment seam in 5.4 or 6.0.
+
+**Foundation-first verdict:** All recommended candidates are additive — new audit events into a shipped table, new columns onto shipped elements, new service methods, new Twig surface. Zero schema renames, zero controller path changes, zero permission renames. Per `feedback_foundation_first_no_refactor_deferrals.md` these defer cleanly.
+
