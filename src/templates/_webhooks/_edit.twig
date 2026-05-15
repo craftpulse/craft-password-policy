@@ -6,6 +6,10 @@
 
 {% import '_includes/forms.twig' as forms %}
 
+{% css %}
+.pp-stack-block { margin-top: 1em; }
+{% endcss %}
+
 {% if not isNew %}
     {{ hiddenInput('endpointId', endpoint.id) }}
 {% endif %}
@@ -132,7 +136,7 @@
                 <button type="button" class="btn" id="pp-webhook-rotate-secret">
                     {{ 'Rotate secret'|t('password-policy') }}
                 </button>
-                <div id="pp-webhook-rotate-confirm" style="display: none; margin-top: 1em;">
+                <div id="pp-webhook-rotate-confirm" class="pp-stack-block" hidden>
                     <blockquote class="note warning">
                         <p>
                             <strong>{{ 'Rotating the secret invalidates the active signing key.'|t('password-policy') }}</strong>
@@ -146,7 +150,7 @@
                         </button>
                     </blockquote>
                 </div>
-                <div id="pp-webhook-secret-display" style="display: none; margin-top: 1em;"></div>
+                <div id="pp-webhook-secret-display" class="pp-stack-block" hidden></div>
             {% endif %}
         </div>
     </div>
@@ -195,11 +199,11 @@
                         <button type="submit" class="btn">{{ 'Reset circuit'|t('password-policy') }}</button>
                     </form>
 
-                    <button type="button" class="btn submit" id="pp-webhook-test-fire">
+                    <button type="button" class="btn" id="pp-webhook-test-fire">
                         {{ 'Send test event'|t('password-policy') }}
                     </button>
                 </div>
-                <div id="pp-webhook-test-result" style="display: none; margin-top: 1em;"></div>
+                <div id="pp-webhook-test-result" class="pp-stack-block" hidden></div>
             {% endif %}
         </div>
     </div>
@@ -221,13 +225,13 @@
 
             if (rotateBtn && rotateConfirm && rotateConfirmYes && rotateConfirmNo) {
                 rotateBtn.addEventListener('click', function() {
-                    rotateBtn.style.display = 'none';
-                    rotateConfirm.style.display = 'block';
+                    rotateBtn.hidden = true;
+                    rotateConfirm.hidden = false;
                 });
 
                 rotateConfirmNo.addEventListener('click', function() {
-                    rotateConfirm.style.display = 'none';
-                    rotateBtn.style.display = '';
+                    rotateConfirm.hidden = true;
+                    rotateBtn.hidden = false;
                 });
 
                 rotateConfirmYes.addEventListener('click', function() {
@@ -254,7 +258,7 @@
                                   '</pre>' +
                                   '<p><small>' + {{ "Grace window ends:"|t('password-policy')|json_encode|raw }} + ' ' + payload.graceWindowEndsAt + '</small></p>' +
                                   '</blockquote>';
-                              secretDisplay.style.display = 'block';
+                              secretDisplay.hidden = false;
                           } else {
                               Craft.cp.displayError(payload.error || payload.message || {{ "Rotation failed."|t('password-policy')|json_encode|raw }});
                           }
@@ -265,8 +269,8 @@
                       .finally(function() {
                           rotateConfirmYes.disabled = false;
                           rotateConfirmNo.disabled = false;
-                          rotateConfirm.style.display = 'none';
-                          rotateBtn.style.display = '';
+                          rotateConfirm.hidden = true;
+                          rotateBtn.hidden = false;
                       });
                 });
             }
@@ -275,7 +279,7 @@
                 testBtn.addEventListener('click', function() {
                     testBtn.disabled = true;
                     testResult.innerHTML = '';
-                    testResult.style.display = 'none';
+                    testResult.hidden = true;
 
                     var formData = new FormData();
                     formData.append(Craft.csrfTokenName, Craft.csrfTokenValue);
@@ -301,7 +305,7 @@
                           }
                           html += '</div>';
                           testResult.innerHTML = html;
-                          testResult.style.display = 'block';
+                          testResult.hidden = false;
                           if (payload.success) {
                               Craft.cp.displayNotice(payload.message);
                           } else {

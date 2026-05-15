@@ -245,7 +245,7 @@ class SiemForwarderController extends Controller
             $forwarder = $service->getForwarderById((int)$forwarderId);
 
             if ($forwarder === null) {
-                throw new BadRequestHttpException("Invalid forwarder ID: {$forwarderId}");
+                throw new BadRequestHttpException('Invalid or missing forwarder ID.');
             }
         } else {
             $forwarder = new SiemForwarderModel();

@@ -352,7 +352,10 @@ class WebhookEndpointController extends Controller
         return $this->asJson([
             'success' => true,
             'newSecret' => $newSecret,
-            'graceWindowEndsAt' => $graceEndsAt->toIso8601String(),
+            'graceWindowEndsAt' => Craft::$app->getFormatter()->asDatetime(
+                $graceEndsAt->toDateTime(),
+                'short',
+            ),
             'message' => Craft::t('password-policy', 'Secret rotated.'),
         ]);
     }
@@ -383,7 +386,7 @@ class WebhookEndpointController extends Controller
             $endpoint = $service->getEndpointById((int)$endpointId);
 
             if ($endpoint === null) {
-                throw new BadRequestHttpException("Invalid endpoint ID: {$endpointId}");
+                throw new BadRequestHttpException('Invalid or missing endpoint ID.');
             }
 
             $isNew = false;
