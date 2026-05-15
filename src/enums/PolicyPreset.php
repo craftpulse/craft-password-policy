@@ -47,6 +47,14 @@ enum PolicyPreset: string
     case PCI_DSS_V4 = 'pci_dss_v4';
 
     /**
+     * CIS Controls v8: Safeguard 5.2 length floor (14 chars password-only)
+     * plus CIS Password Policy Guide history + breach checking + 365-day
+     * rotation. Conflicts with NIST 800-63B on the rotation requirement;
+     * see the apply method's docblock for the deliberate trade-off.
+     */
+    case CIS_CONTROLS_V8 = 'cis_controls_v8';
+
+    /**
      * Returns a human-readable label for the preset.
      *
      * @return string
@@ -61,6 +69,38 @@ enum PolicyPreset: string
             self::OWASP_ASVS => 'OWASP ASVS L1',
             self::STRICT_ENTERPRISE => 'Strict Enterprise',
             self::PCI_DSS_V4 => 'PCI-DSS v4.0',
+            self::CIS_CONTROLS_V8 => 'CIS Controls v8',
+        };
+    }
+
+    /**
+     * Whether the preset's apply method writes ONLY to settings the
+     * Lite edition can enforce. False for presets that set Pro-only
+     * rules (sequential / repeated / contextual character checks).
+     *
+     * The Lite global-apply controller (`SettingsController::
+     * actionApplyPreset`) refuses to apply a non-Lite-eligible preset
+     * on Lite — applying a preset whose contract Lite can't honour
+     * would silently no-op the Pro-only fields and produce a policy
+     * that doesn't match what its named framework requires.
+     *
+     * Strict Enterprise sets `checkSequentialChars`,
+     * `checkRepeatedChars`, and `checkContextual` — all Pro-only —
+     * so it stays Pro-only.
+     *
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function isLiteEligible(): bool
+    {
+        return match ($this) {
+            self::NIST_800_63B,
+            self::OWASP_ASVS,
+            self::PCI_DSS_V4,
+            self::CIS_CONTROLS_V8 => true,
+            self::STRICT_ENTERPRISE => false,
         };
     }
 
@@ -82,6 +122,7 @@ enum PolicyPreset: string
             self::OWASP_ASVS => $this->_applyOwasp($policy),
             self::STRICT_ENTERPRISE => $this->_applyStrictEnterprise($policy),
             self::PCI_DSS_V4 => $this->_applyPciDss($policy),
+            self::CIS_CONTROLS_V8 => $this->_applyCisControlsV8($policy),
         };
 
         return $policy;
@@ -195,6 +236,55 @@ enum PolicyPreset: string
         $policy->passwordHistoryCount = 4;
         $policy->checkCommonPasswords = true;
         $policy->expiryAmount = 90;
+        $policy->expiryPeriod = 'day';
+    }
+
+    /**
+     * CIS Controls v8 preset: 14-char minimum (Safeguard 5.2 for
+     * password-only accounts), no composition, last-5 history, HIBP +
+     * common-password blocklist, 365-day rotation.
+     *
+     * Tracks CIS Controls v8 Safeguard 5.2 (IG1/IG2/IG3) plus the CIS
+     * Password Policy Guide companion. Safeguard 5.2 specifies 14
+     * chars for password-only accounts and 8 chars for MFA-enabled
+     * accounts; the plugin cannot reliably detect MFA presence at
+     * preset-apply time (a site may run CraftCMS TOTP, may not), so
+     * the preset defaults to the safer floor. Sites with MFA enabled
+     * get a stricter-than-required policy, which CIS treats as
+     * conformant.
+     *
+     * The CIS Password Policy Guide (referenced by Safeguard 5.2)
+     * adds: last-5 password history, continuous breach checking
+     * (HIBP-equivalent), internal deny-list of common/poor passwords,
+     * and one-year expiration with forced rotation on suspected
+     * compromise. CIS explicitly prefers length over composition —
+     * `cases`, `numbers`, `symbols` are all false.
+     *
+     * Note the 365-day rotation deliberately diverges from
+     * NIST 800-63B Rev. 4 (`SHALL NOT require subscribers to change
+     * passwords periodically`). Operators choosing between NIST and
+     * CIS must pick which framework's rotation guidance they align
+     * with. CIS-aligned compliance buyers — typical CIS Benchmark
+     * shops, US federal contractors using CIS as the actionable
+     * companion to NIST — expect the annual rotation here.
+     *
+     * @param GroupPolicyModel $policy
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _applyCisControlsV8(GroupPolicyModel $policy): void
+    {
+        $policy->minLength = 14;
+        $policy->maxLength = 128;
+        $policy->cases = false;
+        $policy->numbers = false;
+        $policy->symbols = false;
+        $policy->hibp = true;
+        $policy->checkCommonPasswords = true;
+        $policy->passwordHistoryCount = 5;
+        $policy->expiryAmount = 365;
         $policy->expiryPeriod = 'day';
     }
 }

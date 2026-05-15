@@ -67,6 +67,48 @@ it('does not require symbols in PCI-DSS preset', function() {
     expect($policy->symbols)->toBeNull();
 });
 
+it('configures CIS Controls v8 preset correctly', function() {
+    // CIS Controls v8 Safeguard 5.2 (IG1/IG2/IG3) specifies 14 chars
+    // for password-only accounts and 8 chars for MFA-enabled. We can't
+    // detect MFA presence at preset-apply time so we default to the
+    // safer floor. The CIS Password Policy Guide adds last-5 history,
+    // continuous HIBP-equivalent breach checking, common-password
+    // blocklist, and one-year expiration.
+    $policy = PolicyPreset::CIS_CONTROLS_V8->toGroupPolicy();
+
+    expect($policy->minLength)->toBe(14)
+        ->and($policy->maxLength)->toBe(128)
+        ->and($policy->cases)->toBeFalse()
+        ->and($policy->numbers)->toBeFalse()
+        ->and($policy->symbols)->toBeFalse()
+        ->and($policy->hibp)->toBeTrue()
+        ->and($policy->checkCommonPasswords)->toBeTrue()
+        ->and($policy->passwordHistoryCount)->toBe(5)
+        ->and($policy->expiryAmount)->toBe(365)
+        ->and($policy->expiryPeriod)->toBe('day');
+});
+
+it('does not set Pro-only validators in the CIS Controls v8 preset', function() {
+    // CIS doesn't require sequential / repeated / contextual checks.
+    // Keeping these unset is what makes the preset Lite-eligible.
+    $policy = PolicyPreset::CIS_CONTROLS_V8->toGroupPolicy();
+
+    expect($policy->checkSequentialChars)->toBeNull()
+        ->and($policy->checkRepeatedChars)->toBeNull()
+        ->and($policy->checkContextual)->toBeNull();
+});
+
+it('marks NIST, OWASP, PCI-DSS, and CIS as Lite-eligible', function() {
+    expect(PolicyPreset::NIST_800_63B->isLiteEligible())->toBeTrue()
+        ->and(PolicyPreset::OWASP_ASVS->isLiteEligible())->toBeTrue()
+        ->and(PolicyPreset::PCI_DSS_V4->isLiteEligible())->toBeTrue()
+        ->and(PolicyPreset::CIS_CONTROLS_V8->isLiteEligible())->toBeTrue();
+});
+
+it('marks Strict Enterprise as not Lite-eligible (Pro-only validators)', function() {
+    expect(PolicyPreset::STRICT_ENTERPRISE->isLiteEligible())->toBeFalse();
+});
+
 it('gives all presets labels', function() {
     foreach (PolicyPreset::cases() as $preset) {
         expect($preset->label())->not->toBeEmpty();

@@ -15,6 +15,7 @@ use craft\helpers\Queue;
 use craft\helpers\UrlHelper;
 use craft\web\Controller;
 use craft\web\UrlManager;
+use craftpulse\passwordpolicy\enums\PolicyPreset;
 use craftpulse\passwordpolicy\jobs\SeedBlocklist;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use yii\web\BadRequestHttpException;
@@ -46,7 +47,31 @@ class SettingsController extends Controller
         'history',
         'validators',
         'groups',
+        'presets',
         'audit',
+    ];
+
+    /**
+     * Preset fields that get written to the global SettingsModel by
+     * `actionApplyPreset()`. Matches the union of fields that any of
+     * the four Lite-eligible presets touch in `PolicyPreset::_apply*()`.
+     * Fields not in this list are left untouched even if the preset
+     * model has a non-null value for them.
+     *
+     * @var string[]
+     */
+    private const PRESET_APPLIED_FIELDS = [
+        'minLength',
+        'maxLength',
+        'cases',
+        'numbers',
+        'symbols',
+        'hibp',
+        'hibpFailMode',
+        'checkCommonPasswords',
+        'passwordHistoryCount',
+        'expiryAmount',
+        'expiryPeriod',
     ];
 
     // Public Methods
@@ -221,6 +246,79 @@ class SettingsController extends Controller
         $this->_maybeSeedBlocklist($oldCheckCommonPasswords, $settings);
 
         Craft::$app->getSession()->setNotice(Craft::t('app', 'Plugin settings saved.'));
+
+        return $this->redirectToPostedUrl();
+    }
+
+    /**
+     * Applies a `PolicyPreset` to the global plugin settings.
+     *
+     * Available on every edition for Lite-eligible presets (NIST,
+     * OWASP, PCI-DSS, CIS Controls v8). Strict Enterprise is Pro-only
+     * because it sets `checkSequentialChars` / `checkRepeatedChars` /
+     * `checkContextual` — rules the Lite edition can't enforce.
+     *
+     * Defense-in-depth: the UI hides Pro-only presets on Lite via
+     * `PolicyPreset::isLiteEligible()`, but the controller refuses
+     * the apply regardless so a crafted POST can't bypass the gate.
+     *
+     * Per-group preset application remains a Pro feature surfaced
+     * through `PolicyController` and the named-policy CRUD flow —
+     * this action is the Lite-eligible global-policy shortcut.
+     *
+     * @return Response|null
+     *
+     * @throws BadRequestHttpException
+     * @throws ForbiddenHttpException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function actionApplyPreset(): ?Response
+    {
+        $this->requirePostRequest();
+
+        $currentUser = Craft::$app->getUser()->getIdentity();
+        if (!$currentUser->can('pp:settings')) {
+            throw new ForbiddenHttpException('You do not have permission to edit the Password Policy settings.');
+        }
+        $general = Craft::$app->getConfig()->getGeneral();
+        if (!$general->allowAdminChanges) {
+            throw new ForbiddenHttpException('Unable to apply preset because admin changes are disabled in this environment.');
+        }
+
+        $presetValue = Craft::$app->getRequest()->getRequiredBodyParam('preset');
+        $preset = PolicyPreset::tryFrom($presetValue);
+        if ($preset === null) {
+            throw new BadRequestHttpException('Unknown preset.');
+        }
+
+        $plugin = PasswordPolicy::$plugin;
+        if (!$plugin->getIsPro() && !$preset->isLiteEligible()) {
+            throw new BadRequestHttpException('This preset requires the Pro edition.');
+        }
+
+        $presetPolicy = $preset->toGroupPolicy();
+        $existingSettings = $plugin->getSettings()->getAttributes();
+        $settings = $existingSettings;
+
+        foreach (self::PRESET_APPLIED_FIELDS as $field) {
+            if (property_exists($presetPolicy, $field) && $presetPolicy->$field !== null) {
+                $settings[$field] = $presetPolicy->$field;
+            }
+        }
+
+        if (!Craft::$app->getPlugins()->savePluginSettings($plugin, $settings)) {
+            Craft::$app->getSession()->setError(
+                Craft::t('password-policy', "Couldn't apply the {preset} preset.", ['preset' => $preset->label()]),
+            );
+
+            return null;
+        }
+
+        Craft::$app->getSession()->setNotice(
+            Craft::t('password-policy', '{preset} preset applied to global settings.', ['preset' => $preset->label()]),
+        );
 
         return $this->redirectToPostedUrl();
     }
