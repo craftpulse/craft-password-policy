@@ -216,6 +216,34 @@ class WebhookEndpointModel extends Model
     // =========================================================================
 
     /**
+     * Excludes the plaintext HMAC secrets from the model's default
+     * serialization surface. `WebhookEndpointController::actionSave`
+     * returns `asModelSuccess($endpoint, …)`, which calls
+     * `$model->toArray()` → `fields()`. Without this exclusion, every
+     * edit-save of an existing endpoint would re-serialize the
+     * decrypted `secretCurrent` + `secretPrevious` into the JSON
+     * response body, defeating the once-and-only-once display contract
+     * on the create path.
+     *
+     * The create-path display continues to use the flash session
+     * (`FLASH_KEY_NEW_SECRET`) — that's the one-and-only-once channel.
+     * Subsequent edits never need to round-trip the secret to the
+     * client; consumers picked it up on first creation.
+     *
+     * @return array<int|string, string>
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function fields(): array
+    {
+        $fields = parent::fields();
+        unset($fields['secretCurrent'], $fields['secretPrevious']);
+
+        return $fields;
+    }
+
+    /**
      * Returns the persistence-shape attributes for the record layer.
      * Encrypts `secretCurrent` and `secretPrevious` at the boundary so
      * the DB never sees plaintext. Returns the array the
