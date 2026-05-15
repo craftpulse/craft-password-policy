@@ -1,6 +1,8 @@
-# Password History (Pro)
+# Password History
 
-Block reuse of the last N passwords. Pro and Enterprise editions store a hashed copy of every password change in `passwordpolicy_password_history`; when a user tries to change to a password they've used recently, the change is rejected with a clear error message.
+Block reuse of the last N passwords. Every edition stores a hashed copy of every password change in `passwordpolicy_password_history`; when a user tries to change to a password they've used recently, the change is rejected with a clear error message.
+
+Per-group history overrides (different `passwordHistoryCount` per user group via named policies) require the **Pro** edition. The global setting applies to every edition.
 
 > 📷 *Screenshot: Front-end password change form showing the validation error "This password matches one you have used recently. Please choose a different password" rendered next to the new-password input, with the requirements list still highlighting the other rules in green.*
 
@@ -11,8 +13,8 @@ Open **Settings → Password Policy → History** in the control panel.
 - **Password history count** — How many previous passwords to remember (default `0` = feature disabled, max `24`). Setting this to a positive value enables the validator.
 - **Password history expiry days** — How many days to retain history rows before the GC prunes them (default `365`). The latest N rows are always retained regardless of age; this setting controls the cleanup of older rows that exceed the count.
 
-> ::: tip History count is a Pro tunable per policy
-> If per-group policies are enabled, each policy can set its own `passwordHistoryCount`. The resolver picks the highest value across the user's groups — a user in a Customers group (history=4) and an Admins group (history=12) is checked against the last 12. See [Per-Group Policies](./per-group-policies.md).
+> ::: tip Per-group history overrides (Pro)
+> The global setting applies on every edition. On Pro, each named policy can set its own `passwordHistoryCount` for per-group enforcement — the resolver picks the highest value across the user's groups so a user in a Customers group (history=4) and an Admins group (history=12) is checked against the last 12. See [Per-Group Policies](./per-group-policies.md).
 > :::
 
 ## How it works

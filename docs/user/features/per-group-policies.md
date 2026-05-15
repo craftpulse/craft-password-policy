@@ -1,10 +1,16 @@
 # Per-Group Policies (Pro)
 
-Different teams need different password rules. Customer-facing front-end accounts may need a friendlier policy than admin staff; vendors and external contractors may need a stricter floor. Per-group policies let you create **named policies** in the control panel, apply one of four compliance presets (or build from scratch), and assign each policy to one or more Craft user groups.
+Different teams need different password rules. Customer-facing front-end accounts may need a friendlier policy than admin staff; vendors and external contractors may need a stricter floor. Per-group policies let you create **named policies** in the control panel, apply one of five compliance presets (or build from scratch), and assign each policy to one or more Craft user groups.
+
+> ::: tip Global preset apply (every edition)
+> If you don't need per-group enforcement, Lite + Pro + Enterprise editions all ship a **global compliance-preset apply** surface at **Settings → Password Policy → Compliance Presets**. One click overwrites your global policy with NIST 800-63B, OWASP ASVS L1, PCI-DSS v4.0, or CIS Controls v8 values. Strict Enterprise requires Pro (it sets advanced validator flags only Pro can enforce).
+>
+> Per-group named-policy CRUD — the rest of this page — is the Pro feature: applying *different* presets to *different* groups, divergence indicators, conflict UX, merge resolution.
+> :::
 
 > 📷 *Screenshot: Policies index showing four named policies — "Editors (PCI-DSS)", "Admins (Strict)", "Customers (NIST 800-63B)", "Vendors (OWASP)" — each with a divergence indicator and assigned groups column.*
 
-This page covers the policies CRUD workflow, the four bundled presets, tri-state rule overrides, how merging works when a user belongs to multiple groups, and how to use the resolver from your own code.
+This page covers the policies CRUD workflow, the five bundled presets, tri-state rule overrides, how merging works when a user belongs to multiple groups, and how to use the resolver from your own code.
 
 ## How it works
 
@@ -37,7 +43,7 @@ The edit screen has three tabs:
 
 - **Name** — Display name shown in the policies index and in user-edit screens. Pick something readable for your team (e.g. "Customers (NIST)", "Admins (Strict)").
 - **Handle** — Auto-generated from the name; you can override it. Used for `craft.passwordPolicy.requirements({ groups: ['editors'] })` calls in templates.
-- **Preset** — Apply one of the four bundled compliance presets as a starting template. See [Presets](#presets) below. Leave blank for a fully custom policy.
+- **Preset** — Apply one of the five bundled compliance presets as a starting template. See [Presets](#presets) below. Leave blank for a fully custom policy.
 - **Assigned groups** — Multi-select. The policy applies to users in any of the selected groups.
 
 ### Rules
@@ -66,10 +72,10 @@ Click **Save**. The policy is immediately active for users in the assigned group
 
 ## Presets
 
-Four bundled compliance presets let you start from a known-good policy and customise from there.
+Five bundled compliance presets let you start from a known-good policy and customise from there. Four are Lite-eligible (NIST, OWASP, PCI-DSS, CIS Controls v8); Strict Enterprise sets Pro-only validator flags so it requires the Pro edition.
 
 > ::: warning Picking a preset is a framework commitment
-> Each preset maps to a specific compliance framework. NIST 800-63B Rev. 4 forbids composition rules and periodic rotation; PCI DSS v4.0.1 requires both. Don't mix-and-match — pick the preset that matches your audit and customise within its constraints. See [Compliance frameworks](../operations/compliance-frameworks.md) for the clause-by-clause mapping.
+> Each preset maps to a specific compliance framework. NIST 800-63B Rev. 4 forbids composition rules and periodic rotation; PCI DSS v4.0.1 requires both. CIS Controls v8 requires annual rotation. Don't mix-and-match — pick the preset that matches your audit and customise within its constraints. See [Compliance frameworks](../operations/compliance-frameworks.md) for the clause-by-clause mapping.
 > :::
 
 ### NIST 800-63B Rev. 4
@@ -112,6 +118,22 @@ expiryAmount: 90 days
 
 PCI DSS v4.0.1 §8.3.6–§8.3.9 compliance: 12-char min (or 8 for legacy), numeric + alphabetic mix, last-4 history, 90-day rotation. **The 90-day rotation conflicts with NIST 800-63B Rev. 4's SHALL NOT rotate.** This is the right preset only if you're under PCI scope.
 
+### CIS Controls v8
+
+```
+minLength: 14
+maxLength: 128
+hibp: true
+checkCommonPasswords: true
+cases: false (length over complexity)
+numbers: false
+symbols: false
+passwordHistoryCount: 5
+expiryAmount: 365 days
+```
+
+CIS Controls v8 Safeguard 5.2 sets the length floor at 14 chars for password-only accounts (8 for MFA-enabled). The plugin defaults to 14 because MFA presence can't be reliably detected at preset-apply time. The CIS Password Policy Guide companion adds last-5 history, continuous breach checking, common-password blocklist, and one-year expiration. **The 365-day rotation conflicts with NIST 800-63B Rev. 4's SHALL NOT rotate** — pick CIS only if you're under CIS scope (US federal contractors, CIS Benchmark shops). Lite-eligible.
+
 ### Strict Enterprise
 
 ```
@@ -128,7 +150,7 @@ passwordHistoryCount: 5
 expiryAmount: 90 days
 ```
 
-Maximum enforcement for privileged users — admins, finance staff, security operators. Fails closed on HIBP outages (reject when the API is unreachable). 90-day rotation. Use this for groups where the convenience trade-off is worth the friction.
+Maximum enforcement for privileged users — admins, finance staff, security operators. Fails closed on HIBP outages (reject when the API is unreachable). 90-day rotation. Use this for groups where the convenience trade-off is worth the friction. **Pro edition required** — sets `checkSequentialChars`, `checkRepeatedChars`, `checkContextual`, which only Pro enforces. Lite cannot apply this preset globally; the UI hides the apply button and the controller refuses crafted POSTs.
 
 ### Customising a preset
 

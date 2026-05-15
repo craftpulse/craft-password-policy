@@ -1,6 +1,10 @@
 # Notifications
 
-Pro and Enterprise editions ship a complete notification surface for password-related emails — expiry reminders, breach alerts, new-device alerts, admin security alerts — with a CP template editor, per-site templates, token-picker UX, AJAX test-send, an activity log of every dispatch attempt (success and failure), and a resend action for individual notifications.
+The plugin ships a complete notification surface for password-related emails — expiry reminders, breach alerts, new-device alerts, admin security alerts — across all three editions, with different levels of operator control.
+
+- **Lite** dispatches the seeded `expiry-reminder` template via the cron / queue path and writes a capture row to the notification log. No CP template editor, no activity screen, no resend, and no breach / new-device / admin-alert emails.
+- **Pro** adds the CP template editor (per-site overrides), token-picker UX, AJAX test-send, the activity log screen, the resend action, plus the `breach-detected` and `new-device-alert` email types that depend on the Pro HIBP-on-login listener.
+- **Enterprise** adds the `admin-security-alert` email type, cooldown-gated against the audit log's alert cooldowns table, plus the option to override the DB-stored body with a site Twig template.
 
 > 📷 *Screenshot: Notifications → Templates index showing four editable templates (Expiry Reminder, Breach Detected, New Device Alert, Admin Security Alert) with their per-site overrides.*
 
@@ -12,7 +16,7 @@ Four editable email templates ship at install time, seeded per site:
 
 | Template key | When it fires | Edition | Tokens |
 |---|---|---|---|
-| `expiry-reminder` | A user's password approaches the configured expiry window | Pro | `{{ user }}`, `{{ daysUntilExpiry }}`, `{{ siteName }}` |
+| `expiry-reminder` | A user's password approaches the configured expiry window | Lite (stock seeded template, no editor) / Pro (editable) / Enterprise | `{{ user }}`, `{{ daysUntilExpiry }}`, `{{ siteName }}` |
 | `breach-detected` | HIBP-on-login matches a user's password against the breach database | Pro | `{{ user }}`, `{{ detectedAt }}`, `{{ siteName }}` |
 | `new-device-alert` | A user signs in from a device the plugin hasn't seen before | Pro | `{{ user }}`, `{{ deviceLabel }}`, `{{ maskedIp }}`, `{{ siteName }}` |
 | `admin-security-alert` | A security event matching the configured `adminAlertEvents` list fires | Enterprise | `{{ event }}`, `{{ context }}`, `{{ siteName }}` |

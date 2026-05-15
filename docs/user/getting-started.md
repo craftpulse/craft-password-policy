@@ -67,7 +67,7 @@ Under **Settings → Password Policy → Validation**, toggle **Show strength in
 If your compliance framework requires periodic password changes, configure expiry under **Settings → Password Policy → Policy → Retention**:
 
 - **Expiry amount** + **Expiry period**: how long a password is valid (e.g. `90 days`). Set to `null` to disable.
-- **Expiry reminder days** (Pro): when to email users before expiry.
+- **Expiry reminder days**: when to email users before expiry. Lite ships the seeded reminder template; Pro adds the template editor + activity log + resend.
 
 > ::: warning NIST 800-63B Rev. 4 caveat
 > NIST 800-63B Rev. 4 explicitly forbids periodic rotation (`SHALL NOT require subscribers to change passwords periodically`). PCI DSS v4.0.1 §8.3.9 still requires 90-day rotation. Pick the framework that matches your audit and use the matching preset on the [Per-group policies](./features/per-group-policies.md) screen.
@@ -86,17 +86,23 @@ See [Cron setup](./operations/cron-setup.md) for the recommended production sche
 
 ### Lite (where you are now)
 
-You're done — the Lite edition is a single global policy. Visit [Validators](./features/validators.md) to fine-tune which checks run on every password.
+You're done — the Lite edition is a single global policy. Explore what Lite ships:
+
+- **[Compliance presets](../user/features/per-group-policies.md#presets)** — apply NIST 800-63B / OWASP ASVS L1 / PCI-DSS v4.0 / CIS Controls v8 to the global policy with one click at **Settings → Password Policy → Compliance Presets**.
+- **[Password history](./features/password-history.md)** — block reuse of the last 0–24 passwords. Set the count on the History settings page; the global value applies on every edition.
+- **Expiry reminders** — the seeded `expiry-reminder` template sends to users approaching their expiry window via the `password-policy/notification/send-expiry-reminders` cron command. See [Cron setup](./operations/cron-setup.md).
+- **[Validators](./features/validators.md)** — fine-tune which checks run on every password.
 
 ### Pro
 
 Upgrade to Pro to unlock:
 
-- **[Per-group named policies](./features/per-group-policies.md)** — different rules for different user groups, with four bundled compliance presets (NIST 800-63B, OWASP ASVS L1, PCI-DSS v4.0.1, Strict Enterprise).
+- **[Per-group named policies](./features/per-group-policies.md)** — different rules for different user groups, with five bundled compliance presets (NIST 800-63B, OWASP ASVS L1, PCI-DSS v4.0.1, CIS Controls v8, Strict Enterprise).
 - **[HIBP-on-login](./features/audit-logging.md#hibp-on-login)** — re-check every user's password against the breach database on every sign-in, not just at change time.
-- **[Password history](./features/password-history.md)** — block reuse of the last N passwords.
 - **[Front-end Twig builders](./features/frontend-twig.md)** — `loginForm()`, `passwordChangeForm()`, `passwordResetForm()` for consumer-site forms with AJAX validation and a11y baked in.
-- **[Email notifications](./features/notifications.md)** — per-site editable templates with token chips and a test-send button.
+- **[Notification template editor + activity log](./features/notifications.md)** — per-site editable templates with token chips, a test-send button, the activity log screen, and the resend action.
+- **[Advanced validators](./features/validators.md)** — sequential / repeated / contextual character checks beyond the universal length / complexity / blocklist surface.
+- **[Custom blocklist editor](./features/blocklist.md)** — admin-managed deny-list of company-specific words on top of the bundled common-password blocklist.
 
 Set the edition in `config/project/project.yaml`:
 
