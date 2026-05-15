@@ -34,6 +34,7 @@ use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
 use craft\events\SiteEvent;
 use craft\events\TemplateEvent;
+use craft\events\UserEvent;
 use craft\events\UserGroupEvent;
 use craft\helpers\ArrayHelper;
 use craft\helpers\ElementHelper;
@@ -1315,30 +1316,27 @@ class PasswordPolicy extends Plugin
      */
     private function _registerCraftSecurityListeners(): void
     {
-        // Account locked
+        // The Users service fires these events on itself, so
+        // `$event->sender` is the service instance — the User element
+        // lives on `UserEvent::$user`.
         Event::on(
             Users::class,
             Users::EVENT_AFTER_LOCK_USER,
-            function(Event $event) {
-                /** @var User $user */
-                $user = $event->sender;
+            function(UserEvent $event) {
                 $this->getAuditLog()->logEvent(
-                    userId: $user->id,
+                    userId: $event->user->id,
                     event: 'account_locked',
                     outcome: 'warning',
                 );
             }
         );
 
-        // Account unlocked
         Event::on(
             Users::class,
             Users::EVENT_AFTER_UNLOCK_USER,
-            function(Event $event) {
-                /** @var User $user */
-                $user = $event->sender;
+            function(UserEvent $event) {
                 $this->getAuditLog()->logEvent(
-                    userId: $user->id,
+                    userId: $event->user->id,
                     event: 'account_unlocked',
                     outcome: 'success',
                 );
