@@ -88,13 +88,28 @@ enum PolicyPreset: string
     }
 
     /**
-     * NIST 800-63B preset: min 15, no complexity, no expiration, HIBP on.
+     * NIST 800-63B preset: min 15, no composition rules, no rotation,
+     * HIBP on, common-password blocklist on.
      *
-     * Tracks the Aug 2024 Rev. 4 update to SP 800-63B, which raised the
-     * memorized-secret length floor for single-factor authentication
-     * from 8 to 15 characters. Rev. 3 (the prior baseline) shipped 8;
-     * keeping the preset at 8 reads as out-of-date to compliance buyers
-     * who know the spec.
+     * Tracks SP 800-63B Rev. 4 (finalised 31 July 2025). Rev. 4 raised
+     * the memorized-secret length floor for single-factor authentication
+     * from 8 to 15 characters, kept the multi-factor minimum at 8,
+     * explicitly forbids composition rules (`SHALL NOT impose other
+     * composition rules`), and explicitly forbids periodic rotation
+     * (`SHALL NOT require subscribers to change passwords periodically`).
+     *
+     * §3.1.1.2 SHALL also requires comparing the prospective secret
+     * against a blocklist of "commonly used, expected, or compromised
+     * passwords." HIBP covers compromised; `checkCommonPasswords` is
+     * required to cover commonly used. Both must be on for the preset
+     * to satisfy §3.1.1.2 SHALL.
+     *
+     * §3.2.2 SHALL also requires rate-limiting consecutive failed
+     * attempts to ≤100 per authenticator. The plugin delegates this
+     * to Craft core (`maxInvalidLogins` + `cooldownDuration` site
+     * config) — the preset doesn't override Craft's defaults. Operators
+     * should verify their `config/general.php` aligns; the default
+     * `maxInvalidLogins=5` already satisfies the ≤100 ceiling.
      *
      * @param GroupPolicyModel $policy
      * @return void
@@ -109,6 +124,7 @@ enum PolicyPreset: string
         $policy->numbers = false;
         $policy->symbols = false;
         $policy->hibp = true;
+        $policy->checkCommonPasswords = true;
         $policy->expiryAmount = null;
     }
 
