@@ -407,21 +407,21 @@ class WebhookEndpointController extends Controller
             );
         }
 
-        // Surface the freshly-generated secret EXACTLY ONCE on create.
-        // Subsequent edit-screen renders do not include it.
-        // The session may not be available in console contexts (test
-        // bootstrap, queue worker re-running a controller method) —
-        // skip the flash silently in that case; the secret is also in
-        // the asModelSuccess JSON response shape.
+        // Surface the freshly-generated secret EXACTLY ONCE on create
+        // via the flash session — the edit template reads it on the
+        // next render. `WebhookEndpointModel::fields()` strips the
+        // plaintext secrets from `asModelSuccess`, so the JSON
+        // response does NOT carry the secret.
         if ($isNew && $endpoint->secretCurrent !== null) {
             try {
                 $session = Craft::$app->getSession();
                 $session->setFlash(self::FLASH_KEY_NEW_SECRET, $endpoint->secretCurrent);
                 $session->setFlash(self::FLASH_KEY_NEW_SECRET_ENDPOINT_ID, (string)$endpoint->id);
             } catch (Throwable) {
-                // Session unavailable (console request context). The
-                // JSON response still carries the new secret in the
-                // model's `secretCurrent` field for the caller.
+                // Session unavailable (console / queue worker
+                // context). The caller can read `$endpoint
+                // ->secretCurrent` directly from the model returned by
+                // `$service->saveEndpoint()`.
             }
         }
 
