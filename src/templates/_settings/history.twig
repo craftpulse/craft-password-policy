@@ -5,10 +5,9 @@
 
 {% set selectedItem = 'history' %}
 {% set title = 'Password History'|t('password-policy') %}
-{% set editionLocked = not isPro %}
 
 {% block actionButton %}
-    {% if not readOnly and not editionLocked %}
+    {% if not readOnly %}
         <input type="submit" class="btn submit" value="{{ 'Save'|t('app') }}">
     {% endif %}
 {% endblock %}
@@ -18,13 +17,9 @@
     <input type="hidden" name="pluginHandle" value="password-policy">
     {{ redirectInput('password-policy/settings/history') }}
 
-    {% if editionLocked %}
-        {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
-    {% endif %}
-
     <div class="flex-fields">
         {% set historyCountInfo %}
-            <span class="info">{{ "Stores bcrypt hashes of previous passwords. When a user changes their password, it is checked against the last N hashes. PCI-DSS v4.0 (Req 8.3.7) requires at least 4. Enterprise security teams typically use 5–12."|t('password-policy') }}</span>
+            <span class="info">{{ "Stores bcrypt hashes of previous passwords. When a user changes their password, it is checked against the last N hashes. PCI-DSS v4.0 (Req 8.3.7) requires at least 4. Enterprise security teams typically use 5–12. Per-group history overrides require the Pro edition."|t('password-policy') }}</span>
         {% endset %}
         {{ forms.textField({
             label: 'Password history count'|t('password-policy'),
@@ -35,7 +30,7 @@
             type: 'number',
             min: 0,
             max: 24,
-            disabled: readOnly or editionLocked,
+            disabled: readOnly,
         }) }}
 
         {% set retentionDaysInfo %}
@@ -49,7 +44,7 @@
             size: 5,
             type: 'number',
             min: 1,
-            disabled: readOnly or editionLocked,
+            disabled: readOnly,
         }) }}
     </div>
 {% endblock %}

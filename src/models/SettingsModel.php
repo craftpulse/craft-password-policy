@@ -99,22 +99,25 @@ class SettingsModel extends Model
      */
     public bool $forceChangeOnFirstLogin = false;
 
-    // Public Properties — Pro
-    // =========================================================================
-
     /**
-     * @var int the number of previous passwords to check against (0 = disabled, max 24)
+     * @var int the number of previous passwords to check against (0 = disabled, max 24).
+     *     Universal across editions since 5.2.0. Per-group history merge stays Pro via
+     *     `PolicyResolverService`; the global setting applies everywhere.
      *
      * @since 5.2.0
      */
     public int $passwordHistoryCount = 0;
 
     /**
-     * @var int the number of days to retain password history entries before pruning
+     * @var int the number of days to retain password history entries before pruning.
+     *     Universal across editions since 5.2.0.
      *
      * @since 5.2.0
      */
     public int $passwordHistoryExpiryDays = 365;
+
+    // Public Properties — Pro
+    // =========================================================================
 
     /**
      * @var bool whether to check for sequential character sequences (e.g. abc, 123)
