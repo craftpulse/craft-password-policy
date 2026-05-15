@@ -2,6 +2,8 @@
 
 Password Policy threads its data into Craft's native Users element index — table columns, sort options, condition-builder rules, and bulk element actions — rather than building a parallel "Password Policy" CP section. Operators work where they already are; the plugin surfaces what they need to see, filter on, and act on, all from `/admin/users`.
 
+> 📷 *Screenshot: Users index showing the Password Policy columns enabled — Last password change, Days until expiry, Status (composite seven-state pill), Last change reason — with a few rows displaying mixed states (current, expired, reset-required, breached).*
+
 ## Table attributes
 
 Nine attributes register on `RegisterElementTableAttributesEvent` for `craft\elements\User`. `UserIndexService::preloadForUsers()` runs once per request to keep cell rendering at O(1) per cell. The full preload issues at most five bounded queries regardless of visible-row count.
@@ -67,17 +69,21 @@ Three plugin-owned actions register on `User::EVENT_REGISTER_ACTIONS`. All three
 
 `ChangeUserPassword` and `SendPasswordResetEmail` are NOT Pro-gated. The decision is intentional: every operator running Craft has this capability already (via `users/set-password` console command, or the user edit screen's password field). Wiring them as element actions is convenience UX, not a Pro-tier upsell. Pro's actual upsell here is `ForcePasswordReset` — the `AdminForceReset` pending reason that propagates to the audit row is what Pro/Enterprise customers pay for.
 
-## User edit screen — Password Security pointer
+## User edit screen — Password Security tab
 
-A "Password Security" link appears in the right-hand sidebar on the User edit screen, gated on either `pp:force-reset-passwords` OR `pp:change-user-passwords` permission. The link targets a standalone CP page at `/admin/password-policy/users/<userId>/security` which renders:
+The User edit screen ships a **Password Security** tab via `UsersController::EVENT_DEFINE_EDIT_SCREENS`. The tab is gated on either `pp:force-reset-passwords` or `pp:change-user-passwords` permission and is visible on every edition (gating is permission-based, not edition-based).
 
-- Current status (color-coded: green for current, red for expired, orange for reset-required)
-- The resolved policy and which policy source applies
-- A force-reset button (gated on `pp:force-reset-passwords`)
+> 📷 *Screenshot: User edit screen with the Password Security tab selected, showing the resolved policy panel, status indicators (last change date, days until expiry, force-reset state), and three action buttons (Change password…, Send reset email, Force password reset on next sign-in).*
 
-The link itself is all-edition — gating happens via permission, not edition. Read-only mode (`allowAdminChanges = false`) keeps the link visible but disables the force-reset button on the linked page; the rendered status + resolved policy are read-only data and fine to view.
+The tab renders:
 
-> **Why a sidebar link rather than a top-level tab.** Craft 5 doesn't expose a public event for plugins to register top-level tabs on the User edit screen. Tabs come from the User's field layout (admin-editable, wrong fit for plugin-owned content) plus the controller-owned `CpScreenResponseBehavior::tabs()` slot (not plugin-extensible). The closest idiomatic affordance is `Element::EVENT_DEFINE_SIDEBAR_HTML`, which appends to the meta-fields column. If a future Craft release adds a tab-injection event, the registration listener swaps; the controller, URL rule, and template stay unchanged.
+- **Current status** — colour-coded status pills via `Cp::statusLabelHtml()`: green for current, red for expired or breached recently, orange for reset-required, yellow for expiring soon, grey for never-changed.
+- **Resolved policy** — the effective rules for this user with the source attribution (which named policies contributed, or "global settings").
+- **Per-user action buttons** — Change password… (opens the `ChangeUserPassword` modal with elevated-session protection), Send reset email, Force password reset on next sign-in.
+- **Notification activity panel** — the user's last 10 notification log entries with Resend buttons (Pro+, requires `pp:notification-log-view`).
+- **Force-reset history** — last 5 history rows with `changeReason` labels.
+
+Read-only mode (`allowAdminChanges = false`) keeps the tab visible but disables every action button; status + resolved policy + activity log are read-only data and remain visible.
 
 ## Permissions
 
