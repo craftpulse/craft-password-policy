@@ -11,6 +11,7 @@ The six frameworks covered:
 - [NIS2 Directive (EU 2022/2555)](#nis2)
 - [NIST SP 800-63B Rev. 4](#nist-800-63b-rev-4)
 - [PCI DSS v4.0.1](#pci-dss-v401)
+- [CIS Controls v8](#cis-controls-v8)
 - [ISO/IEC 27001:2022 + 27002:2022](#iso-iec-270012022)
 - [SOC 2 (AICPA TSC 2017 + 2022 Revised Points of Focus)](#soc-2)
 - [GDPR (Regulation EU 2016/679)](#gdpr)
@@ -19,24 +20,24 @@ For Plugin Store positioning + competitive landscape framing, see also `docs/int
 
 ## Quick reference matrix
 
-| Feature | NIS2 | NIST | PCI | ISO | SOC 2 | GDPR |
-|---|---|---|---|---|---|---|
-| Per-group named policies | Art. 21(2)(g), (i) | §3.1.1.2 | §8.3.6 | A.5.15, A.5.17 | CC6.1 | Art. 25 |
-| Password history | Art. 21(2)(g) | §3.1.1.2 (re: reuse) | §8.3.7 | A.5.17 | CC6.1 | — |
-| HIBP at change time | Art. 21(2)(g) | §3.1.1.2 SHALL | §8.3.5 | A.5.17 | CC6.1 | — |
-| HIBP-on-login (Pro) | Art. 21(2)(g) | §3.1.1.2 SHALL | §8.3.5 | A.5.17, A.8.15 | CC6.1, CC7.2 | — |
-| Custom blocklist | Art. 21(2)(g) | §3.1.1.2 SHALL | §8.3.5 | A.5.17 | CC6.1 | — |
-| Lockout (Craft core) | Art. 21(2)(g) | §3.2.2 | §8.3.4 | A.5.15 | CC6.1 | Art. 32(1)(b) |
-| Force-reset actions | Art. 21(2)(g), (i) | §3.1.1.2 | §8.3.5 | A.5.15 | CC6.3 | Art. 32(1)(b) |
-| Audit log (Enterprise) | Art. 21(2)(g), (i) | — | §10.2, §10.3 | A.8.15, A.5.33 | CC7.2, CC8.1 | Art. 5(1)(f), 32(1)(d) |
-| Hash-chained rows | Art. 21(2)(g) | — | §10.3 | A.5.33 | CC7.2 | Art. 32(1)(b)(d) |
-| Verifier CLI | — | — | §10.3 | A.5.33 | CC7.2 | Art. 32(1)(d) |
-| Policy change diffs | Art. 21(2)(g) | — | §10.2 | A.5.37, A.8.15 | CC8.1 | Art. 25 |
-| Per-event PII allowlist | Art. 21(2)(g) | — | §10.2 | A.8.15 | CC6.1 | Art. 5(1)(f), 25 |
-| `CRAFT_AUDIT_PII_KEY` rotation | — | — | — | A.5.17 | CC6.3 | Art. 17, 25, 32(1)(b) |
-| SIEM forwarders | Art. 21(2)(g) | — | §10.2 | A.8.16 | CC7.2 | — |
-| Webhooks | Art. 21(2)(g) | — | §10.2 | A.8.16 | CC7.2 | — |
-| Retention purge (≥365 days) | Art. 21(2)(g) | — | §10.5.1 | A.5.33 | CC7.2 | Art. 5(1)(e), 17 |
+| Feature | NIS2 | NIST | PCI | CIS v8 | ISO | SOC 2 | GDPR |
+|---|---|---|---|---|---|---|---|
+| Per-group named policies | Art. 21(2)(g), (i) | §3.1.1.2 | §8.3.6 | 5.2 (per-account) | A.5.15, A.5.17 | CC6.1 | Art. 25 |
+| Password history | Art. 21(2)(g) | §3.1.1.2 (re: reuse) | §8.3.7 | PPG (last 5) | A.5.17 | CC6.1 | — |
+| HIBP at change time | Art. 21(2)(g) | §3.1.1.2 SHALL | §8.3.5 | PPG (breach check) | A.5.17 | CC6.1 | — |
+| HIBP-on-login (Pro) | Art. 21(2)(g) | §3.1.1.2 SHALL | §8.3.5 | PPG (continuous) | A.5.17, A.8.15 | CC6.1, CC7.2 | — |
+| Custom blocklist | Art. 21(2)(g) | §3.1.1.2 SHALL | §8.3.5 | PPG (deny list) | A.5.17 | CC6.1 | — |
+| Lockout (Craft core) | Art. 21(2)(g) | §3.2.2 | §8.3.4 | 6.x | A.5.15 | CC6.1 | Art. 32(1)(b) |
+| Force-reset actions | Art. 21(2)(g), (i) | §3.1.1.2 | §8.3.5 | PPG (rotation on compromise) | A.5.15 | CC6.3 | Art. 32(1)(b) |
+| Audit log (Enterprise) | Art. 21(2)(g), (i) | — | §10.2, §10.3 | 8.x | A.8.15, A.5.33 | CC7.2, CC8.1 | Art. 5(1)(f), 32(1)(d) |
+| Hash-chained rows | Art. 21(2)(g) | — | §10.3 | 8.x | A.5.33 | CC7.2 | Art. 32(1)(b)(d) |
+| Verifier CLI | — | — | §10.3 | 8.x | A.5.33 | CC7.2 | Art. 32(1)(d) |
+| Policy change diffs | Art. 21(2)(g) | — | §10.2 | 8.x | A.5.37, A.8.15 | CC8.1 | Art. 25 |
+| Per-event PII allowlist | Art. 21(2)(g) | — | §10.2 | — | A.8.15 | CC6.1 | Art. 5(1)(f), 25 |
+| `CRAFT_AUDIT_PII_KEY` rotation | — | — | — | — | A.5.17 | CC6.3 | Art. 17, 25, 32(1)(b) |
+| SIEM forwarders | Art. 21(2)(g) | — | §10.2 | 8.x | A.8.16 | CC7.2 | — |
+| Webhooks | Art. 21(2)(g) | — | §10.2 | 8.x | A.8.16 | CC7.2 | — |
+| Retention purge (≥365 days) | Art. 21(2)(g) | — | §10.5.1 | 8.x | A.5.33 | CC7.2 | Art. 5(1)(e), 17 |
 
 The rest of this page is the per-framework drilldown.
 
@@ -181,6 +182,38 @@ The hash chain + verifier CLI is the literal implementation. The chain proves im
 > *"Retain audit log history for at least 12 months, with a minimum of three months immediately available."*
 
 The plugin's default `auditLogRetentionDays = 365` satisfies the 12-month floor exactly. For longer retention, increase the setting + provision additional storage. For "immediately available" — the audit log is queryable from the CP at all times within the retention window.
+
+## CIS Controls v8
+
+**Center for Internet Security Critical Security Controls v8 + CIS Password Policy Guide**
+
+The plugin's `CIS_CONTROLS_V8` preset is built to satisfy Safeguard 5.2 (length floor) plus the CIS Password Policy Guide companion document (history, breach checking, blocklist, rotation). Verified against the CIS Controls Assessment Specification.
+
+### Safeguard 5.2 — Unique passwords
+
+> *"Use unique passwords for all enterprise assets. Best practice implementation includes, at a minimum, an 8-character password for accounts using MFA and a 14-character password for accounts not using MFA."*
+
+Applies to Implementation Groups IG1, IG2, IG3 — every CIS adopter, not just enterprise tier.
+
+The `CIS_CONTROLS_V8` preset sets `minLength = 14`. The plugin can't reliably detect MFA presence at preset-apply time, so the safer floor (14) is the default. Sites running Craft's native TOTP get a stricter-than-CIS-minimum policy, which CIS treats as conformant.
+
+### CIS Password Policy Guide — companion recommendations
+
+The Password Policy Guide adds:
+
+- **History**: block reuse of the last 5 passwords. `passwordHistoryCount = 5` in the preset.
+- **Breach checking**: continuously check passwords against a bad / banned / breached list. `hibp = true` in the preset.
+- **Common-password blocklist**: at least 20 known poor or weak passwords. `checkCommonPasswords = true` in the preset (the bundled blocklist is well over 20 entries).
+- **Rotation**: annual expiration plus forced rotation on suspected compromise. `expiryAmount = 365`, `expiryPeriod = 'day'` in the preset.
+- **Length over complexity**: no required composition rules. `cases = false`, `numbers = false`, `symbols = false` in the preset.
+
+### Lite-eligibility
+
+Every CIS preset field maps to a Lite-shippable setting. Lite operators can apply the CIS preset globally via **Settings → Password Policy → Compliance Presets** — no Pro upgrade required.
+
+### Other frameworks vs CIS
+
+CIS's 365-day rotation deliberately diverges from NIST 800-63B Rev. 4 (which forbids periodic rotation). Sites aligning to CIS — typical CIS Benchmark shops, US federal contractors using CIS as the actionable companion to NIST — expect annual rotation. Sites aligning to NIST should NOT also apply the CIS preset; pick one framework per site.
 
 ## ISO/IEC 27001:2022
 

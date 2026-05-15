@@ -1,12 +1,12 @@
 # Editions
 
-Password Policy ships three editions from a single 5.2.0 codebase. Lite is free; Pro and Enterprise are paid upgrades through the Craft Plugin Store. **Enterprise is not yet built** — it ships alongside Lite + Pro in the 5.2.0 release once Phase G work lands. The settings table and feature list below describe what each edition will surface at 5.2.0 release.
+Password Policy ships three editions from a single 5.2.0 codebase. Lite is free; Pro and Enterprise are paid upgrades through the Craft Plugin Store.
 
 | Edition | Price | Focus |
 |---------|-------|-------|
-| **Lite** | Free | Baseline policy enforcement, HIBP at change time, strength meter, retention/expiry, force-change-on-first-login |
-| **Pro** | ~$149 | Per-group policies + presets, password history, advanced validators, blocklist editor, notifications, front-end Twig render-builder surface, HIBP-on-login |
-| **Enterprise** | ~$299 | (Phase G) Hash-chained audit log, compliance dashboard, SIEM forwarders, webhooks, API tokens |
+| **Lite** | Free | Baseline policy enforcement, HIBP at change time, strength meter, password history (global), one-click compliance presets (NIST / OWASP / PCI-DSS / CIS), expiry reminder emails (stock template), retention/expiry, force-change-on-first-login |
+| **Pro** | ~$149 | Per-group named policies + presets, advanced validators (sequential / repeated / contextual), blocklist editor, notification template editor + activity log + resend, front-end Twig render-builder surface, HIBP-on-login |
+| **Enterprise** | ~$299 | Hash-chained audit log, compliance dashboard, SIEM forwarders, signed webhooks, audit export, API tokens |
 
 ## Edition helpers
 
@@ -33,15 +33,20 @@ PasswordPolicy::$plugin->isCraftTeamOrBetter();  // Team / Pro / Enterprise
 | Force-reset element action | | ✓ | ✓ |
 | Change-password element action | ✓ | ✓ | ✓ |
 | Send-reset-email element action | ✓ | ✓ | ✓ |
-| Password history | | ✓ | ✓ |
-| Per-group named policies + presets | | ✓ | ✓ |
-| Sequential / repeated / contextual / blocklist validators | | ✓ | ✓ |
+| Password history (global, 0–24) | ✓ | ✓ | ✓ |
+| Per-group named policies + history overrides | | ✓ | ✓ |
+| Compliance preset one-click apply (global) | ✓ (NIST / OWASP / PCI-DSS / CIS) | ✓ (+ Strict Enterprise) | ✓ |
+| Expiry-reminder email (cron + queue) | ✓ stock template | ✓ editor + resend | ✓ |
+| Breach-detected email + new-device alert | | ✓ | ✓ |
+| Notification activity log (CP screen) | | ✓ | ✓ |
+| Sequential / repeated / contextual validators | | ✓ | ✓ |
+| Common-password blocklist toggle | ✓ | ✓ | ✓ |
 | Custom blocklist editor (CP page) | | ✓ | ✓ |
-| Email notifications (expiry, breach, etc.) | | ✓ | ✓ |
-| Hash-chained audit log | | | ✓ (Phase G) |
-| Compliance dashboard | | | ✓ (Phase G) |
-| SIEM forwarders + webhooks | | | ✓ (Phase G) |
-| API token management | | | ✓ (Phase G) |
+| Hash-chained audit log | | | ✓ |
+| Compliance dashboard | | | ✓ |
+| SIEM forwarders + signed webhooks | | | ✓ |
+| Audit export (signed download) | | | ✓ |
+| API token management | | | ✓ |
 
 `PasswordChangedEvent`, `PasswordValidationEvent`, `UserRegisteredEvent`, and `BreachDetectedEvent` are part of every edition — third-party modules can subscribe regardless of license. See [`reference/events.md`](reference/events.md).
 
@@ -68,33 +73,33 @@ All settings persist in project config regardless of edition. The CP UI hides se
 | `expiryPeriod` | `string` | `'day'` | `'day'`, `'week'`, `'month'`, or `'year'`. |
 | `cspNonce` | `bool` | `false` | Generate a CSP nonce for the strength-indicator script tag. |
 | `retentionUtilities` | `bool` | `false` | Show the Retention CP utility for ad-hoc bulk operations. |
+| `passwordHistoryCount` | `int` | `0` | Previous bcrypt hashes to compare against (0 disables, max 24). Per-group overrides require Pro. |
+| `passwordHistoryExpiryDays` | `int` | `365` | Days to retain history rows before GC purges them. |
+| `expiryReminderDays` | `int` | `14` | Days before expiry to send the reminder notification (stock template on Lite; Pro adds the editor + activity log + resend). |
+| `checkCommonPasswords` | `bool` | `false` | Reject passwords matching the bundled blocklist. |
 
 ### Pro settings
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `enablePerGroupPolicies` | `bool` | `false` | Resolve policies per user-group via the named-policy CRUD. When off, all users see the global policy. |
-| `passwordHistoryCount` | `int` | `0` | Previous bcrypt hashes to compare against (0 disables, max 24). |
-| `passwordHistoryExpiryDays` | `int` | `365` | Days to retain history rows before GC purges them. |
 | `checkSequentialChars` | `bool` | `false` | Reject passwords with 3+ sequential ASCII or keyboard-row characters. |
 | `checkRepeatedChars` | `bool` | `false` | Reject passwords with 3+ repeated characters. |
 | `checkContextual` | `bool` | `false` | Reject passwords containing username, email, name, or site name. |
-| `checkCommonPasswords` | `bool` | `false` | Reject passwords matching the bundled blocklist. |
 | `complexityMode` | `string` | `'individual'` | `'individual'` runs each toggle separately; `'minimum'` requires X-of-4 character types. |
 | `minimumCharacterTypes` | `int` | `0` | When `complexityMode = 'minimum'`, requires this many types (0–4). |
 | `enableHibpOnLogin` | `bool` | `true` | Re-check the user's password against HIBP every login. |
-| `expiryReminderDays` | `int` | `14` | Days before expiry to send the reminder notification. |
 | `notificationLogRetentionDays` | `int` | `30` | Days to retain notification dedup-log rows. |
 
-### Enterprise settings (Phase G)
+### Enterprise settings
 
-These keys persist now but the matching feature surfaces ship in Phase G. Lite/Pro installs cannot save these via the CP — the settings save-action strip block enforces it.
+Lite/Pro installs cannot save these via the CP — the settings save-action strip block enforces it.
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `enableAuditLog` | `bool` | `false` | Enable hash-chained audit logging. |
 | `auditLogRetentionDays` | `int` | `365` | Days to retain audit-log rows before GC purges them. |
-| `enableNewDeviceAlerts` | `bool` | `false` | Email + audit on new-device login (Phase G). |
+| `enableNewDeviceAlerts` | `bool` | `false` | Email + audit on new-device login. |
 | `deviceRetentionDays` | `int` | `180` | Days to retain known-device records. |
 | `adminAlertEmail` | `?string` | `null` | Email address (env var) for admin security alerts. |
 | `adminAlertEvents` | `?array` | `null` | Audit event types that trigger admin alerts. |
@@ -117,9 +122,19 @@ These keys persist now but the matching feature surfaces ship in Phase G. Lite/P
 NIST SP 800-63B Rev. 4 (finalised 31 July 2025) sets a 15-character minimum for single-factor authentication and an 8-character minimum for the password component of a multi-factor authenticator. The plugin handles both cases honestly:
 
 - **Lite default (`minLength = 6`)** is below either NIST minimum. Sites running on the Lite default are not in single-factor NIST conformance; they're explicitly the "site picks its own floor" case. Raise `minLength` to 8 to land on the MFA-component minimum (paired with Craft's own MFA, when configured), or to 15 for the single-factor minimum.
-- **Pro `NIST_800_63B` preset (`minLength = 15`, `hibp = true`, `checkCommonPasswords = true`, no composition rules, no rotation)** satisfies §3.1.1.2 SHALL requirements for memorized secrets. §3.2.2 rate-limiting at ≤100 consecutive failed attempts is delegated to Craft core (`maxInvalidLogins` site config — the default `5` already satisfies the ceiling).
+- **`NIST_800_63B` preset (`minLength = 15`, `hibp = true`, `checkCommonPasswords = true`, no composition rules, no rotation)** satisfies §3.1.1.2 SHALL requirements for memorized secrets. Apply globally on Lite via the Compliance Presets settings page; apply per-group on Pro via named-policy CRUD. §3.2.2 rate-limiting at ≤100 consecutive failed attempts is delegated to Craft core (`maxInvalidLogins` site config — the default `5` already satisfies the ceiling).
 
-Rev. 4 explicitly forbids composition rules (`SHALL NOT impose other composition rules`) and explicitly forbids periodic rotation (`SHALL NOT require subscribers to change passwords periodically`). The `cases`, `numbers`, `symbols`, and `expiryAmount` settings remain available because other frameworks require them (PCI DSS §8.3.6 mandates numeric + alphabetic; §8.3.9 mandates 90-day rotation). Mixing the two stances is fine — pick the preset that matches the framework your audit pack maps to. **Do not market the NIST preset as "compliant" with frameworks that require composition + rotation.** The four bundled presets (`NIST_800_63B`, `OWASP_ASVS`, `STRICT_ENTERPRISE`, `PCI_DSS_V4`) each map to their own framework — choosing one is a framework commitment.
+Rev. 4 explicitly forbids composition rules (`SHALL NOT impose other composition rules`) and explicitly forbids periodic rotation (`SHALL NOT require subscribers to change passwords periodically`). The `cases`, `numbers`, `symbols`, and `expiryAmount` settings remain available because other frameworks require them (PCI DSS §8.3.6 mandates numeric + alphabetic; §8.3.9 mandates 90-day rotation; CIS Controls v8 Safeguard 5.2 references annual expiration via the CIS Password Policy Guide). Mixing stances is fine — pick the preset that matches the framework your audit pack maps to. **Do not market a preset as "compliant" with frameworks it doesn't map to.** The five bundled presets (`NIST_800_63B`, `OWASP_ASVS`, `PCI_DSS_V4`, `CIS_CONTROLS_V8`, `STRICT_ENTERPRISE`) each map to their own framework — choosing one is a framework commitment.
+
+### CIS Controls v8 alignment
+
+CIS Controls v8 Safeguard 5.2 (IG1 / IG2 / IG3) sets the password length floor at **14 characters for password-only accounts and 8 characters for MFA-enabled accounts**. The CIS Password Policy Guide companion adds last-5 history, continuous breach checking (HIBP-equivalent), a deny-list of common/poor passwords, and one-year expiration with forced rotation on suspected compromise.
+
+The `CIS_CONTROLS_V8` preset defaults to **14 chars** — the safer floor — because the plugin can't reliably detect MFA presence at preset-apply time. Sites running Craft's native TOTP get a stricter-than-CIS-minimum policy, which CIS treats as conformant.
+
+The CIS preset's 365-day rotation deliberately diverges from NIST 800-63B Rev. 4 (which forbids periodic rotation). CIS-aligned compliance buyers — US federal contractors using CIS as the actionable companion to NIST, CIS Benchmark shops — expect annual rotation here. Pick the preset that matches the framework you're aligning to; don't apply both NIST and CIS to the same global policy.
+
+The CIS preset is Lite-eligible (no Pro-only validators required) and applies globally via the Compliance Presets settings page on every edition.
 
 ### Phrasing discipline
 
