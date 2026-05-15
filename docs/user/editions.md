@@ -110,6 +110,25 @@ These keys persist now but the matching feature surfaces ship in Phase G. Lite/P
 | `webhooks` | `array` | `[]` | Webhook configurations. |
 | `apiEnabled` | `bool` | `false` | Enable API token management. |
 
+## Compliance notes
+
+### NIST 800-63B Rev. 4 alignment
+
+NIST SP 800-63B Rev. 4 (finalised 31 July 2025) sets a 15-character minimum for single-factor authentication and an 8-character minimum for the password component of a multi-factor authenticator. The plugin handles both cases honestly:
+
+- **Lite default (`minLength = 6`)** is below either NIST minimum. Sites running on the Lite default are not in single-factor NIST conformance; they're explicitly the "site picks its own floor" case. Raise `minLength` to 8 to land on the MFA-component minimum (paired with Craft's own MFA, when configured), or to 15 for the single-factor minimum.
+- **Pro `NIST_800_63B` preset (`minLength = 15`, `hibp = true`, `checkCommonPasswords = true`, no composition rules, no rotation)** satisfies §3.1.1.2 SHALL requirements for memorized secrets. §3.2.2 rate-limiting at ≤100 consecutive failed attempts is delegated to Craft core (`maxInvalidLogins` site config — the default `5` already satisfies the ceiling).
+
+Rev. 4 explicitly forbids composition rules (`SHALL NOT impose other composition rules`) and explicitly forbids periodic rotation (`SHALL NOT require subscribers to change passwords periodically`). The `cases`, `numbers`, `symbols`, and `expiryAmount` settings remain available because other frameworks require them (PCI DSS §8.3.6 mandates numeric + alphabetic; §8.3.9 mandates 90-day rotation). Mixing the two stances is fine — pick the preset that matches the framework your audit pack maps to. **Do not market the NIST preset as "compliant" with frameworks that require composition + rotation.** The four bundled presets (`NIST_800_63B`, `OWASP_ASVS`, `STRICT_ENTERPRISE`, `PCI_DSS_V4`) each map to their own framework — choosing one is a framework commitment.
+
+### Phrasing discipline
+
+These docs and the Plugin Store listing follow a specific phrasing discipline for compliance claims:
+
+- Never write **"compliant with"** or **"certified"** about a framework. Certification requires an auditor; we ship technical measures.
+- Write **"provides specific technical measures that controllers can rely on as part of their [framework] obligations"** or **"evidence and controls aligned with [specific clause]"** instead.
+- Cite specific clause numbers (NIS2 Article 21(2)(g); ISO 27002:2022 A.8.15; SOC 2 CC7.2; PCI DSS §10.2) rather than framework names alone — auditors read the clause text, not the marketing.
+
 ## Edition gating rules
 
 The plugin layers edition gates as defense-in-depth — the UI hides; the controller strips; the service-layer methods that consume edition-gated settings short-circuit on Lite. A bug at any one layer doesn't expose Pro/Enterprise behavior on Lite.
