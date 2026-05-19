@@ -355,121 +355,193 @@ class PasswordPolicyVariable implements ViteVariableInterface
 
     // Public Methods — Tag accessors (P1.12)
     // =========================================================================
+    //
+    // All builders below are Pro-gated. The marketing matrix has always
+    // listed the front-end Twig render surface as a Pro feature, and a
+    // friendly consumer-form builder is one of the load-bearing reasons
+    // operators upgrade. Lite installs can still ship the user-state +
+    // policy data accessors above and roll their own markup against
+    // `requirements()` / `requirementsText()` / `requirementRules()`.
+    //
+    // Each method calls `_assertProForBuilders()` before instantiating
+    // the Tag, throwing `\RuntimeException` on Lite. Twig surfaces it in
+    // dev mode and renders the friendly error template in production.
 
     /**
-     * Returns a fluent `<input type="password">` builder.
+     * Returns a fluent `<input type="password">` builder. Pro-only.
      *
      * @param array<string, mixed> $params chainable defaults
      * @return PasswordFieldTag
+     *
+     * @throws \RuntimeException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function passwordField(array $params = []): PasswordFieldTag
     {
+        $this->_assertProForBuilders('passwordField');
         return new PasswordFieldTag($params);
     }
 
     /**
-     * Returns a fluent requirement-list builder.
+     * Returns a fluent requirement-list builder. Pro-only.
      *
      * @param array<string, mixed> $params chainable defaults
      * @return RequirementListTag
+     *
+     * @throws \RuntimeException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function requirementList(array $params = []): RequirementListTag
     {
+        $this->_assertProForBuilders('requirementList');
         return new RequirementListTag($params);
     }
 
     /**
-     * Returns a fluent strength-meter builder.
+     * Returns a fluent strength-meter builder. Pro-only.
      *
      * @param array<string, mixed> $params chainable defaults
      * @return StrengthMeterTag
+     *
+     * @throws \RuntimeException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function strengthMeter(array $params = []): StrengthMeterTag
     {
+        $this->_assertProForBuilders('strengthMeter');
         return new StrengthMeterTag($params);
     }
 
     /**
-     * Returns a fluent requirements-hint builder (single human-readable summary).
+     * Returns a fluent requirements-hint builder (single human-readable summary). Pro-only.
      *
      * @param array<string, mixed> $params chainable defaults
      * @return RequirementsHintTag
+     *
+     * @throws \RuntimeException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function requirementsHint(array $params = []): RequirementsHintTag
     {
+        $this->_assertProForBuilders('requirementsHint');
         return new RequirementsHintTag($params);
     }
 
     /**
-     * Returns a fluent composite widget (input + meter + checklist + hint).
+     * Returns a fluent composite widget (input + meter + checklist + hint). Pro-only.
      *
      * @param array<string, mixed> $params chainable defaults
      * @return PasswordWidgetTag
+     *
+     * @throws \RuntimeException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function passwordWidget(array $params = []): PasswordWidgetTag
     {
+        $this->_assertProForBuilders('passwordWidget');
         return new PasswordWidgetTag($params);
     }
 
     /**
-     * Returns a fluent login-form builder targeting Craft's `users/login`.
+     * Returns a fluent login-form builder targeting Craft's `users/login`. Pro-only.
      *
      * @param array<string, mixed> $params chainable defaults
      * @return LoginFormTag
+     *
+     * @throws \RuntimeException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function loginForm(array $params = []): LoginFormTag
     {
+        $this->_assertProForBuilders('loginForm');
         return new LoginFormTag($params);
     }
 
     /**
-     * Returns a fluent password-change-form builder for a logged-in user.
+     * Returns a fluent password-change-form builder for a logged-in user. Pro-only.
      *
      * @param array<string, mixed> $params chainable defaults
      * @return PasswordChangeFormTag
+     *
+     * @throws \RuntimeException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function passwordChangeForm(array $params = []): PasswordChangeFormTag
     {
+        $this->_assertProForBuilders('passwordChangeForm');
         return new PasswordChangeFormTag($params);
     }
 
     /**
-     * Returns a fluent password-reset-form builder for a token-based reset.
+     * Returns a fluent password-reset-form builder for a token-based reset. Pro-only.
      *
      * @param array<string, mixed> $params chainable defaults
      * @return PasswordResetFormTag
+     *
+     * @throws \RuntimeException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function passwordResetForm(array $params = []): PasswordResetFormTag
     {
+        $this->_assertProForBuilders('passwordResetForm');
         return new PasswordResetFormTag($params);
     }
 
     // Private Methods
     // =========================================================================
+
+    /**
+     * Asserts the active edition includes the front-end render-builder
+     * surface. Throws `\RuntimeException` when the install is below Pro
+     * so Twig surfaces the exception in dev mode and renders the friendly
+     * error template in production — `craft.passwordPolicy.xxx().render()`
+     * fails loud rather than silently emitting empty markup.
+     *
+     * Only the markup-emitting builders gate via this helper. The data
+     * accessors (`requirements`, `requirementsText`, `requirementRules`)
+     * and user-state accessors (`daysUntilExpiry`, `passwordStatus`, …)
+     * remain universal — Lite consumers can use the data layer to roll
+     * their own markup without the Pro render surface.
+     *
+     * @param string $method the builder method name for the error message
+     * @return void
+     *
+     * @throws \RuntimeException when the install is below Pro
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _assertProForBuilders(string $method): void
+    {
+        if (PasswordPolicy::$plugin->getIsPro()) {
+            return;
+        }
+
+        throw new \RuntimeException(sprintf(
+            'craft.passwordPolicy.%s() requires the Pro edition. ' .
+            'Front-end Twig render builders are a Pro feature. Lite installs ' .
+            'should render password forms with their own markup using the ' .
+            'universal data accessors: requirements(), requirementsText(), ' .
+            'requirementRules().',
+            $method,
+        ));
+    }
 
     /**
      * Resolves the appropriate SettingsModel for the given context.

@@ -2,7 +2,7 @@
 
 Reference for the `craft.passwordPolicy.*` render builders that ship with v5.2.0. Use these to build login, registration, password-change, and password-reset pages on consumer-facing site templates without re-implementing the policy criteria, AJAX validation, strength meter, show/hide toggle, or a11y wiring yourself.
 
-The builders work on every edition. On Lite, they emit markup against the global policy. On Pro, the resolved per-group policy applies automatically when the user (or anonymous group-preview hint) has groups assigned.
+The render builders require the **Pro edition**. The variable methods (`passwordField()`, `passwordWidget()`, `loginForm()`, `passwordChangeForm()`, `passwordResetForm()`, `requirementList()`, `strengthMeter()`, `requirementsHint()`) throw `\RuntimeException` on Lite — Twig surfaces the exception in dev mode and renders the friendly error template in production. Lite installs that want consumer-side password UX can roll their own markup against the universal **data accessors** documented in this page: `requirements()`, `requirementsText()`, `requirementRules()`. On Pro, the resolved per-group policy applies automatically when the user (or anonymous group-preview hint) has groups assigned.
 
 > **Both `craft.passwordPolicy` (camelCase, canonical) and `craft.passwordpolicy` (all-lowercase, legacy 5.1.1 form) work.** The lowercase form ships permanently for backward compatibility with 5.1.1 consumers; new code should prefer the camelCase form to match modern Craft variable conventions. This page uses camelCase throughout.
 
