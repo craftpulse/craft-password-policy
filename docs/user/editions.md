@@ -4,8 +4,8 @@ Password Policy ships three editions from a single 5.2.0 codebase. Lite is free;
 
 | Edition | Price | Focus |
 |---------|-------|-------|
-| **Lite** | Free | Baseline policy enforcement, HIBP at change time, strength meter, password history (global), one-click compliance presets (NIST / OWASP / PCI-DSS / CIS), expiry reminder emails (stock template), retention/expiry, force-change-on-first-login |
-| **Pro** | ~$149 | Per-group named policies + presets, advanced validators (sequential / repeated / contextual), blocklist editor, notification template editor + activity log + resend, front-end Twig render-builder surface, HIBP-on-login |
+| **Lite** | Free | Baseline policy enforcement, HIBP at change time, strength meter, common-password blocklist toggle, password history (global), expiry reminder emails (stock template), retention/expiry, force-change-on-first-login |
+| **Pro** | ~$149 | Per-group named policies + one-click compliance presets (NIST / OWASP / PCI-DSS / CIS / Strict Enterprise), advanced validators (sequential / repeated / contextual), blocklist editor, notification template editor + activity log + resend, front-end Twig render-builder surface, HIBP-on-login |
 | **Enterprise** | ~$299 | Hash-chained audit log, compliance dashboard, SIEM forwarders, signed webhooks, audit export, API tokens |
 
 ## Edition helpers
@@ -35,7 +35,7 @@ PasswordPolicy::$plugin->isCraftTeamOrBetter();  // Team / Pro / Enterprise
 | Send-reset-email element action | ✓ | ✓ | ✓ |
 | Password history (global, 0–24) | ✓ | ✓ | ✓ |
 | Per-group named policies + history overrides | | ✓ | ✓ |
-| Compliance preset one-click apply (global) | ✓ (NIST / OWASP / PCI-DSS / CIS) | ✓ (+ Strict Enterprise) | ✓ |
+| Compliance preset one-click apply (NIST / OWASP / PCI-DSS / CIS / Strict) | | ✓ | ✓ |
 | Expiry-reminder email (cron + queue) | ✓ stock template | ✓ editor + resend | ✓ |
 | Breach-detected email + new-device alert | | ✓ | ✓ |
 | Notification activity log (CP screen) | | ✓ | ✓ |
@@ -122,7 +122,8 @@ Lite/Pro installs cannot save these via the CP — the settings save-action stri
 NIST SP 800-63B Rev. 4 (finalised 31 July 2025) sets a 15-character minimum for single-factor authentication and an 8-character minimum for the password component of a multi-factor authenticator. The plugin handles both cases honestly:
 
 - **Lite default (`minLength = 6`)** is below either NIST minimum. Sites running on the Lite default are not in single-factor NIST conformance; they're explicitly the "site picks its own floor" case. Raise `minLength` to 8 to land on the MFA-component minimum (paired with Craft's own MFA, when configured), or to 15 for the single-factor minimum.
-- **`NIST_800_63B` preset (`minLength = 15`, `hibp = true`, `checkCommonPasswords = true`, no composition rules, no rotation)** satisfies §3.1.1.2 SHALL requirements for memorized secrets. Apply globally on Lite via the Compliance Presets settings page; apply per-group on Pro via named-policy CRUD. §3.2.2 rate-limiting at ≤100 consecutive failed attempts is delegated to Craft core (`maxInvalidLogins` site config — the default `5` already satisfies the ceiling).
+- **Lite installs can hand-configure the §3.1.1.2 SHALL set** — `minLength = 15` + `hibp = true` + `checkCommonPasswords = true` + composition/expiry switches off. The settings are universal; what's Pro-gated is the one-click preset that applies the set as a single named-framework commitment.
+- **`NIST_800_63B` preset (`minLength = 15`, `hibp = true`, `checkCommonPasswords = true`, no composition rules, no rotation)** is the Pro one-click application of §3.1.1.2 SHALL for memorized secrets. Apply globally on Pro via the Compliance Presets settings page; apply per-group on Pro via named-policy CRUD. §3.2.2 rate-limiting at ≤100 consecutive failed attempts is delegated to Craft core (`maxInvalidLogins` site config — the default `5` already satisfies the ceiling).
 
 Rev. 4 explicitly forbids composition rules (`SHALL NOT impose other composition rules`) and explicitly forbids periodic rotation (`SHALL NOT require subscribers to change passwords periodically`). The `cases`, `numbers`, `symbols`, and `expiryAmount` settings remain available because other frameworks require them (PCI DSS §8.3.6 mandates numeric + alphabetic; §8.3.9 mandates 90-day rotation; CIS Controls v8 Safeguard 5.2 references annual expiration via the CIS Password Policy Guide). Mixing stances is fine — pick the preset that matches the framework your audit pack maps to. **Do not market a preset as "compliant" with frameworks it doesn't map to.** The five bundled presets (`NIST_800_63B`, `OWASP_ASVS`, `PCI_DSS_V4`, `CIS_CONTROLS_V8`, `STRICT_ENTERPRISE`) each map to their own framework — choosing one is a framework commitment.
 
@@ -134,7 +135,7 @@ The `CIS_CONTROLS_V8` preset defaults to **14 chars** — the safer floor — be
 
 The CIS preset's 365-day rotation deliberately diverges from NIST 800-63B Rev. 4 (which forbids periodic rotation). CIS-aligned compliance buyers — US federal contractors using CIS as the actionable companion to NIST, CIS Benchmark shops — expect annual rotation here. Pick the preset that matches the framework you're aligning to; don't apply both NIST and CIS to the same global policy.
 
-The CIS preset is Lite-eligible (no Pro-only validators required) and applies globally via the Compliance Presets settings page on every edition.
+The CIS preset applies globally on Pro via the Compliance Presets settings page, and per-group via the named-policy CRUD. Lite installs can hand-configure the same field set — what's Pro-gated is the one-click apply as a framework-named commitment.
 
 ### Phrasing discipline
 

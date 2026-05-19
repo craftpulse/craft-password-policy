@@ -94,7 +94,7 @@ In addition to checking at password-change time, Pro adds **HIBP-on-login** — 
 
 ## Common passwords (blocklist)
 
-**Setting:** `checkCommonPasswords` (default off on Lite; on in Pro presets).
+**Setting:** `checkCommonPasswords` — universal across editions. Default off; the four compliance presets that include it (NIST, PCI-DSS, CIS Controls v8, Strict Enterprise) all turn it on.
 
 The validator rejects passwords matching the `passwordpolicy_blocklist` table — a combined list of:
 

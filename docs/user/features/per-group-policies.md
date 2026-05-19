@@ -72,7 +72,7 @@ Click **Save**. The policy is immediately active for users in the assigned group
 
 ## Presets
 
-Five bundled compliance presets let you start from a known-good policy and customise from there. Four are Lite-eligible (NIST, OWASP, PCI-DSS, CIS Controls v8); Strict Enterprise sets Pro-only validator flags so it requires the Pro edition.
+Five bundled compliance presets let you start from a known-good policy and customise from there. Presets are a Pro feature — applying one is a framework-named commitment, and the Pro tier is where the named-policy + per-group infrastructure lives. Lite installs can still hand-configure any preset's underlying field set; what's gated is the one-click apply.
 
 > ::: warning Picking a preset is a framework commitment
 > Each preset maps to a specific compliance framework. NIST 800-63B Rev. 4 forbids composition rules and periodic rotation; PCI DSS v4.0.1 requires both. CIS Controls v8 requires annual rotation. Don't mix-and-match — pick the preset that matches your audit and customise within its constraints. See [Compliance frameworks](../operations/compliance-frameworks.md) for the clause-by-clause mapping.
@@ -132,7 +132,7 @@ passwordHistoryCount: 5
 expiryAmount: 365 days
 ```
 
-CIS Controls v8 Safeguard 5.2 sets the length floor at 14 chars for password-only accounts (8 for MFA-enabled). The plugin defaults to 14 because MFA presence can't be reliably detected at preset-apply time. The CIS Password Policy Guide companion adds last-5 history, continuous breach checking, common-password blocklist, and one-year expiration. **The 365-day rotation conflicts with NIST 800-63B Rev. 4's SHALL NOT rotate** — pick CIS only if you're under CIS scope (US federal contractors, CIS Benchmark shops). Lite-eligible.
+CIS Controls v8 Safeguard 5.2 sets the length floor at 14 chars for password-only accounts (8 for MFA-enabled). The plugin defaults to 14 because MFA presence can't be reliably detected at preset-apply time. The CIS Password Policy Guide companion adds last-5 history, continuous breach checking, common-password blocklist, and one-year expiration. **The 365-day rotation conflicts with NIST 800-63B Rev. 4's SHALL NOT rotate** — pick CIS only if you're under CIS scope (US federal contractors, CIS Benchmark shops).
 
 ### Strict Enterprise
 
@@ -150,7 +150,7 @@ passwordHistoryCount: 5
 expiryAmount: 90 days
 ```
 
-Maximum enforcement for privileged users — admins, finance staff, security operators. Fails closed on HIBP outages (reject when the API is unreachable). 90-day rotation. Use this for groups where the convenience trade-off is worth the friction. **Pro edition required** — sets `checkSequentialChars`, `checkRepeatedChars`, `checkContextual`, which only Pro enforces. Lite cannot apply this preset globally; the UI hides the apply button and the controller refuses crafted POSTs.
+Maximum enforcement for privileged users — admins, finance staff, security operators. Fails closed on HIBP outages (reject when the API is unreachable). 90-day rotation. Use this for groups where the convenience trade-off is worth the friction. Sets `checkSequentialChars`, `checkRepeatedChars`, and `checkContextual` — Pro-only validators.
 
 ### Customising a preset
 

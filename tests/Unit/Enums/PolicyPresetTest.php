@@ -89,24 +89,15 @@ it('configures CIS Controls v8 preset correctly', function() {
 });
 
 it('does not set Pro-only validators in the CIS Controls v8 preset', function() {
-    // CIS doesn't require sequential / repeated / contextual checks.
-    // Keeping these unset is what makes the preset Lite-eligible.
+    // CIS doesn't require sequential / repeated / contextual checks —
+    // its companion guide is explicit about length-and-blocklist over
+    // composition. Keeping these unset preserves the named-framework
+    // mapping; setting them would diverge from CIS guidance.
     $policy = PolicyPreset::CIS_CONTROLS_V8->toGroupPolicy();
 
     expect($policy->checkSequentialChars)->toBeNull()
         ->and($policy->checkRepeatedChars)->toBeNull()
         ->and($policy->checkContextual)->toBeNull();
-});
-
-it('marks NIST, OWASP, PCI-DSS, and CIS as Lite-eligible', function() {
-    expect(PolicyPreset::NIST_800_63B->isLiteEligible())->toBeTrue()
-        ->and(PolicyPreset::OWASP_ASVS->isLiteEligible())->toBeTrue()
-        ->and(PolicyPreset::PCI_DSS_V4->isLiteEligible())->toBeTrue()
-        ->and(PolicyPreset::CIS_CONTROLS_V8->isLiteEligible())->toBeTrue();
-});
-
-it('marks Strict Enterprise as not Lite-eligible (Pro-only validators)', function() {
-    expect(PolicyPreset::STRICT_ENTERPRISE->isLiteEligible())->toBeFalse();
 });
 
 it('gives all presets labels', function() {
