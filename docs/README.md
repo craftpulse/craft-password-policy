@@ -25,7 +25,7 @@ Each feature has its own page covering what it does, how to configure it, and ho
 |---|---|
 | [Per-group named policies](./user/features/per-group-policies.md) | Pro: CRUD manager, tri-state overrides, presets, conflict notices. |
 | [Validators](./user/features/validators.md) | Length, complexity, sequential, repeated, contextual, common-password, history. |
-| [Password history](./user/features/password-history.md) | Pro: block reuse of the last N passwords with configurable retention. |
+| [Password history](./user/features/password-history.md) | Block reuse of the last N passwords with configurable retention (per-group overrides require Pro). |
 | [Blocklist](./user/features/blocklist.md) | Bundled common passwords (10k SecLists), custom dictionary editor, per-policy blocklist (Enterprise). |
 | [User-index integration](./user/features/user-index.md) | Status columns, condition rules, element actions on the Users index. |
 
