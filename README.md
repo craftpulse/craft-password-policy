@@ -17,12 +17,13 @@ Enforce strong password rules across your Craft site — and prove it. From a si
 | Have I Been Pwned (HIBP) at password change | ✅ | ✅ | ✅ |
 | Strength meter (CP + front-end) | ✅ | ✅ | ✅ |
 | Force change on first login | ✅ | ✅ | ✅ |
-| Per-group named policies + presets (NIST, OWASP, PCI-DSS, Strict) | — | ✅ | ✅ |
-| Password history (block reuse of last N) | — | ✅ | ✅ |
+| Per-group named policies + compliance presets (NIST, OWASP, PCI-DSS, CIS, Strict) | — | ✅ | ✅ |
+| Password history (block reuse of last N) | ✅ | ✅ | ✅ |
 | HIBP-on-login (re-check on every sign-in) | — | ✅ | ✅ |
 | Front-end Twig render builders (login / register / change / reset) | — | ✅ | ✅ |
 | Custom blocklist editor | — | ✅ | ✅ |
-| Email notifications (per-site editable templates) | — | ✅ | ✅ |
+| Expiry-reminder emails (cron + queue, stock template) | ✅ | ✅ | ✅ |
+| Notification template editor + activity log + resend | — | ✅ | ✅ |
 | Tamper-evident hash-chained audit log | — | — | ✅ |
 | Independent verifier CLI (auditor-runnable) | — | — | ✅ |
 | Compliance dashboard + HTML/CSV reports | — | — | ✅ |
@@ -36,7 +37,7 @@ Enforce strong password rules across your Craft site — and prove it. From a si
 
 ## Why this plugin
 
-**Compliance-ready, not just compliance-adjacent.** Pro and Enterprise tiers map directly to specific clauses in NIST 800-63B Rev. 4, NIS2 Article 21, PCI DSS v4.0.1, ISO 27001:2022, SOC 2, and GDPR. The four bundled policy presets — NIST 800-63B, OWASP ASVS L1, PCI-DSS v4.0.1, Strict Enterprise — translate framework requirements into one-click configurations. The audit log is hash-chained from the row level up and verifiable end-to-end via a console command auditors can run from a fresh checkout.
+**Compliance-ready, not just compliance-adjacent.** Pro and Enterprise tiers map directly to specific clauses in NIST 800-63B Rev. 4, NIS2 Article 21, PCI DSS v4.0.1, ISO 27001:2022, SOC 2, and GDPR. The five bundled policy presets — NIST 800-63B, OWASP ASVS L1, PCI-DSS v4.0.1, CIS Controls v8, Strict Enterprise — translate framework requirements into one-click configurations. The audit log is hash-chained from the row level up and verifiable end-to-end via a console command auditors can run from a fresh checkout.
 
 **Privacy by design.** The audit log stores SHA-256 IP hashes, never raw IPs. The userIdentifier column is HMAC-SHA-256 of email, keyed by a dedicated `CRAFT_AUDIT_PII_KEY` env var that's independent of Craft's `securityKey` — rotate it to destroy historical correlation without breaking sessions, CSRF tokens, or asset URLs. The per-event PII allowlist fails closed: an event type not in the registry is dropped rather than silently leaking unintended fields.
 
