@@ -192,7 +192,7 @@ The renderer gate is enforced at the `composeFromTemplate()` call site — when 
 ./craft password-policy/notification/send-expiry-reminders --user=42
 ```
 
-The command enqueues `SendPasswordExpiryRemindersJob` — a `BaseBatchedJob` that recomputes its recipient set per batch for natural retry idempotency. Lite returns `ExitCode::UNSPECIFIED_ERROR` with stderr `Pro edition required.`
+The command enqueues `SendPasswordExpiryRemindersJob` — a `BaseBatchedJob` that recomputes its recipient set per batch for natural retry idempotency. Runs on every edition since 5.2.0.
 
 For production, run nightly via cron:
 

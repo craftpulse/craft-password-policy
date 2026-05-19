@@ -246,7 +246,7 @@ The command prints the resolved policy as JSON, the names of the policies that c
 ## See also
 
 - [Validators](./validators.md) — the eight individual rules + the composite minimum-character-types mode.
-- [Password history](./password-history.md) — Pro: block reuse of the last N passwords.
+- [Password history](./password-history.md) — block reuse of the last N passwords (per-group `passwordHistoryCount` overrides require Pro).
 - [Compliance frameworks](../operations/compliance-frameworks.md) — clause-by-clause mapping for evidence packages.
 - [Audit logging](./audit-logging.md) — `policy_changed` audit events capture field-level diffs on every save (Enterprise).
 - [Front-end Twig builders](./frontend-twig.md) — render builders that consume the resolved policy automatically.

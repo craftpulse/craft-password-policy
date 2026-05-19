@@ -55,12 +55,12 @@ On low-traffic sites — exactly the kind that run compliance-grade password pol
 
 ## Configuration
 
-Retention windows are surfaced in the CP under **Settings → Password Policy → Retention** (Pro+) and **→ Audit** (Enterprise).
+Retention windows are surfaced in the CP under **Settings → Password Policy → Retention** and **→ Audit** (Enterprise). The Retention page is universal across editions; `notificationLogRetentionDays` is the only Pro-gated field on it.
 
 | Setting | Type | Default | Edition |
 |---|---|---|---|
-| `passwordHistoryCount` | int | `0` (disabled) | Pro |
-| `passwordHistoryExpiryDays` | int | `365` | Pro |
+| `passwordHistoryCount` | int | `0` (disabled) | All editions |
+| `passwordHistoryExpiryDays` | int | `365` | All editions |
 | `notificationLogRetentionDays` | int | `30` | Pro |
 | `alertCooldownRetentionDays` | int | `30` | All |
 | `auditLogRetentionDays` | int | `365` | Enterprise |

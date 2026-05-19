@@ -88,10 +88,11 @@ See [Cron setup](./operations/cron-setup.md) for the recommended production sche
 
 You're done — the Lite edition is a single global policy. Explore what Lite ships:
 
-- **[Compliance presets](../user/features/per-group-policies.md#presets)** — apply NIST 800-63B / OWASP ASVS L1 / PCI-DSS v4.0 / CIS Controls v8 to the global policy with one click at **Settings → Password Policy → Compliance Presets**.
 - **[Password history](./features/password-history.md)** — block reuse of the last 0–24 passwords. Set the count on the History settings page; the global value applies on every edition.
+- **[Common-password blocklist](./features/blocklist.md)** — reject passwords matching the bundled 10,000-entry SecLists list via the `checkCommonPasswords` toggle. Auto-seeds on first enable.
 - **Expiry reminders** — the seeded `expiry-reminder` template sends to users approaching their expiry window via the `password-policy/notification/send-expiry-reminders` cron command. See [Cron setup](./operations/cron-setup.md).
 - **[Validators](./features/validators.md)** — fine-tune which checks run on every password.
+- **Compliance-aligned configuration** — Lite gives you the building blocks (length, HIBP, blocklist, history, expiry) to hand-configure a policy matching NIST 800-63B / OWASP ASVS L1 / PCI-DSS / CIS Controls v8. The one-click [Compliance Presets](#pro) surface as framework-named commitments lives in Pro.
 
 ### Pro
 
