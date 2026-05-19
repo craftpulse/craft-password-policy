@@ -114,7 +114,7 @@ Both `craft.passwordPolicy` (camelCase) and `craft.passwordpolicy` (lowercase) w
 }).render() }}
 ```
 
-The builder resolves the user's effective policy (global on Lite; per-group on Pro), wires AJAX validation, renders requirements with `aria-describedby`, and gates the submit button on validation state. [See the full builder API →](./docs/user/features/frontend-twig.md)
+The render builders require the Pro edition. The builder resolves the user's effective policy (global by default; per-group when `enablePerGroupPolicies` is on), wires AJAX validation, renders requirements with `aria-describedby`, and gates the submit button on validation state. Lite consumers roll their own markup against the universal data accessors (`craft.passwordPolicy.requirements()`, `requirementsText()`, `requirementRules()`). [See the full builder API →](./docs/user/features/frontend-twig.md)
 
 ### Listen for breach detection
 

@@ -265,15 +265,44 @@ VoiceOver (macOS) and NVDA (Windows) have been targeted; the user is expected to
 
 ---
 
-## Lite degradation
+## Lite consumers — data-accessor escape hatch
 
-Builders work on every edition. On Lite installs:
+The render builders documented above are Pro-only. Calling `craft.passwordPolicy.passwordField()` (or any of the other seven builders) on Lite throws `\RuntimeException`, which Twig surfaces in dev mode and renders the friendly error template in production.
 
-- `requirements()` returns the global policy (no per-group resolution).
-- The CP gates Pro features (Policies/Blocklist/Notifications subnavs); the front-end builders never throw.
-- The `groups` parameter is silently ignored on Lite — the global policy applies regardless.
+Lite consumers who want to ship a policy-aware password form roll their own markup against the universal **data accessors** — these stay open across editions:
 
-This is intentional. Consumer site templates should never need an edition check around a `passwordField()` call.
+- `requirements(params = [])` — returns the resolved policy as a flat array (keys: `minLength`, `maxLength`, `requireUppercase`, `requireLowercase`, `requireNumbers`, `requireSymbols`, `blocklistEnabled`, `historyCount`, `hibpEnabled`, `complexityMode`, `minimumCharacterTypes`, `sequentialCharsCheck`, `repeatedCharsCheck`, `contextualCheck`).
+- `requirementsText(params = [])` — returns a one-sentence hint string for use under a password input.
+- `requirementRules(params = [])` — returns a list of `{key, label, met}` rows for custom checklist rendering.
+
+The `groups` parameter is silently ignored on Lite — there's no per-group resolution path. The global policy applies regardless. Per-group resolution remains a Pro feature gated inside `PolicyResolverService`.
+
+A minimal Lite-compatible password form:
+
+```twig
+{% set rules = craft.passwordPolicy.requirementRules() %}
+
+<form method="post">
+    {{ csrfInput() }}
+    <input type="hidden" name="action" value="users/save-user">
+
+    <label>New password
+        <input type="password" name="newPassword" required aria-describedby="pp-rules">
+    </label>
+
+    <p class="hint">{{ craft.passwordPolicy.requirementsText() }}</p>
+
+    <ul id="pp-rules" class="pp-requirements">
+        {% for rule in rules %}
+            <li data-pp-requirement="{{ rule.key }}">{{ rule.label }}</li>
+        {% endfor %}
+    </ul>
+
+    <button type="submit">Update password</button>
+</form>
+```
+
+The data accessors deliver the policy info without the Pro AJAX-validation / strength-meter / submit-gate / a11y stack. Lite operators wanting that stack upgrade to Pro.
 
 ---
 
