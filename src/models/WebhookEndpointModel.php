@@ -441,7 +441,7 @@ class WebhookEndpointModel extends Model
      * @author CraftPulse
      * @since 5.2.0
      */
-    private static function _encryptForStorage(string $plaintext): string
+    private static function _encryptForStorage(#[\SensitiveParameter] string $plaintext): string
     {
         return base64_encode(
             Craft::$app->getSecurity()->encryptByKey($plaintext),
