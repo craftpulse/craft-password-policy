@@ -47,7 +47,7 @@ src/
 Gating idiom:
 
 - **CP**: visible-but-disabled with "Pro edition required" badge — keeps upgrade path discoverable.
-- **Front-end builders**: graceful degradation. Lite → global resolution; Pro → per-group via `PolicyResolverService`. No 403s on the front-end.
+- **Front-end render builders** (`craft.passwordPolicy.passwordField()` / `passwordWidget()` / `loginForm()` / `passwordChangeForm()` / `passwordResetForm()` / `requirementList()` / `strengthMeter()` / `requirementsHint()`): Pro-gated via `PasswordPolicyVariable::_assertProForBuilders()`. Variable methods throw `\RuntimeException` on Lite — Twig surfaces the exception in dev mode and renders the friendly error template in production. Pro-only is a deliberate upgrade-incentive choice (the friendly consumer-form surface is a load-bearing reason operators upgrade); Lite consumers roll their own markup against the universal **data accessors** (`requirements()`, `requirementsText()`, `requirementRules()`). Per-group policy resolution on top of the builders gates separately inside `PolicyResolverService` (Pro + `enablePerGroupPolicies = true`).
 - **HIBP-on-login**: Pro-only listener registration. Lite installs simply don't fire it.
 - **`SettingsController::actionSave`** unconditionally `unset()` Pro/Enterprise keys for sub-edition saves — defense-in-depth even though UI doesn't render them.
 
