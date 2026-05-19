@@ -159,7 +159,7 @@ The migration `m260429_224908_UpgradeTo520Schema` creates the following tables o
 
 | Table | Purpose |
 |---|---|
-| `passwordpolicy_password_history` | Pro: bcrypt hashes of previous passwords for reuse prevention. |
+| `passwordpolicy_password_history` | bcrypt hashes of previous passwords for reuse prevention. |
 | `passwordpolicy_blocklist` | Bundled common passwords + custom dictionary entries. |
 | `passwordpolicy_policies` | Pro: named policies (also a Craft element table). |
 | `passwordpolicy_policy_groups` | Junction: policies × user groups. |

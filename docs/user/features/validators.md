@@ -10,7 +10,7 @@ The plugin ships eight password validators, each toggleable via plugin settings 
 | **Complexity (individual)** | Off | Lite | Passwords missing the required character types (`cases`, `numbers`, `symbols`). |
 | **Complexity (minimum)** | Off | Pro | Passwords matching fewer than `minimumCharacterTypes` of the four types. |
 | **HIBP** | Off (Lite) / On (Pro) | Lite | Passwords found in the Have I Been Pwned breach database. |
-| **Common passwords** | Off | Pro | Passwords matching the bundled blocklist (10,000 SecLists common credentials) plus admin-managed custom words. |
+| **Common passwords** | Off | Lite | Passwords matching the bundled blocklist (10,000 SecLists common credentials) plus admin-managed custom words. |
 | **Sequential characters** | Off | Pro | Passwords containing 3+ sequential ASCII characters or keyboard-row runs (`abc`, `xyz`, `321`, `qwerty`, `asdf`). |
 | **Repeated characters** | Off | Pro | Passwords containing 3+ repeated characters (`aaa`, `111`, `!!!`). Unicode-aware. |
 | **Contextual data** | Off | Pro | Passwords containing the user's username, email local-part, first/last name, system name, or primary site domain. |
