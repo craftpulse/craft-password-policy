@@ -42,7 +42,6 @@ class PasswordResetJob extends BaseBatchedJob implements RetryableJobInterface
     {
         parent::init();
 
-        // @TODO create JobBatchSize setting
         $this->batchSize = 500;
     }
 
@@ -63,7 +62,6 @@ class PasswordResetJob extends BaseBatchedJob implements RetryableJobInterface
      */
     public function canRetry($attempt, $error): bool
     {
-        // @TODO create maxRetryAttempts;
         return $attempt < 10;
     }
 

@@ -62,9 +62,11 @@ use yii\db\Exception;
  * rare retry-after-fail case is `resend()` (bypasses the cooldown gate
  * explicitly).
  *
- * Capture is non-negotiable across editions — Lite installs already
- * write rows for the surfaces they have (admin security alerts —
- * Lite-eligible). The activity-surface CP screen is gated to Pro+
+ * Capture is non-negotiable across editions — Lite installs write
+ * `notification_log` rows for the dispatch surfaces they have
+ * (expiry reminders — universal since 5.2.0). Pro adds breach-detected
+ * and new-device alerts; Enterprise adds admin security alerts via
+ * `adminAlertEmail`. The activity-surface CP screen is gated to Pro+
  * via the existing Notifications subnav permission, but the table
  * itself is populated everywhere.
  *
@@ -80,10 +82,8 @@ class NotificationService extends Component
     /**
      * Sends a password expiry reminder to a user.
      *
-     * Pro-only — Lite throws because the editable templates surface (which
-     * this method drives) is gated to Pro and there's no fallback shape on
-     * Universal across editions since 5.2.0. Lite installs render
-     * the seeded `expiry-reminder` template (read-only on Lite — the
+     * Universal across editions since 5.2.0. Lite installs render the
+     * seeded `expiry-reminder` template (read-only on Lite — the
      * Notification Templates editor UI remains a Pro feature). Pro
      * editors can override the template content per site; Enterprise
      * gets activity-log + resend on top.
