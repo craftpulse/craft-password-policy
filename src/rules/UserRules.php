@@ -135,14 +135,14 @@ class UserRules
             ];
         }
 
-        // Common password blocklist (Pro+).
+        // Common password blocklist (all editions since 5.2.0).
         //
         // Enterprise resolves the user's applicable policy IDs and passes
         // them to the validator so per-policy custom blocklist entries
         // (G6) can filter into the merged set. Pro/Lite leave `policyIds`
-        // null — the validator falls back to global-only matching, which
-        // is the pre-G6 behavior.
-        if ($isPro && $settings->checkCommonPasswords) {
+        // null — the validator falls back to global-only matching against
+        // the bundled list, which is the pre-G6 behavior.
+        if ($settings->checkCommonPasswords) {
             $config = [
                 ['password', 'newPassword'],
                 CommonPasswordValidator::class,

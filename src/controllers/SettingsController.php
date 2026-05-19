@@ -53,10 +53,10 @@ class SettingsController extends Controller
 
     /**
      * Preset fields that get written to the global SettingsModel by
-     * `actionApplyPreset()`. Matches the union of fields that any of
-     * the four Lite-eligible presets touch in `PolicyPreset::_apply*()`.
-     * Fields not in this list are left untouched even if the preset
-     * model has a non-null value for them.
+     * `actionApplyPreset()`. Matches the union of fields any of the
+     * five `PolicyPreset::_apply*()` methods touch. Fields not in this
+     * list are left untouched even if the preset model has a non-null
+     * value for them.
      *
      * @var string[]
      */
@@ -196,11 +196,9 @@ class SettingsController extends Controller
                 $settings['checkSequentialChars'],
                 $settings['checkRepeatedChars'],
                 $settings['checkContextual'],
-                $settings['checkCommonPasswords'],
                 $settings['complexityMode'],
                 $settings['minimumCharacterTypes'],
                 $settings['enablePerGroupPolicies'],
-                $settings['expiryReminderDays'],
                 $settings['notificationLogRetentionDays'],
                 $settings['enableHibpOnLogin'],
             );
@@ -259,18 +257,19 @@ class SettingsController extends Controller
     /**
      * Applies a `PolicyPreset` to the global plugin settings.
      *
-     * Available on every edition for Lite-eligible presets (NIST,
-     * OWASP, PCI-DSS, CIS Controls v8). Strict Enterprise is Pro-only
-     * because it sets `checkSequentialChars` / `checkRepeatedChars` /
-     * `checkContextual` — rules the Lite edition can't enforce.
+     * Pro+ only. Presets shorthand a compliance-framework conformance
+     * promise (NIST 800-63B Rev. 4, OWASP ASVS L1, PCI-DSS v4.0, CIS
+     * Controls v8, Strict Enterprise). That promise leans on Pro-only
+     * machinery (sequential / repeated / contextual validators for
+     * Strict; per-group policy resolution for everything else) and is
+     * a Pro value prop — Lite installs configure rules manually.
      *
-     * Defense-in-depth: the UI hides Pro-only presets on Lite via
-     * `PolicyPreset::isLiteEligible()`, but the controller refuses
-     * the apply regardless so a crafted POST can't bypass the gate.
+     * Defense-in-depth: the UI hides the Apply buttons on Lite via the
+     * `isPro` template flag, but the controller refuses the apply
+     * regardless so a crafted POST can't bypass the gate.
      *
-     * Per-group preset application remains a Pro feature surfaced
-     * through `PolicyController` and the named-policy CRUD flow —
-     * this action is the Lite-eligible global-policy shortcut.
+     * Per-group preset application uses a separate path through
+     * `PolicyController` and the named-policy CRUD flow.
      *
      * @return Response|null
      *
@@ -293,15 +292,15 @@ class SettingsController extends Controller
             throw new ForbiddenHttpException('Unable to apply preset because admin changes are disabled in this environment.');
         }
 
+        $plugin = PasswordPolicy::$plugin;
+        if (!$plugin->getIsPro()) {
+            throw new ForbiddenHttpException('Compliance presets require the Pro edition.');
+        }
+
         $presetValue = Craft::$app->getRequest()->getRequiredBodyParam('preset');
         $preset = PolicyPreset::tryFrom($presetValue);
         if ($preset === null) {
             throw new BadRequestHttpException('Unknown preset.');
-        }
-
-        $plugin = PasswordPolicy::$plugin;
-        if (!$plugin->getIsPro() && !$preset->isLiteEligible()) {
-            throw new BadRequestHttpException('This preset requires the Pro edition.');
         }
 
         $presetPolicy = $preset->toGroupPolicy();

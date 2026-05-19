@@ -116,6 +116,27 @@ class SettingsModel extends Model
      */
     public int $passwordHistoryExpiryDays = 365;
 
+    /**
+     * @var bool whether to check the password against the bundled common-password
+     *     blocklist. Universal across editions since 5.2.0 — the underlying
+     *     list lookup has no Pro dependency. Per-policy custom blocklist
+     *     entries (G6) remain a Pro/Enterprise affordance through the
+     *     blocklist editor; the global toggle applies everywhere.
+     *
+     * @since 5.2.0
+     */
+    public bool $checkCommonPasswords = false;
+
+    /**
+     * @var int the number of days before password expiry to send a reminder
+     *     notification. Universal across editions since 5.2.0 — the email
+     *     dispatch path is universal. Pro/Enterprise add the editable
+     *     template + activity log + resend on top.
+     *
+     * @since 5.2.0
+     */
+    public int $expiryReminderDays = 14;
+
     // Public Properties — Pro
     // =========================================================================
 
@@ -141,13 +162,6 @@ class SettingsModel extends Model
     public bool $checkContextual = false;
 
     /**
-     * @var bool whether to check password against common password blocklist
-     *
-     * @since 5.2.0
-     */
-    public bool $checkCommonPasswords = false;
-
-    /**
      * @var string complexity mode: 'individual' for per-toggle checks, 'minimum' for X-of-4 character types
      *
      * @since 5.2.0
@@ -167,13 +181,6 @@ class SettingsModel extends Model
      * @since 5.2.0
      */
     public bool $enablePerGroupPolicies = false;
-
-    /**
-     * @var int the number of days before password expiry to send a reminder notification
-     *
-     * @since 5.2.0
-     */
-    public int $expiryReminderDays = 14;
 
     /**
      * @var int the number of days to retain notification log entries

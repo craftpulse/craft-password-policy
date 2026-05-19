@@ -164,9 +164,9 @@ it('runs without an edition gate of its own', function() {
     // The validator's only branch is on row presence — there's no
     // PasswordPolicy::$plugin->getIsPro() check inside `validateValue()`.
     // UserRules::defineRules() decides whether to register the validator
-    // at all (gated on the Pro `checkCommonPasswords` toggle); once
-    // registered, the validator runs identically across editions. This
-    // test pins that contract.
+    // at all (gated on the `checkCommonPasswords` toggle, which is
+    // universal since 5.2.0); once registered, the validator runs
+    // identically across editions. This test pins that contract.
     BlocklistFactory::commonWord('edition-blind');
 
     PasswordPolicy::$plugin->edition = PasswordPolicy::EDITION_LITE;

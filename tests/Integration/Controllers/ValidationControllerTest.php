@@ -366,7 +366,7 @@ it('propagates blocklistHit into the strength block via the engine override', fu
     // `errorsByKey['common']` set when CommonPasswordValidator rejects
     // the password. Pin the propagation through the controller seam.
     //
-    // Toggle Pro common-password check on so the controller emits the
+    // Toggle the common-password check on so the controller emits the
     // common rule. Use a password the validator definitely rejects —
     // CommonPasswordValidator reads the bundled SecLists fixtures.
     $this->settings->checkCommonPasswords = true;

@@ -207,9 +207,9 @@ The Password Policy Guide adds:
 - **Rotation**: annual expiration plus forced rotation on suspected compromise. `expiryAmount = 365`, `expiryPeriod = 'day'` in the preset.
 - **Length over complexity**: no required composition rules. `cases = false`, `numbers = false`, `symbols = false` in the preset.
 
-### Lite-eligibility
+### Edition
 
-Every CIS preset field maps to a Lite-shippable setting. Lite operators can apply the CIS preset globally via **Settings → Password Policy → Compliance Presets** — no Pro upgrade required.
+The one-click `CIS_CONTROLS_V8` preset apply lives under **Settings → Password Policy → Compliance Presets**, gated to Pro. Every preset field maps to a universally-shippable setting, so Lite operators can hand-configure the same field set; the Pro tier is where the framework-named one-click commitment lives, alongside per-group policy resolution.
 
 ### Other frameworks vs CIS
 

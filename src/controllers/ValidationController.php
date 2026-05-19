@@ -144,7 +144,7 @@ class ValidationController extends Controller
             ];
         }
 
-        // Common passwords (Pro).
+        // Common passwords (all editions since 5.2.0).
         //
         // Enterprise resolves the user's policy IDs and scopes the
         // validator to global + per-policy entries (G6). Pro/Lite — and
@@ -152,7 +152,7 @@ class ValidationController extends Controller
         // collapses to global-only matching. We never trust anonymous
         // POST to identify a user; the per-policy filter only applies
         // when an authenticated identity is present in the session.
-        if ($isPro && $settings->checkCommonPasswords) {
+        if ($settings->checkCommonPasswords) {
             $validator = new CommonPasswordValidator([
                 'policyIds' => $this->_resolvePolicyIdsForRequest($user),
             ]);

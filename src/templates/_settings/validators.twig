@@ -4,11 +4,11 @@
 {% import '_includes/forms.twig' as forms %}
 
 {% set selectedItem = 'validators' %}
-{% set title = 'Advanced Validators'|t('password-policy') %}
-{% set editionLocked = not isPro %}
+{% set title = 'Validators'|t('password-policy') %}
+{% set proLocked = not isPro %}
 
 {% block actionButton %}
-    {% if not readOnly and not editionLocked %}
+    {% if not readOnly %}
         <input type="submit" class="btn submit" value="{{ 'Save'|t('app') }}">
     {% endif %}
 {% endblock %}
@@ -18,7 +18,25 @@
     <input type="hidden" name="pluginHandle" value="password-policy">
     {{ redirectInput('password-policy/settings/validators') }}
 
-    {% if editionLocked %}
+    {# ---- Universal validators (all editions) ---- #}
+    <div class="flex-fields">
+        {% set commonInfo %}
+            <span class="info">{{ "Checks against a curated blocklist stored locally in your database — no external API calls. If the blocklist is empty when enabled, it will be automatically seeded from the bundled data file via a background job. Manage the blocklist from the Blocklist subnav under Password Policy."|t('password-policy') }}</span>
+        {% endset %}
+        {{ forms.lightswitchField({
+            label: 'Block common passwords'|t('password-policy'),
+            instructions: "Reject passwords found in the common password blocklist."|t('password-policy') ~ commonInfo,
+            name: 'settings[checkCommonPasswords]',
+            on: settings.checkCommonPasswords,
+            disabled: readOnly,
+        }) }}
+    </div>
+
+    {# ---- Pro-only validators ---- #}
+    <hr>
+    <h2>{{ 'Advanced Validators'|t('password-policy') }}</h2>
+
+    {% if proLocked %}
         {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
     {% endif %}
 
@@ -31,7 +49,7 @@
             instructions: "Reject passwords with 3+ sequential characters."|t('password-policy') ~ sequentialInfo,
             name: 'settings[checkSequentialChars]',
             on: settings.checkSequentialChars,
-            disabled: readOnly or editionLocked,
+            disabled: readOnly or proLocked,
         }) }}
 
         {% set repeatedInfo %}
@@ -42,7 +60,7 @@
             instructions: "Reject passwords with 3+ repeated characters in a row."|t('password-policy') ~ repeatedInfo,
             name: 'settings[checkRepeatedChars]',
             on: settings.checkRepeatedChars,
-            disabled: readOnly or editionLocked,
+            disabled: readOnly or proLocked,
         }) }}
 
         {% set contextualInfo %}
@@ -53,18 +71,7 @@
             instructions: "Reject passwords containing personal or site-related information."|t('password-policy') ~ contextualInfo,
             name: 'settings[checkContextual]',
             on: settings.checkContextual,
-            disabled: readOnly or editionLocked,
-        }) }}
-
-        {% set commonInfo %}
-            <span class="info">{{ "Checks against a curated blocklist stored locally in your database — no external API calls. If the blocklist is empty when enabled, it will be automatically seeded from the bundled data file via a background job. Manage the blocklist from the Blocklist subnav under Password Policy."|t('password-policy') }}</span>
-        {% endset %}
-        {{ forms.lightswitchField({
-            label: 'Block common passwords'|t('password-policy'),
-            instructions: "Reject passwords found in the common password blocklist."|t('password-policy') ~ commonInfo,
-            name: 'settings[checkCommonPasswords]',
-            on: settings.checkCommonPasswords,
-            disabled: readOnly or editionLocked,
+            disabled: readOnly or proLocked,
         }) }}
     </div>
 {% endblock %}

@@ -74,37 +74,6 @@ enum PolicyPreset: string
     }
 
     /**
-     * Whether the preset's apply method writes ONLY to settings the
-     * Lite edition can enforce. False for presets that set Pro-only
-     * rules (sequential / repeated / contextual character checks).
-     *
-     * The Lite global-apply controller (`SettingsController::
-     * actionApplyPreset`) refuses to apply a non-Lite-eligible preset
-     * on Lite — applying a preset whose contract Lite can't honour
-     * would silently no-op the Pro-only fields and produce a policy
-     * that doesn't match what its named framework requires.
-     *
-     * Strict Enterprise sets `checkSequentialChars`,
-     * `checkRepeatedChars`, and `checkContextual` — all Pro-only —
-     * so it stays Pro-only.
-     *
-     * @return bool
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    public function isLiteEligible(): bool
-    {
-        return match ($this) {
-            self::NIST_800_63B,
-            self::OWASP_ASVS,
-            self::PCI_DSS_V4,
-            self::CIS_CONTROLS_V8 => true,
-            self::STRICT_ENTERPRISE => false,
-        };
-    }
-
-    /**
      * Converts the preset to a GroupPolicyModel with pre-configured values.
      *
      * @return GroupPolicyModel
