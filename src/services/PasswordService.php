@@ -123,16 +123,16 @@ class PasswordService extends Component
             return null;
         }
 
-        $passwords = Collection::make(explode("\r\n", $body));
+        $suffixLines = Collection::make(explode("\r\n", $body));
 
-        $passwords = $passwords->map(fn($password) => strtok($password, ':'))
-            ->filter(function($password) use ($suffix) {
-                if ($suffix === $password) {
+        $suffixLines = $suffixLines->map(fn($suffixLine) => strtok($suffixLine, ':'))
+            ->filter(function($suffixLine) use ($suffix) {
+                if ($suffix === $suffixLine) {
                     return true;
                 }
             });
 
-        return $passwords->isNotEmpty();
+        return $suffixLines->isNotEmpty();
     }
 
     /**
