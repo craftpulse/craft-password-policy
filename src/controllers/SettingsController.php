@@ -80,13 +80,19 @@ class SettingsController extends Controller
     /**
      * @inheritdoc
      *
+     * Admins always get through the gate so the read-only settings views
+     * keep working when `allowAdminChanges = false` (the standard
+     * production posture). Write actions (`actionSave`, `actionApplyPreset`)
+     * re-check `allowAdminChanges` themselves and throw with a
+     * plugin-specific message.
+     *
      * @throws ForbiddenHttpException
      *
      * @author CraftPulse
      */
     public function beforeAction($action): bool
     {
-        $this->requireAdmin();
+        $this->requireAdmin(false);
 
         return parent::beforeAction($action);
     }
