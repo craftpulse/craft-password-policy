@@ -71,7 +71,7 @@ The two modes are mutually exclusive — switching to `minimum` mode ignores the
 
 ## HIBP (Have I Been Pwned)
 
-**Setting:** `hibp` (default off on Lite, on in Pro presets) + `hibpFailMode` (default `open`).
+**Setting:** `hibp` — universal across editions, default off. Applying any of the Pro compliance presets (NIST, OWASP, PCI-DSS, CIS, Strict Enterprise) turns it on. Pair with `hibpFailMode` (default `open`).
 
 When enabled, the validator sends the **first 5 characters of `SHA-1(password)`** to the Pwned Passwords API and compares the returned bucket against the rest of the SHA-1. The full hash and the password itself never leave your server — the bucket contains ~500-800 candidate passwords and the API returns counts per suffix, never the suffix in plaintext.
 

@@ -19,8 +19,10 @@ use yii\console\ExitCode;
 /**
  * Class NotificationController
  *
- * Console commands for queueing notification work. Pro-only — Lite exits
- * non-zero with a stderr message rather than no-op'ing silently.
+ * Console commands for queueing notification work. Universal across
+ * editions since 5.2.0 — Lite operators wire `send-expiry-reminders`
+ * to cron and get the seeded `expiry-reminder` template rendered; Pro
+ * operators get whatever their Notification Templates editor wrote.
  *
  * `gc/run` already handles notification log retention, so this controller
  * has no `actionPrune`.

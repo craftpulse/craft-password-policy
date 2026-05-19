@@ -51,7 +51,7 @@ See [GC and retention](./gc-and-retention.md) for the per-table retention config
 
 Sends reminder emails to users whose passwords expire within the configured window (`expiryReminderDays`, default 14). Without this cron, expiry reminders never fire — passwords expire silently, and users see the "your password has expired" prompt only on their next login attempt.
 
-The command enqueues `SendPasswordExpiryRemindersJob` (a `BaseBatchedJob`) which recomputes its recipient set per batch for natural retry idempotency. Lite returns `ExitCode::UNSPECIFIED_ERROR` with stderr `Pro edition required.`
+The command enqueues `SendPasswordExpiryRemindersJob` (a `BaseBatchedJob`) which recomputes its recipient set per batch for natural retry idempotency. Runs on every edition since 5.2.0.
 
 For installs with very large user bases (>100k users with expiry enabled), tune the batch size via the `expiryReminderBatchSize` setting.
 

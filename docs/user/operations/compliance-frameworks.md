@@ -109,9 +109,9 @@ Quoting the spec:
 
 The plugin delegates lockout to Craft core (`maxInvalidLogins`, default `5` — well under the ≤100 SHALL ceiling). The audit log captures lock/unlock events.
 
-### Lite default — the MFA-component case
+### Lite default vs the NIST minima
 
-The plugin's **Lite default of 8 characters** is the MFA-component minimum, not the single-factor minimum. Sites running on Lite at default config are NIST-conformant **only when password is used as the MFA component of a multi-factor authentication setup**. For single-factor authentication, the Pro `NIST_800_63B` preset is required.
+The plugin's **default `minLength = 6`** (Craft's own floor) sits below either NIST minimum — 15 for single-factor authentication and 8 for the password component of multi-factor authentication. Sites running on the default are NOT in NIST conformance; they're explicitly the "site picks its own floor" case. To reach NIST §3.1.1.2 SHALL on Lite without applying the Pro preset, hand-configure `minLength = 15` + `hibp = true` + `checkCommonPasswords = true` + composition rules off + no rotation. For MFA-component conformance, `minLength = 8` paired with Craft's own MFA when configured. The Pro `NIST_800_63B` preset bundles the single-factor field set as a one-click commitment.
 
 This caveat is documented in [Edition Matrix → NIST 800-63B Rev. 4 alignment](../editions.md#nist-800-63b-rev-4-alignment).
 
