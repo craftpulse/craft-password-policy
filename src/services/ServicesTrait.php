@@ -78,7 +78,6 @@ trait ServicesTrait
                 'userState' => UserStateService::class,
                 'webhook' => WebhookService::class,
                 // Register the vite service
-                // @TODO devServerPublic / devServerInternal / serverPublic would benefit of `.env` vars for local dev
                 'vite' => [
                     'assetClass' => PasswordPolicyAsset::class,
                     'checkDevServer' => true,

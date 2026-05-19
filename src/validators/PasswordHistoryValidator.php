@@ -19,7 +19,9 @@ use yii\validators\Validator;
  * Class PasswordHistoryValidator
  *
  * Validates that a password has not been previously used by the same user.
- * Gated on Pro edition and passwordHistoryCount > 0.
+ * Runs on all editions when `passwordHistoryCount > 0` (universal since
+ * 5.2.0). Per-group `passwordHistoryCount` overrides remain Pro through
+ * `PolicyResolverService`.
  *
  * Note: The User model is available via $model in validateAttribute() —
  * Yii passes the model being validated, so this works without a signature

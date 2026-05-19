@@ -50,8 +50,6 @@ class RetentionService extends Component
      */
     public function resetPasswords(): void
     {
-        // @TODO create job priority setting
-        // @TODO create job ttr setting
         Queue::push(
             job: new PasswordResetJob([
                 'description' => Craft::t('password-policy', 'Resetting passwords'),
