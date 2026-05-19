@@ -1,6 +1,6 @@
 # Garbage Collection and Retention
 
-Password Policy keeps four retention-managed datasets — password history (Pro), notification log (Pro+), alert cooldowns (every edition), and audit log (Enterprise). This page covers how those tables are pruned, what the recommended production setup is, and which retention windows are configurable.
+Password Policy keeps four retention-managed datasets — password history (every edition), notification log (Pro+), alert cooldowns (every edition), and audit log (Enterprise). This page covers how those tables are pruned, what the recommended production setup is, and which retention windows are configurable.
 
 For production cron recipes including the audit verifier, see [Cron setup](./cron-setup.md).
 
@@ -8,7 +8,7 @@ For production cron recipes including the audit verifier, see [Cron setup](./cro
 
 | Table | Retention setting | Default | Edition | Strategy |
 |---|---|---|---|---|
-| `passwordpolicy_password_history` | `passwordHistoryCount` + `passwordHistoryExpiryDays` | 5 rows × 365 days | Pro | Keep the latest N rows per user. Delete rows beyond N that are older than the day window. |
+| `passwordpolicy_password_history` | `passwordHistoryCount` + `passwordHistoryExpiryDays` | 5 rows × 365 days | All editions | Keep the latest N rows per user. Delete rows beyond N that are older than the day window. Per-group `passwordHistoryCount` overrides require Pro. |
 | `passwordpolicy_notification_log` | `notificationLogRetentionDays` | 30 days | Pro | Hard-delete rows older than the window. |
 | `passwordpolicy_alert_cooldowns` | `alertCooldownRetentionDays` | 30 days | All editions | Hard-delete rows older than the window. |
 | `passwordpolicy_audit_log` | `auditLogRetentionDays` | 365 days | Enterprise (capture is universal; purge runs on every edition) | Hard-delete rows older than the window via `craft_elements` DELETE + FK CASCADE. |

@@ -2,10 +2,10 @@
 
 Different teams need different password rules. Customer-facing front-end accounts may need a friendlier policy than admin staff; vendors and external contractors may need a stricter floor. Per-group policies let you create **named policies** in the control panel, apply one of five compliance presets (or build from scratch), and assign each policy to one or more Craft user groups.
 
-> ::: tip Global preset apply (every edition)
-> If you don't need per-group enforcement, Lite + Pro + Enterprise editions all ship a **global compliance-preset apply** surface at **Settings → Password Policy → Compliance Presets**. One click overwrites your global policy with NIST 800-63B, OWASP ASVS L1, PCI-DSS v4.0, or CIS Controls v8 values. Strict Enterprise requires Pro (it sets advanced validator flags only Pro can enforce).
+> ::: tip Compliance presets (Pro)
+> The **Compliance Presets** page at **Settings → Password Policy → Compliance Presets** lets a Pro install overwrite the global policy with NIST 800-63B, OWASP ASVS L1, PCI-DSS v4.0, CIS Controls v8, or Strict Enterprise values in one click. The page is gated to Pro — applying a preset is a framework-named conformance commitment, and the Pro tier is where the named-policy + per-group infrastructure lives. Lite installs can hand-configure the same field values manually via the regular settings pages.
 >
-> Per-group named-policy CRUD — the rest of this page — is the Pro feature: applying *different* presets to *different* groups, divergence indicators, conflict UX, merge resolution.
+> Per-group named-policy CRUD — the rest of this page — is the deeper Pro feature: applying *different* presets to *different* groups, divergence indicators, conflict UX, merge resolution.
 > :::
 
 > 📷 *Screenshot: Policies index showing four named policies — "Editors (PCI-DSS)", "Admins (Strict)", "Customers (NIST 800-63B)", "Vendors (OWASP)" — each with a divergence indicator and assigned groups column.*

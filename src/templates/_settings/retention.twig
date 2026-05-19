@@ -78,19 +78,19 @@
             </p>
         {% endif %}
 
+        <hr>
+
+        {{ forms.textField({
+            label: 'Expiry reminder days'|t('password-policy'),
+            instructions: "How many days before expiry to send a reminder email."|t('password-policy'),
+            name: 'settings[expiryReminderDays]',
+            value: settings.expiryReminderDays,
+            size: 4,
+            type: 'number',
+            disabled: readOnly,
+        }) }}
+
         {% if isPro %}
-            <hr>
-
-            {{ forms.textField({
-                label: 'Expiry reminder days'|t('password-policy'),
-                instructions: "How many days before expiry to send a reminder email."|t('password-policy'),
-                name: 'settings[expiryReminderDays]',
-                value: settings.expiryReminderDays,
-                size: 4,
-                type: 'number',
-                disabled: readOnly,
-            }) }}
-
             <hr>
 
             {% set notificationLogInfo %}

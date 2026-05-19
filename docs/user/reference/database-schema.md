@@ -103,9 +103,9 @@ Junction table linking named policies to Craft user groups.
 
 The group-delete cascade is intentional — when a Craft user group is deleted, its policy assignments are automatically dropped. A pre-delete observability listener captures which policies lost an assignment for audit purposes.
 
-### `passwordpolicy_password_history` (Pro)
+### `passwordpolicy_password_history`
 
-Stores bcrypt hashes of previous passwords for reuse prevention.
+Stores bcrypt hashes of previous passwords for reuse prevention. Capture is universal across editions since 5.2.0; per-group `passwordHistoryCount` overrides remain Pro.
 
 | Column | Type | Notes |
 |---|---|---|
