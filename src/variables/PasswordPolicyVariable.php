@@ -15,6 +15,7 @@ use craft\db\Query;
 use craft\db\Table;
 use craft\elements\User;
 use craft\helpers\DateTimeHelper;
+use craftpulse\passwordpolicy\exceptions\EditionRequiredException;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\twig\tags\LoginFormTag;
@@ -373,7 +374,7 @@ class PasswordPolicyVariable implements ViteVariableInterface
      * @param array<string, mixed> $params chainable defaults
      * @return PasswordFieldTag
      *
-     * @throws \RuntimeException when the install is below Pro
+     * @throws EditionRequiredException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -390,7 +391,7 @@ class PasswordPolicyVariable implements ViteVariableInterface
      * @param array<string, mixed> $params chainable defaults
      * @return RequirementListTag
      *
-     * @throws \RuntimeException when the install is below Pro
+     * @throws EditionRequiredException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -407,7 +408,7 @@ class PasswordPolicyVariable implements ViteVariableInterface
      * @param array<string, mixed> $params chainable defaults
      * @return StrengthMeterTag
      *
-     * @throws \RuntimeException when the install is below Pro
+     * @throws EditionRequiredException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -424,7 +425,7 @@ class PasswordPolicyVariable implements ViteVariableInterface
      * @param array<string, mixed> $params chainable defaults
      * @return RequirementsHintTag
      *
-     * @throws \RuntimeException when the install is below Pro
+     * @throws EditionRequiredException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -441,7 +442,7 @@ class PasswordPolicyVariable implements ViteVariableInterface
      * @param array<string, mixed> $params chainable defaults
      * @return PasswordWidgetTag
      *
-     * @throws \RuntimeException when the install is below Pro
+     * @throws EditionRequiredException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -458,7 +459,7 @@ class PasswordPolicyVariable implements ViteVariableInterface
      * @param array<string, mixed> $params chainable defaults
      * @return LoginFormTag
      *
-     * @throws \RuntimeException when the install is below Pro
+     * @throws EditionRequiredException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -475,7 +476,7 @@ class PasswordPolicyVariable implements ViteVariableInterface
      * @param array<string, mixed> $params chainable defaults
      * @return PasswordChangeFormTag
      *
-     * @throws \RuntimeException when the install is below Pro
+     * @throws EditionRequiredException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -492,7 +493,7 @@ class PasswordPolicyVariable implements ViteVariableInterface
      * @param array<string, mixed> $params chainable defaults
      * @return PasswordResetFormTag
      *
-     * @throws \RuntimeException when the install is below Pro
+     * @throws EditionRequiredException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -508,10 +509,14 @@ class PasswordPolicyVariable implements ViteVariableInterface
 
     /**
      * Asserts the active edition includes the front-end render-builder
-     * surface. Throws `\RuntimeException` when the install is below Pro
-     * so Twig surfaces the exception in dev mode and renders the friendly
-     * error template in production — `craft.passwordPolicy.xxx().render()`
-     * fails loud rather than silently emitting empty markup.
+     * surface. Throws `EditionRequiredException` (extends
+     * `\RuntimeException`) when the install is below Pro so Twig surfaces
+     * the exception in dev mode and renders the friendly error template
+     * in production — `craft.passwordPolicy.xxx().render()` fails loud
+     * rather than silently emitting empty markup. Integrators that need
+     * to react to the gate explicitly can catch the dedicated type;
+     * `catch (\RuntimeException)` handlers continue to work because the
+     * dedicated class is a subclass.
      *
      * Only the markup-emitting builders gate via this helper. The data
      * accessors (`requirements`, `requirementsText`, `requirementRules`)
@@ -522,7 +527,7 @@ class PasswordPolicyVariable implements ViteVariableInterface
      * @param string $method the builder method name for the error message
      * @return void
      *
-     * @throws \RuntimeException when the install is below Pro
+     * @throws EditionRequiredException when the install is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -533,7 +538,7 @@ class PasswordPolicyVariable implements ViteVariableInterface
             return;
         }
 
-        throw new \RuntimeException(sprintf(
+        throw new EditionRequiredException(sprintf(
             'craft.passwordPolicy.%s() requires the Pro edition. ' .
             'Front-end Twig render builders are a Pro feature. Lite installs ' .
             'should render password forms with their own markup using the ' .
