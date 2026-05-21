@@ -365,8 +365,9 @@ class PasswordPolicyVariable implements ViteVariableInterface
     // `requirements()` / `requirementsText()` / `requirementRules()`.
     //
     // Each method calls `_assertProForBuilders()` before instantiating
-    // the Tag, throwing `\RuntimeException` on Lite. Twig surfaces it in
-    // dev mode and renders the friendly error template in production.
+    // the Tag, throwing `EditionRequiredException` on Lite. Twig surfaces
+    // it in dev mode and renders the friendly error template in
+    // production.
 
     /**
      * Returns a fluent `<input type="password">` builder. Pro-only.
