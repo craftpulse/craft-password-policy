@@ -19,10 +19,10 @@ use craft\helpers\DateTimeHelper;
 use craft\web\View;
 use craftpulse\passwordpolicy\elements\NotificationLogElement;
 use craftpulse\passwordpolicy\enums\NotificationStatus;
+use craftpulse\passwordpolicy\exceptions\EditionRequiredException;
 use craftpulse\passwordpolicy\models\NotificationTemplateModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use DateTime;
-use RuntimeException;
 use Throwable;
 use yii\base\Component;
 use yii\db\Exception;
@@ -135,7 +135,7 @@ class NotificationService extends Component
      * @param DateTime $detectedAt when the match was detected
      * @return void
      *
-     * @throws RuntimeException when the plugin is running the Lite edition
+     * @throws EditionRequiredException when the plugin is running the Lite edition
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -143,7 +143,7 @@ class NotificationService extends Component
     public function sendBreachDetected(User $user, DateTime $detectedAt): void
     {
         if (!PasswordPolicy::$plugin->getIsPro()) {
-            throw new RuntimeException('HIBP-on-login notifications require the Pro edition.');
+            throw new EditionRequiredException('HIBP-on-login notifications require the Pro edition.');
         }
 
         if ($user->email === null) {
@@ -187,7 +187,7 @@ class NotificationService extends Component
      * @param string $maskedIp
      * @return void
      *
-     * @throws RuntimeException when the plugin is running the Lite edition
+     * @throws EditionRequiredException when the plugin is running the Lite edition
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -195,7 +195,7 @@ class NotificationService extends Component
     public function sendNewDeviceAlert(User $user, string $deviceLabel, string $maskedIp): void
     {
         if (!PasswordPolicy::$plugin->getIsPro()) {
-            throw new RuntimeException('New-device alerts require the Pro edition.');
+            throw new EditionRequiredException('New-device alerts require the Pro edition.');
         }
 
         if ($user->email === null) {

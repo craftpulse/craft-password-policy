@@ -15,13 +15,26 @@ use RuntimeException;
 /**
  * Class EditionRequiredException
  *
- * Thrown when a caller invokes a feature gated to a higher edition than
- * the current install. Currently the only thrower is
- * `PasswordPolicyVariable::_assertProForBuilders()` — the eight
- * front-end render builders on the `craft.passwordPolicy.*` Twig
- * variable are Pro-only, and calling one on Lite raises this exception
- * which Twig surfaces in dev mode and renders the friendly error
- * template in production.
+ * Project-wide convention for edition-gate throws in the service and
+ * Twig-variable layers. Raised when a caller invokes a feature gated to
+ * a higher edition than the current install — calling
+ * `craft.passwordPolicy.passwordChangeForm()` on Lite, asking
+ * `NotificationService::sendBreachDetected()` to dispatch on Lite, or
+ * any future Pro-/Enterprise-gated entry point at the same layers.
+ *
+ * Layer-specific throwers:
+ *  - `PasswordPolicyVariable::_assertProForBuilders()` — the eight
+ *    front-end render builders on the `craft.passwordPolicy.*` Twig
+ *    variable. Twig surfaces the exception in dev mode and renders the
+ *    friendly error template in production.
+ *  - `NotificationService::sendBreachDetected()` / `sendNewDeviceAlert()`
+ *    — Pro-gated notification dispatch surfaces.
+ *
+ * HTTP controllers continue to use `yii\web\ForbiddenHttpException` for
+ * edition gates because Craft's web layer expects an HttpException to
+ * render a proper 403 response. Queue jobs and console controllers skip
+ * gracefully with a warning log / non-zero exit rather than throwing.
+ * See `.claude/rules/architecture.md` for the layered convention.
  *
  * Why a dedicated subclass of `\RuntimeException`:
  *  - Integrators can catch this specific class without false positives
