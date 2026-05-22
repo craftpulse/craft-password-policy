@@ -488,6 +488,47 @@ class SettingsModel extends Model
     }
 
     /**
+     * Returns the attribute values, excluding the legacy `pwned` /
+     * `pwnedFailMode` aliases from the default-list call.
+     *
+     * The aliases exist in [[attributes()]] so [[setAttributes()]] accepts
+     * them during file-based config load (`config/password-policy.php`
+     * with `pwned: true`). They must NOT leak into the read surface — if
+     * they do, code that does the read-then-merge-then-write round-trip
+     * (notably `SettingsController::actionSave()`'s
+     * `array_merge(existing, submitted)` → `savePluginSettings()` →
+     * `setAttributes()` loop) ends up with both `hibp` and `pwned` in
+     * the input array. `setAttributes` iterates in array order, and the
+     * stale `pwned` (carrying the old `hibp` value via `__get`) is
+     * applied last, overwriting the just-set canonical `hibp` value
+     * via the `__set` alias. Result: the lightswitch silently reverts
+     * to its prior state on every save.
+     *
+     * Stripping the aliases from the default-list `getAttributes()` call
+     * closes that loop. Explicit `getAttributes(['pwned'])` requests still
+     * return the alias for back-compat with callers that ask for it
+     * specifically — the override only filters the implicit default-list
+     * shape.
+     *
+     * @param array|null $names
+     * @param array $except
+     * @return array
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getAttributes($names = null, $except = []): array
+    {
+        $values = parent::getAttributes($names, $except);
+
+        if ($names === null) {
+            unset($values['pwned'], $values['pwnedFailMode']);
+        }
+
+        return $values;
+    }
+
+    /**
      * Returns whether reading `$name` is allowed. Overridden so the legacy
      * `pwned` / `pwnedFailMode` keys resolve through this model even though
      * no native property or `getXxx()` method exists for them — required so
