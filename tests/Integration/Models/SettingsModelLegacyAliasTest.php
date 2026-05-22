@@ -286,3 +286,78 @@ it('throws on assigning an unknown property name via __set (parent behavior)', f
     // visible here.
     $this->model->aPropertyThatDoesntExist = 'x';
 })->throws(\yii\base\UnknownPropertyException::class);
+
+// =============================================================================
+// getAttributes() — read surface excludes legacy aliases by default
+// =============================================================================
+//
+// The aliases live in `attributes()` so file-based config load
+// (`config/password-policy.php` with `pwned: true`) survives
+// `setAttributes()`'s safe-attribute check. They must NOT leak into the
+// default `getAttributes()` read — `SettingsController::actionSave()`
+// merges existing settings with the submitted form, then hands the
+// result to `Plugins::savePluginSettings()` which calls
+// `setAttributes($all, false)`. If `getAttributes()` returned `pwned`
+// (mirroring the stale pre-save hibp via `__get`), the alias's
+// `__set` would overwrite the freshly-set canonical `hibp` during
+// the iteration — silently reverting every HIBP toggle save.
+//
+// 2026-05-22 Phase H smoke test S1.3 caught this in the browser.
+
+it('excludes pwned and pwnedFailMode from default getAttributes() output', function() {
+    $values = $this->model->getAttributes();
+
+    expect($values)->not->toHaveKey('pwned')
+        ->and($values)->not->toHaveKey('pwnedFailMode');
+});
+
+it('still includes the canonical hibp and hibpFailMode in default getAttributes() output', function() {
+    $values = $this->model->getAttributes();
+
+    expect($values)->toHaveKey('hibp')
+        ->and($values)->toHaveKey('hibpFailMode');
+});
+
+it('returns the legacy alias when explicitly requested by name', function() {
+    // Back-compat carve-out — callers that explicitly ask for `pwned`
+    // still get it via the `__get` alias, so any external integration
+    // that reads the legacy key by name keeps working.
+    $this->model->hibp = true;
+    $values = $this->model->getAttributes(['pwned']);
+
+    expect($values)->toHaveKey('pwned')
+        ->and($values['pwned'])->toBeTrue();
+});
+
+it('survives the actionSave round-trip when hibp toggles from false to true', function() {
+    // The exact regression that S1.3 caught: read existing attributes,
+    // merge with a submitted form that sets hibp=true, run setAttributes
+    // on the merged array. Without the getAttributes() override, the
+    // stale `pwned` carried over from existing would overwrite hibp
+    // back to false at the end of the setAttributes iteration.
+    $this->model->hibp = false;
+    $this->model->hibpFailMode = 'open';
+
+    $existing = $this->model->getAttributes();
+    $submitted = ['hibp' => '1'];
+    $merged = array_merge($existing, $submitted);
+
+    $this->model->setAttributes($merged, false);
+
+    expect($this->model->hibp)->toBeTrue();
+});
+
+it('survives the actionSave round-trip when hibpFailMode toggles from open to closed', function() {
+    // Same shape as the previous test, but for hibpFailMode → pwnedFailMode.
+    // Both aliases share the round-trip bug; both need coverage.
+    $this->model->hibp = true;
+    $this->model->hibpFailMode = 'open';
+
+    $existing = $this->model->getAttributes();
+    $submitted = ['hibpFailMode' => 'closed'];
+    $merged = array_merge($existing, $submitted);
+
+    $this->model->setAttributes($merged, false);
+
+    expect($this->model->hibpFailMode)->toBe('closed');
+});
