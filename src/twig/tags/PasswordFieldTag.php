@@ -11,6 +11,7 @@
 namespace craftpulse\passwordpolicy\twig\tags;
 
 use Craft;
+use craftpulse\passwordpolicy\helpers\PasswordFieldHelper;
 use InvalidArgumentException;
 
 /**
@@ -296,7 +297,13 @@ class PasswordFieldTag extends BaseTag
     // =========================================================================
 
     /**
-     * Renders the FA-style eye / eye-slash inline SVG (MIT path data).
+     * Renders the eye / eye-slash inline SVG affordance.
+     *
+     * Delegates to {@see PasswordFieldHelper::eyeToggleSvg()} so the
+     * front-end builder and the CP admin change-password modal render the
+     * identical glyph from one source (FontAwesome 6 Free solid eye /
+     * eye-slash). JS toggles `display` between the two `.pp-eye-open` /
+     * `.pp-eye-slash` `<svg>` elements to flip visibility.
      *
      * @return string
      *
@@ -305,12 +312,7 @@ class PasswordFieldTag extends BaseTag
      */
     private function _eyeSvg(): string
     {
-        // Single SVG with both the open eye and the slash — JS toggles
-        // `class="pp-toggle-on"` on the wrapping <button> to flip visibility.
-        return '<svg class="pp-eye" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor">'
-            . '<path class="pp-eye-open" d="M12 5c-7 0-11 7-11 7s4 7 11 7 11-7 11-7-4-7-11-7zm0 12a5 5 0 110-10 5 5 0 010 10zm0-2a3 3 0 100-6 3 3 0 000 6z"/>'
-            . '<path class="pp-eye-slash" d="M3 3l18 18-1.4 1.4-3.5-3.5A12 12 0 0112 19c-7 0-11-7-11-7s2-3.4 5.4-5.6L1.6 4.4 3 3zm6.6 6.6L8 11l1.4 1.4 1.6-1.6a3 3 0 003.6 3.6l1.6 1.6 1.4-1.4-1.4-1.4a3 3 0 00-3.6-3.6L9.6 9.6z" style="display:none"/>'
-            . '</svg>';
+        return PasswordFieldHelper::eyeToggleSvg();
     }
 
     /**

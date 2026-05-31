@@ -304,27 +304,54 @@ class AlertCooldownService extends Component
             return false;
         }
 
-        $threshold = Carbon::now('UTC')->subSeconds($cooldownSeconds)->format('Y-m-d H:i:s');
-        $hasRecent = (new Query())
-            ->from('{{%passwordpolicy_alert_cooldowns}}')
-            ->where([
-                'eventClass' => $eventClass,
-                'cooldownKey' => $cooldownKey,
-            ])
-            ->andWhere(['>=', 'firedAt', $threshold])
-            ->exists();
+        // Atomicity: the check (DB read) and the record (DB write + cache
+        // prime) must be a single critical section. Without it, two
+        // concurrent dispatches for the same (eventClass, cooldownKey)
+        // can both read "no recent row" before either writes, and both
+        // fire — double-alerting the operator / double-emailing the
+        // user. A short Craft mutex keyed on the same slot as the cache
+        // serialises the section. The lock is best-effort: if the mutex
+        // backend can't grant within the timeout we proceed anyway
+        // (degrades to the pre-mutex non-atomic behaviour rather than
+        // dropping the alert entirely — losing an alert is worse than a
+        // rare double under contention). Released in finally so a throw
+        // inside recordFire() can't leave the lock held.
+        $mutex = Craft::$app->getMutex();
+        $lockAcquired = $mutex->acquire($cacheKey, 2);
 
-        if ($hasRecent) {
-            return false;
+        try {
+            // Authoritative re-check INSIDE the lock: a waiter that blocked
+            // on the mutex must re-read the DB, because the holder ahead of
+            // it may have just recorded a fire. The `firedAt` query below is
+            // the source of truth (the cache is only a fast-path prime), so
+            // it covers the double-check without a redundant cache lookup
+            // that static analysis can't see past the early-return guard.
+            $threshold = Carbon::now('UTC')->subSeconds($cooldownSeconds)->format('Y-m-d H:i:s');
+            $hasRecent = (new Query())
+                ->from('{{%passwordpolicy_alert_cooldowns}}')
+                ->where([
+                    'eventClass' => $eventClass,
+                    'cooldownKey' => $cooldownKey,
+                ])
+                ->andWhere(['>=', 'firedAt', $threshold])
+                ->exists();
+
+            if ($hasRecent) {
+                return false;
+            }
+
+            $this->recordFire($eventClass, $cooldownKey);
+            // Prime cache with the same TTL as the cooldown window so a hot
+            // re-check on the same key short-circuits without touching the
+            // DB until the window itself expires.
+            $cache->set($cacheKey, '1', $cooldownSeconds);
+
+            return true;
+        } finally {
+            if ($lockAcquired) {
+                $mutex->release($cacheKey);
+            }
         }
-
-        $this->recordFire($eventClass, $cooldownKey);
-        // Prime cache with the same TTL as the cooldown window so a hot
-        // re-check on the same key short-circuits without touching the
-        // DB until the window itself expires.
-        $cache->set($cacheKey, '1', $cooldownSeconds);
-
-        return true;
     }
 
     // Private Methods

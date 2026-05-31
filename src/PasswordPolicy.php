@@ -2069,6 +2069,8 @@ class PasswordPolicy extends Plugin
             confirmLabel: {$labels['confirmLabel']},
             submitLabel: {$labels['submitLabel']},
             cancelLabel: {$labels['cancelLabel']},
+            showLabel: {$labels['showLabel']},
+            hideLabel: {$labels['hideLabel']},
             genericError: {$labels['genericError']},
         });
     });
