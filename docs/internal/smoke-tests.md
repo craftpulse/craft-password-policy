@@ -30,6 +30,8 @@ Scenarios marked `(Pro)` or `(Enterprise)` require the project-config edition fl
 
 Goal: a fresh Craft 5 install + plugin install + first policy works end-to-end. The full install flow can't be Pest-tested because it exercises the actual Plugin Store install action, schema migration through Craft's migration runner, and CP form rendering.
 
+> **Execution order note (2026-05-22):** `S1.1` and `S1.2` are **deferred to the very end of the walk**, just before `§20` pre-tag sanity. Both are destructive against the existing populated playground (S1.1 wipes all 6 tables; S1.2 needs a 5.1.x-baseline site). Run them last so the rest of §2–§19 has the fixtures it depends on (audit chain history, notification log rows, blocklist entries, password history, group policies).
+
 ### S1.1 Fresh `composer require` + plugin install on Lite
 
 Steps:
@@ -60,11 +62,15 @@ Expected: settings save with green toast; new-user form rejects with per-rule pa
 ### S1.4 Strength indicator toggle
 
 Steps:
-1. Settings → Password Policy → Validation → toggle "Show strength indicator" on.
-2. Navigate to Users → New user.
+1. Settings → Password Policy → **Configuration** → toggle "Show strength indicator" on. (NOT under Validators — corrected 2026-05-22 during Phase H walk.)
+2. Navigate to **My Account → Change password** (the user's own password change form). The indicator does NOT render on Users → New user (admin-side user creation); it's scoped to the self-service password change surface.
 3. Type into the password field, watch the strength meter.
 
 Expected: strength meter visible; bars update on input with ~250ms debounce; `aria-valuenow` attribute updates on the `<div role="progressbar">`.
+
+Known open findings (see `progress.md` Phase H smoke-test findings log):
+- Strength meter does not render in the playground's custom user-edit modal. Scope: asset registration fires only on `View::EVENT_BEFORE_RENDER_PAGE_TEMPLATE`, which modal partial renders skip. Deferred to a broader modal-rework pass.
+- Debounce feels laggier than ~250ms on the live page — perf review pending before tag.
 
 ### S1.5 CSP nonce flow
 

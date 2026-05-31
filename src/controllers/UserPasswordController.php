@@ -11,6 +11,8 @@
 namespace craftpulse\passwordpolicy\controllers;
 
 use Craft;
+use craft\db\Query;
+use craft\db\Table;
 use craft\elements\User;
 use craft\web\Controller;
 use craftpulse\passwordpolicy\enums\ChangeReason;
@@ -115,9 +117,11 @@ class UserPasswordController extends Controller
      *
      * On success: pins an explicit `AuditContext::adminChange()` so
      * the central history-write listener records `changeReason =
-     * admin_change` + `changedByUserId = <currentAdminId>`. Clears any
-     * prior pending reason on the user (admin direct intent overrides
-     * breach/expiry/etc.).
+     * admin_change` + `changedByUserId = <currentAdminId>`. Then either
+     * clears the prior pending reason (admin direct intent overrides
+     * breach/expiry/etc.) OR — when this is an initial-password setup
+     * under the force-change policy — re-pins `FirstLoginForced` so the
+     * user's eventual forced reset is captured accurately.
      *
      * @return Response|null
      *
@@ -186,6 +190,31 @@ class UserPasswordController extends Controller
         $userState = PasswordPolicy::$plugin->getUserState();
         $userState->setExplicitContext($user, $context);
 
+        // Capture pre-save state for the force-change-on-first-login
+        // policy preservation below. Read directly from the users table
+        // — `UserQuery::beforePrepare()` doesn't `addSelect()` the
+        // `passwordResetRequired` column (Craft 5.x), so the in-memory
+        // `$user->passwordResetRequired` is always false on a freshly-
+        // loaded User regardless of DB state. The plugin already takes
+        // the same direct-query path for `lastPasswordChangeDate` in
+        // `UserSecurityController::actionEditTab()`; mirror it here.
+        //
+        // `lastLoginDate` IS selected by `UserQuery::beforePrepare()`,
+        // so `$user->lastLoginDate` is reliable. Read it from the
+        // element. The settings model also reads from the live plugin
+        // singleton, so no DB hit needed for `forceChangeOnFirstLogin`.
+        $settings = PasswordPolicy::$plugin->getSettings();
+        $preSaveFlag = (bool)(new Query())
+            ->select(['passwordResetRequired'])
+            ->from(Table::USERS)
+            ->where(['id' => $user->id])
+            ->scalar();
+        $shouldPreserveForceReset = (
+            $settings->forceChangeOnFirstLogin
+            && $user->lastLoginDate === null
+            && $preSaveFlag
+        );
+
         $user->newPassword = $newPassword;
 
         if (!Craft::$app->getElements()->saveElement($user)) {
@@ -198,11 +227,45 @@ class UserPasswordController extends Controller
             return $this->_failure($user, $user->getErrors());
         }
 
-        // Admin direct intent overrides any prior pending reason
-        // (breach, expiry, first-login, admin-force-reset). Clear so
-        // the audit trail reflects the new intent and no stale flag
-        // dangles.
-        $userState->clearPendingReason($user);
+        // Force-change-on-first-login policy preservation. Craft's
+        // `User::afterSave` cleared the flag for us (because newPassword
+        // was set on a non-new user that previously had the flag — see
+        // `vendor/craftcms/cms/src/elements/User.php` line 2632), which
+        // is Craft's standard semantic: "user just changed their
+        // password, no further reset needed." For ordinary admin
+        // password changes (target user has logged in before), that's
+        // the right answer; we leave the clear in place.
+        //
+        // For the initial-password-setup flow — target user has NEVER
+        // logged in AND the global `forceChangeOnFirstLogin` policy is
+        // active AND the flag was set pre-save (typically by the
+        // plugin's own user-creation listener) — the modal is being
+        // used to set a *temporary* admin-assigned password, and the
+        // policy promises the user must reset it on first login. Re-
+        // assert the flag with a non-newPassword save so Craft's clear
+        // logic doesn't re-fire and silently undo the policy's promise.
+        //
+        // Confirmed during the 2026-05-22 Phase H smoke walk (S1.6).
+        if ($shouldPreserveForceReset) {
+            $user->passwordResetRequired = true;
+            Craft::$app->getElements()->saveElement($user, false);
+
+            // The user still owes a forced first-login reset. The admin-
+            // change save above already consumed the FirstLoginForced
+            // pending reason via the central listener's post-change
+            // `clearPendingReason()` (PasswordPolicy.php). Re-pin it so the
+            // user's eventual forced reset records `changeReason =
+            // first_login_forced` on its history row, not the request-
+            // derived `self_service` fallback. Audit capture must stay
+            // accurate (memory: project_audit_capture_principle.md).
+            $userState->setPendingReason($user, ChangeReason::FirstLoginForced);
+        } else {
+            // Admin direct intent overrides any prior pending reason
+            // (breach, expiry, first-login, admin-force-reset). Clear so
+            // the audit trail reflects the new intent and no stale flag
+            // dangles.
+            $userState->clearPendingReason($user);
+        }
 
         return $this->_success(
             $user,

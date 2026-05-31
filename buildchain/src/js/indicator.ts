@@ -8,6 +8,7 @@ declare global {
             actionUrl?: string;
             csrfTokenName?: string;
             csrfTokenValue?: string;
+            t?: (category: string, message: string) => string;
         };
     }
 }
@@ -45,6 +46,7 @@ const INPUT_SELECTOR =
     'input[type="password"][autocomplete="new-password"]:not([data-pp-no-strength])';
 const DEBOUNCE_MS = 250;
 const BAR_ID_PREFIX = 'pp-cp-strength-bar-';
+const BOUND_ATTR = 'data-pp-strength-bound';
 
 // =========================================================================
 // Color stops keyed by label
@@ -90,7 +92,29 @@ function fillCount(strength: { label?: string; score?: number | null }): number 
 }
 
 /**
+ * Escapes a string for safe interpolation into an HTML attribute value.
+ * The strength label is a controlled server vocabulary and the name comes
+ * from a translation file, but both land in attributes via string
+ * interpolation below — escape defensively so a stray quote or angle
+ * bracket can't break out.
+ */
+function escapeAttr(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+/**
  * Renders the 5-bar HTML for the given (label, fillCount).
+ *
+ * The container carries `role="progressbar"` + `aria-valuemin/max/now`
+ * and (when a label is known) `aria-valuetext`, so screen-reader users
+ * get the strength signal the colored bars convey visually. Without it
+ * the meter is a row of decorative `<span>`s announcing nothing — the
+ * front-end consumer builder already exposes `aria-valuenow`, so the CP
+ * meter matched that contract here.
  */
 function renderBar(label: string | null, fill: number, barId: string): string {
     const activeClass = label !== null ? (labelColor[label] ?? defaultBarClass) : defaultBarClass;
@@ -100,8 +124,11 @@ function renderBar(label: string | null, fill: number, barId: string): string {
         return `<span class="${isActive ? activeClass : defaultBarClass}"></span>`;
     }).join('');
 
+    const name = escapeAttr(window.Craft?.t?.('password-policy', 'Password strength') ?? 'Password strength');
+    const valueText = label !== null ? ` aria-valuetext="${escapeAttr(label)}"` : '';
+
     return `
-        <div id="${barId}" class="pp-grid pp-grid-cols-5 pp-gap-x-1 pp-h-2 -pp-mt-4">
+        <div id="${barId}" class="pp-grid pp-grid-cols-5 pp-gap-x-1 pp-h-2 -pp-mt-4" role="progressbar" aria-label="${name}" aria-valuemin="0" aria-valuemax="5" aria-valuenow="${fill}"${valueText}>
             ${bars}
         </div>`;
 }
@@ -181,8 +208,16 @@ let counter = 0;
 
 /**
  * Binds the strength indicator to a single password input.
+ *
+ * Idempotent — guarded by a `data-pp-strength-bound` attribute so the
+ * MutationObserver (which may surface the same input multiple times
+ * when subtree mutations cascade) doesn't stack listeners or duplicate
+ * the bar DOM. Inputs that already carry the attribute are skipped.
  */
 function bindIndicator(input: HTMLInputElement): void {
+    if (input.hasAttribute(BOUND_ATTR)) return;
+    input.setAttribute(BOUND_ATTR, '1');
+
     const anchor = attachAnchor(input);
     if (!anchor) return;
 
@@ -228,6 +263,64 @@ function bindIndicator(input: HTMLInputElement): void {
 }
 
 // =========================================================================
+// Scan + observe
+// =========================================================================
+
+/**
+ * Binds the indicator to every matching password input under `root`.
+ * Used by the initial `init()` scan of `document` and recursively on
+ * mutation-added subtrees.
+ */
+function scan(root: ParentNode): void {
+    const inputs = root.querySelectorAll<HTMLInputElement>(INPUT_SELECTOR);
+    inputs.forEach(bindIndicator);
+}
+
+/**
+ * Watches the document for password inputs added after the initial
+ * scan — modals (e.g. the plugin's own admin Change-Password modal in
+ * `ChangeUserPassword::registerModalHelper`), slideouts, HUDs, and any
+ * other dynamically-rendered surface. Without this, the strength meter
+ * silently no-ops on every input that joined the DOM after
+ * `DOMContentLoaded`.
+ *
+ * Each mutation's `addedNodes` is checked two ways:
+ *  1. The added node itself matches the selector — bind directly.
+ *  2. The added node contains matching descendants — bind each.
+ *
+ * Idempotency is enforced by `bindIndicator`'s `data-pp-strength-bound`
+ * guard, so re-observing a subtree (common when modal helpers rewrap
+ * markup) is safe.
+ *
+ * Cost: the callback only runs `querySelectorAll(INPUT_SELECTOR)` per
+ * added Element node, and the selector is narrow
+ * (`input[type=password][autocomplete=new-password]`), so each scan is a
+ * cheap native subtree query. The high-frequency CP mutators are bounded:
+ * drag-sort scans the small moved subtree per pointer move (sub-ms);
+ * Live Preview content mutates inside an iframe (a separate document this
+ * `document.body` observer never sees); HUD/queue polling swaps a handful
+ * of nodes. The observer only starts when `showStrengthIndicator` is on
+ * (see `init()`), and a page-lifetime observer is GC'd on navigation.
+ */
+function startObserver(): void {
+    const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+            for (const node of Array.from(m.addedNodes)) {
+                if (!(node instanceof Element)) continue;
+
+                if (node.matches(INPUT_SELECTOR)) {
+                    bindIndicator(node as HTMLInputElement);
+                }
+
+                scan(node);
+            }
+        }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+
+// =========================================================================
 // Boot
 // =========================================================================
 
@@ -236,8 +329,8 @@ function init(): void {
         return;
     }
 
-    const inputs = document.querySelectorAll<HTMLInputElement>(INPUT_SELECTOR);
-    inputs.forEach(bindIndicator);
+    scan(document);
+    startObserver();
 }
 
 if (document.readyState === 'loading') {

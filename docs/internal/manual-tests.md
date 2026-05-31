@@ -1,16 +1,140 @@
 # Manual Testing Scenarios
 
-Test each scenario after installing the plugin on a fresh Craft CMS 5 site. Start from `5.2.0-alpha.1` and work forward — each branch builds on the previous.
+Test each scenario after installing the plugin on a fresh Craft CMS 5 site. Start from `5.2.0-alpha.1` and work forward — each block builds on the previous.
 
-**Legend:** PASS = verified, FAIL (fixed) = bug found and fixed, PENDING = not yet tested
+**Legend:** PASS = verified, FAIL (fixed) = bug found and fixed, PENDING = not yet tested, COVERED BY PEST = automated regression net carries the assertion, DEFERRED = explicitly out of scope for the current pass.
 
 The "Active test pass" block below orchestrates the next manual run. Per-test status records in the per-phase sections that follow remain the source of truth for individual T-row outcomes.
 
 ---
 
-## Active test pass — Phase C2 + Layer 4b + Bug Fix Sweep (2026-05-02)
+## Active test pass — Full pre-tag QA pass (2026-05-18)
 
-Coverage: P1.14 (RegistrationService), P1.13 (HIBP-on-login Pro), P1.12 (Pro front-end Twig surface), P1.12 Layer 4b (CP+front-end strength engine unification), and the 11 bug fixes from the post-review sweep (commits `322c18f` → `9691541`).
+**Goal: every block, every T-row, end-to-end, before tagging 5.2.0.** This is the comprehensive QA pass — Phases 0 through 25. Multi-hour focused user session. Browser + Mailpit + plugin log tail + DDEV CLI all in play. No agent run can complete this — the human runs it.
+
+The 11 blocks below cover the full surface: pre-Phase-G (verified PASS during earlier passes — re-verify smoke-tested only), Phase G Enterprise build (T14.x–T23.x, all PENDING), Phase 2 edition realignment (T24.x, all PENDING), security audit polish (T25.x, all PENDING), and edition matrix sanity across every block.
+
+Pre-flight commands and credentials live in `docs/internal/handover.md`. Demo templates live in the playground at `cms/templates/_demo/password-policy/`.
+
+### Pre-flight
+
+```bash
+git -C /Users/michtio/dev/craft-plugins/v5/craft-password-policy log --oneline -1
+ddev craft project-config/get plugins.password-policy.settings.edition  # → "pro" to start
+ddev describe | grep -i mailpit                                         # note URL
+ddev craft password-policy/audit/verify                                 # exit 0 expected
+cd /Users/michtio/dev/craft-plugin-playground/cms_v5 && ddev exec --dir /Users/Shared/dev/craft-plugins/v5/craft-password-policy composer test
+```
+
+`composer test` must be green (802 / 1924 at 2026-05-18). In CP settings: `showStrengthIndicator: ON`, `cspNonce: OFF` initially. Confirm `CRAFT_AUDIT_PII_KEY` env var present.
+
+### Block 1 — Pre-Phase-G surface smoke test
+
+Re-run as a sanity sweep — the deeper per-T-row walkthroughs live in §0–§13 below. Spend ~30 min on this block, not a full manual replay.
+
+- **1.1** — Front-end demos: `/demo/password-policy` index + each demo page renders. Eye toggle works on every variant. Live AJAX validation cycles. Reset-link flow lands cleanly.
+- **1.2** — CP strength meter on My Account → Password tab and create-user form. Bars debounce ~250ms. Blocklist hit forces red.
+- **1.3** — HIBP-on-login: set editor password to `Welcome2024` (live HIBP-breached), log in, Mailpit receives `breach-detected`, `passwordResetRequired = 1`.
+- **1.4** — Email notification editor: `/admin/password-policy/notifications` lists templates, edit + token picker + test-send → Mailpit hit.
+
+### Block 2 — CP-side strength meter (Phase 13 / Layer 4b)
+
+See §13 for T13.x details. Re-verify: strength engine unified, blocklist-hit override clamps red, CSP nonce flows correctly. ~15 min.
+
+### Block 3 — Phase G hash-chained audit log (T14.x) — NEW
+
+Flip to Enterprise via `project.yaml` + `dateModified` bump + `ddev craft up`. Then walk T14.1 → T14.9 below. Includes manual corruption of `rowHash` to verify chain breakage detection on the next block.
+
+### Block 4 — Phase G audit verifier CLI (T15.x) — NEW
+
+T15.1 → T15.8. Clean chain → exit 0; manually-corrupted row → exit 1 (with row id); JSON output mode; retention-purge-tolerant; PII-key CLI generator. Lite/Pro gate.
+
+### Block 5 — Phase G compliance dashboard (T16.x) — NEW
+
+T16.1 → T16.8. Dashboard utility, aggregate metrics widgets, HTML + CSV report generation, framework anchors. Lite/Pro should hide the utility entirely.
+
+### Block 6 — Phase G SIEM forwarders (T17.x) — NEW
+
+T17.1 → T17.9. Use a local syslog receiver (rsyslog in DDEV or `nc -l` on a port) for the test-send. Verify TLS handshake, RFC 5424 frame, retry behavior, AlertCooldownService dedup, edition gate.
+
+### Block 7 — Phase G signed webhooks (T18.x) — NEW
+
+T18.1 → T18.9. Use `webhook.site` or a local `nc -l` for the receiver. Verify `X-PasswordPolicy-Signature`, idempotency UUID, replay-window enforcement, secret rotation flow. Edition gate.
+
+### Block 8 — Phase G audit export + alert cooldowns + per-policy blocklist + custom template paths + Enterprise notification keys (T19.x–T23.x) — NEW
+
+T19.1 → T23.7. Streaming export (CSV + JSONL), per-admin token binding, alert cooldowns table behavior, per-policy custom blocklist editor + merge semantics, custom Twig template path override, `new-device-alert` + `admin-security-alert` editor + test-send.
+
+### Block 9 — Phase 2 edition realignment (T24.x) — NEW
+
+Flip to **Lite** for this block. T24.1 → T24.13. Verify password history runs (was Pro-only), four compliance presets apply (was Pro-only), expiry-reminder email dispatches stock template (was Pro-only). Strict Enterprise preset must still require Pro. Sub-edition strip-on-save must still block audit/SIEM/webhook keys on Lite.
+
+### Block 10 — Security audit polish (T25.x) — NEW
+
+T25.1 → T25.18. Authorization scopes (`allowAdminChanges`, audit-export token binding), info disclosure (webhook rotate-secret error, HMAC secrets in JSON), cache-key privacy (HIBP-on-login dedup), listener attribution (UserEvent::$user), Security service routing (password compare), preset correctness (NIST §3.1.1.2). P2 + P3 bundle verifications.
+
+### Block 11 — Edition matrix sanity
+
+Run **Block 1.2** (registration full widget) + **Block 1.3** (HIBP-on-login) + **Block 4** (verifier CLI) + **Block 9.1** (history on Lite) under each:
+
+| Edition | Front-end builders | CP indicator | HIBP-on-login | Per-group | Audit log | Verifier CLI | History | Presets | Expiry email |
+|---|---|---|---|---|---|---|---|---|---|
+| Lite | Work, global resolution | zxcvbn (universal) | Disabled | n/a | Silent | "Enterprise required" | ✓ (universal) | ✓ 4 presets | ✓ stock |
+| Pro | Work, per-group | zxcvbn | Enabled | Yes | Silent | "Enterprise required" | ✓ + per-group | ✓ + Strict | ✓ + editor |
+| Enterprise | Same as Pro | zxcvbn | Same + audit row | Yes | Captured + chained | ✓ exit 0 | ✓ + per-group | ✓ + Strict | ✓ + custom path |
+
+### Capturing failures
+
+For each failure: page URL, browser console error, Network tab response (if AJAX), Mailpit state if relevant, plugin log tail (`storage/logs/password-policy-*.log`), commit hash (`git rev-parse HEAD`).
+
+**On any FAIL:** try to reproduce in Pest first. If the regression net catches it, write a test, fix forward, mark T-row PASS, move on. If it can't be expressed as a Pest test (browser interaction, screen reader, real Mailpit verification, real SIEM/webhook receiver), record the failure on the T-row with full reproduction steps.
+
+### Capturing screenshots for Plugin Store + user docs
+
+The user-facing docs carry **30 `> 📷 *Screenshot: ...*` placeholders** across `docs/user/` and `README.md`. Each placeholder includes a description of the exact screen to capture. These are intentional placeholders — Phase H is when they get real screenshots dropped in, since most of the screens only exist on the playground walked end-to-end during this QA pass.
+
+List every placeholder with its source file:
+
+```bash
+grep -rn "📷 \*Screenshot:" docs/user/ README.md
+```
+
+Workflow per shot:
+
+1. Identify the QA block above that exercises the described screen (e.g. Block 5 → `compliance-dashboard.md:5`).
+2. Capture the screenshot at retina / 2x. Hide the DDEV banner and Craft debug toolbar.
+3. Save into `docs/user/_screenshots/<slug>.png` (or whatever directory convention you settle on; create the folder on first capture).
+4. Replace the placeholder line in the corresponding doc with a real Markdown image reference: `![Description](../_screenshots/<slug>.png)`.
+
+Highest-priority captures, in this order:
+
+- **`README.md:9`** — Plugin Store hero shot (Compliance Dashboard + policy edit screen + front-end strength meter). First impression for every buyer.
+- **`docs/user/features/audit-logging.md:5`** — Audit Log element index. Anchors the Enterprise positioning.
+- **`docs/user/features/per-group-policies.md:11`** — Policies index. Anchors the Pro positioning.
+- **`docs/user/getting-started.md:18,26,50`** — three onboarding shots. Reduce friction for first-touch installs.
+- Remaining 23 — capture opportunistically as the matching blocks run.
+
+If a screen a placeholder describes doesn't exist yet (feature scoped to a future commit, or the CP form drifted from the description), document it on the matching T-row as DEFERRED and update the placeholder text or drop it.
+
+### State for this pass
+
+- `5.x` — fully synced with `origin/5.x`. Working tree clean. Last commit `d8f49fe` (`docs(editions,features): reflect Phase 2 — Lite-expanded history + presets + expiry`).
+- `5.1.x` — `5.1.2` tagged + pushed 2026-05-02. Channel idle.
+
+### Pest suite (2026-05-18)
+
+- **802 passing / 0 skipped / 1924 assertions** across `tests/Unit/`, `tests/Integration/`. ~64s in DDEV.
+- Phase G + post-G remediation + Phase H prep cumulatively added ~470 tests over Phase D's 513 baseline.
+- Run via `cd /Users/michtio/dev/craft-plugin-playground/cms_v5 && ddev exec --dir /Users/Shared/dev/craft-plugins/v5/craft-password-policy composer test` (chains ECS + PHPStan + Pest; first failure stops the chain).
+- ECS + PHPStan clean, 3-entry PHPStan baseline unchanged from E1.
+
+If a manual test fails: try to reproduce in Pest first (the regression net should catch surface-level breakage). If the manual scenario can't be expressed as a Pest test (browser interaction, screen reader, real Mailpit verification), record it on the failing T-row.
+
+---
+
+## Previous active pass — Phase C2 + Layer 4b + Bug Fix Sweep (2026-05-02, archived)
+
+Coverage: P1.14 (RegistrationService), P1.13 (HIBP-on-login Pro), P1.12 (Pro front-end Twig surface), P1.12 Layer 4b (CP+front-end strength engine unification), and the 11 bug fixes from the post-review sweep (commits `322c18f` → `9691541`). **78/79 PASS at archive time** (T13.6 + T13.11 + T12.6 deferred for environment reasons, all now superseded by the 2026-05-18 Full pre-tag QA pass above).
 
 Pre-flight commands and credentials live in `docs/internal/handover.md`. Demo templates live in the playground at `cms/templates/_demo/password-policy/`.
 
@@ -124,22 +248,18 @@ Run **Block 1.5** (registration full widget) and **Block 2.1** (CP strength) und
 
 For each failure: page URL, browser console error, Network tab response (if AJAX), Mailpit state if relevant, plugin log tail (`storage/logs/password-policy-*.log`), commit hash (`git rev-parse HEAD`).
 
-### Branch state for this pass
+### Branch state at archive (2026-05-03)
 
-- `5.x` — 69 commits ahead of `origin/5.x`. Phase C2 + Layer 4b + bug fix sweep + docs restructure + project setup + Phase E (18 commits) + `fix(hibp)` + `docs(ideas)` + Phase E close docs + Phase D (19 commits across D0–D4) + Phase D close docs. Not pushed.
-- `5.1.x` — 3 commits ahead of tag `5.1.1`. TLS verify, fail-open log level, sensitive-key strip backports. Not pushed, not tagged.
+- `5.x` — 69 commits ahead of `origin/5.x` at the time of the C2 archived pass. Subsequently pushed; current state in the Full pre-tag QA pass block above.
+- `5.1.x` — 3 commits ahead of tag `5.1.1`; subsequently tagged + pushed as `5.1.2` on 2026-05-02.
 
-### Pest suite (Phase D close, 2026-05-03)
+### Pest suite at archive (Phase D close, 2026-05-03)
 
-The active manual pass above covers Phase C2 + Layer 4b + the bug fix sweep — all surfaces that ship to users. Independent of that pass, Phases E + D built a Pest test suite covering validators, services, models, controllers, Twig tags, migrations, multi-site behavior, the audit-context surface, user-index columns, admin element actions, and the user-edit tab page:
+The C2 archived pass covered Phase C2 + Layer 4b + the bug fix sweep — all user-facing surfaces at that time. Independent of that pass, Phases E + D built a Pest test suite:
 
-- **513 passing / 0 skipped / 1049 assertions** across `tests/Unit/`, `tests/Integration/`. Phase D added +184 tests over Phase E's baseline.
-- Run via `cd /Users/michtio/dev/craft-plugin-playground/cms_v5 && ddev exec --dir /Users/Shared/dev/craft-plugins/v5/craft-password-policy composer test` (chains ECS + PHPStan + Pest; first failure stops the chain).
-- The 11-bug C2 sweep (commits `322c18f` → `9691541`) is pinned by 32 of E4 + E5's tests.
-- The three deferred manual tests (T1.2, TX.2, T9.7) are covered by Pest fixtures — see the per-test rows below.
-- Phase D's P2.1 (user-index columns) + P2.2 (admin password change action) + P2.6 (read-only mode) — every CP affordance backed by a Pest pin in `tests/Integration/UserIndex/`, `tests/Integration/UserEditTab/`, and `tests/Integration/Controllers/UserPasswordControllerTest.php`.
-
-If a manual test fails: try to reproduce in Pest first (the regression net should catch surface-level breakage). If the manual scenario can't be expressed as a Pest test (browser interaction, screen reader, real Mailpit verification), record it on the failing T-row.
+- **513 passing / 0 skipped / 1049 assertions** at archive time. Phase D added +184 tests over Phase E's baseline. (Current state at top of file: 802 / 1924.)
+- The 11-bug C2 sweep (commits `322c18f` → `9691541`) was pinned by 32 of E4 + E5's tests.
+- The three deferred manual tests (T1.2, TX.2, T9.7) were absorbed into Pest fixtures — see the per-test rows below.
 
 ---
 
@@ -288,14 +408,21 @@ If a manual test fails: try to reproduce in Pest first (the regression net shoul
 
 ---
 
-## Phase 4 — Audit Logging (alpha.5) — ALL PENDING (Enterprise)
+## Phase 4 — Audit Logging (alpha.5) — superseded by Phase 14–15 (Enterprise)
 
-### T4.1 — Password change logged (Enterprise) — PENDING
-### T4.2 — Audit log silent on Lite/Pro — PENDING
-### T4.3 — HIBP breach detection logged — PENDING
-### T4.4 — HIBP fail-closed mode — PENDING
-### T4.5 — Account lockout logged — PENDING
-### T4.6 — Audit CLI — PENDING
+The original T4.1–T4.6 rows tracked the alpha.5 audit-log surface. Phase G (2026-05-14) re-shipped audit logging as a **hash-chained, verifier-backed compliance surface**. Coverage is now split between:
+
+- **Phase 14 — Hash-chained audit log (T14.x)** — Enterprise capture, canonical JSON shape, `rowHash` + `previousHash` chain, PII allowlist, retention purge.
+- **Phase 15 — Audit verifier CLI (T15.x)** — Independent chain walk, exit codes, JSON output, partial-chain tolerance, PII key generator.
+
+Original T4.x rows retained for traceability:
+
+- **T4.1** Password change logged (Enterprise) → see T14.1.
+- **T4.2** Audit log silent on Lite/Pro → see T14.2 + edition matrix in Block 11.
+- **T4.3** HIBP breach detection logged → see T14.3.
+- **T4.4** HIBP fail-closed mode → see T14.4 (capture remains identical regardless of fail-mode).
+- **T4.5** Account lockout logged → see T14.5 (resolved via `UserEvent::$user` per `924f5e7` security polish — see also T25.11).
+- **T4.6** Audit CLI → see T15.x (full verifier CLI replaces the original alpha.5 utility).
 
 ---
 
@@ -791,6 +918,620 @@ If a manual test fails: try to reproduce in Pest first (the regression net shoul
 ### Settings Persistence — PASS
 1. Change settings on one section, save, navigate to another, back — **values persist**
 2. Cross-section changes don't interfere — **confirmed**
+
+---
+
+## Phase 14 — Hash-chained audit log (Phase G G1, Enterprise) — ALL PENDING
+
+Flip to Enterprise (`project.yaml` → `plugins.password-policy.settings.edition: enterprise` + bump `dateModified` + `ddev craft up`). Confirm `CRAFT_AUDIT_PII_KEY` env var present.
+
+### T14.1 — Audit row write on password change — PENDING (Enterprise)
+1. As admin, change a non-admin user's password via the user-edit "Change password…" action.
+2. Query `SELECT id, event, userId, userIdentifier, outcome, details, ipHash, rowHash, previousHash FROM passwordpolicy_audit_log ORDER BY id DESC LIMIT 1`.
+3. Row exists with `event = 'password_changed'`, `outcome = 'success'`, `userIdentifier` is an HMAC-hex (NOT the raw user id), `details` is JSON with the allowlisted keys only, `ipHash` is HMAC-hex of the requesting IP, `rowHash` is 64 hex chars.
+
+### T14.2 — Lite/Pro audit log silent — PENDING (every edition gate)
+1. Flip to Lite via project.yaml + craft up.
+2. Change a user's password.
+3. `SELECT COUNT(*) FROM passwordpolicy_audit_log` → row count unchanged from before the change. Listener didn't fire.
+4. Flip to Pro. Repeat. Row count still unchanged.
+5. Flip back to Enterprise. Repeat. Row count + 1.
+
+### T14.3 — HIBP-on-login breach detection logged — PENDING (Enterprise)
+1. Set editor password to `Welcome2024` (live HIBP-breached). `enableHibpOnLogin: true`.
+2. Log in as editor.
+3. Audit log row written with `event = 'breach_detected'`, `outcome = 'warning'`, `details` includes `sha1Prefix` (5-char, k-anonymity safe — no full hash).
+4. Notification log row written with `notificationType = 'breach_detected'`, `status = 'sent'`.
+
+### T14.4 — HIBP fail-mode irrelevant to capture — PENDING (Enterprise)
+1. Set `hibpFailMode = 'closed'`. Block `api.pwnedpasswords.com` via DDEV hosts.
+2. Attempt a password change.
+3. Audit log row written with `event = 'password_change_rejected'`, `outcome = 'failure'`, `details.reason = 'hibp_unreachable'`. Same shape as the success row otherwise.
+4. Restore network + `hibpFailMode = 'open'`.
+
+### T14.5 — Account lockout logged via UserEvent::$user — PENDING (Enterprise)
+1. Trigger an account lockout by submitting wrong passwords past the cooldown threshold for a target user.
+2. Audit log row written with `event = 'account_locked'`, `userIdentifier` correctly resolved from `UserEvent::$user` (NOT `Craft::$app->getUser()` — see T25.11 + `924f5e7`).
+3. Subsequent unlock → row with `event = 'account_unlocked'`, same `userIdentifier`.
+
+### T14.6 — Genesis row sentinel — PENDING (Enterprise)
+1. Fresh install on Enterprise (or `ddev craft plugin/uninstall password-policy && plugin/install`).
+2. Trigger the first audit event (e.g. a settings save).
+3. The row has `previousHash = '0000000000000000000000000000000000000000000000000000000000000000'` (64 zeros).
+4. The next row's `previousHash` equals the first row's `rowHash`.
+
+### T14.7 — Sequential rows chain forward — PENDING (Enterprise)
+1. Trigger five distinct audit events.
+2. Query: `SELECT id, previousHash, rowHash FROM passwordpolicy_audit_log ORDER BY id ASC`.
+3. For every row n > 1: `previousHash[n] = rowHash[n-1]`. Compare hex strings byte-for-byte.
+
+### T14.8 — `canonicalize()` reproduces bit-identical bytes — PENDING (Enterprise)
+1. From the playground, pull any audit row's `details` + `event` + `userIdentifier` + `dateCreated` + `outcome` + `ipHash`.
+2. In a Pest or one-off script: `echo AuditLogService::canonicalize($row)` → outputs bytes.
+3. Hash with `hash('sha256', $canonical . $previousHash)` → matches the stored `rowHash` exactly.
+
+### T14.9 — Element layer renders in CP audit-log index — PENDING (Enterprise)
+1. Visit `/admin/password-policy/audit-log`.
+2. Element index renders with current rows. Default columns: Event, User, Outcome, Date.
+3. Click a row → detail view shows full row including `rowHash`, `previousHash`, allowlist-filtered `details` JSON.
+
+### T14.10 — Element soft-delete preserves chain walk — PENDING (Enterprise)
+1. From the element index, "Delete" an audit row.
+2. Element gets `dateDeleted` stamped; row stays in `passwordpolicy_audit_log`.
+3. `ddev craft password-policy/audit/verify` still exits `0` (chain walks via the legacy record query, ignores element-soft-delete state).
+4. Hard delete via admin override → row gone. Verifier exits 1 (now broken). See T14.11.
+
+### T14.11 — Retention purge fires `EVENT_AUDIT_CHAIN_ROTATED` — PENDING (Enterprise)
+1. Set `auditLogRetentionDays = 1`.
+2. Insert a row with `dateCreated` 2 days ago (raw SQL or fixture).
+3. Run `ddev craft password-policy/gc/run` (or wait for the cron).
+4. Old row purged. New "first surviving row" gets re-pinned as the chain genesis. Event `AuditChainRotatedEvent` fires with `purgedRowCount` + `newGenesisRowId` payload.
+5. `audit/verify` exits `0` with a notice: "Partial chain detected (genesis re-pinned post-retention)."
+
+---
+
+## Phase 15 — Audit verifier CLI (Phase G G2, Enterprise) — ALL PENDING
+
+### T15.1 — Clean chain → exit 0 — PENDING (Enterprise)
+1. With a fresh + uncorrupted audit log: `ddev craft password-policy/audit/verify`.
+2. Exit code `0`. Output: "Chain valid. N rows verified, no breaks."
+
+### T15.2 — Manually-corrupted `rowHash` → exit 1 — PENDING (Enterprise)
+1. `ddev craft db/query "UPDATE passwordpolicy_audit_log SET rowHash = REPEAT('a', 64) WHERE id = (SELECT id FROM passwordpolicy_audit_log ORDER BY RAND() LIMIT 1)"`.
+2. `ddev craft password-policy/audit/verify`.
+3. Exit code `1`. Output names the first-break row id, expected hash, actual hash.
+
+### T15.3 — Dropped column → exit 2 — PENDING (Enterprise)
+1. `ddev craft db/query "ALTER TABLE passwordpolicy_audit_log DROP COLUMN rowHash"` (simulates schema drift).
+2. `ddev craft password-policy/audit/verify`.
+3. Exit code `2`. Output: "Schema drift detected: `rowHash` column missing."
+4. Restore: `ddev craft up` (or recreate manually).
+
+### T15.4 — `--json` flag emits machine-parseable output — PENDING (Enterprise)
+1. `ddev craft password-policy/audit/verify --json`.
+2. Output is a single JSON object: `{"status": "valid|broken|drift", "rowsVerified": N, "firstBreakId": null|int, "expectedHash": ...?, "actualHash": ...?, "notice": ...?}`.
+3. Pipe through `jq .status` → expected value.
+
+### T15.5 — Retention-purged early rows tolerated — PENDING (Enterprise)
+1. After T14.11 (retention purge fired), run `audit/verify`.
+2. Exit code `0`. Output: "Chain valid from row N onward (partial chain — earlier rows purged per retention policy)."
+
+### T15.6 — `password-policy/audit/generate-pii-key` outputs hex — PENDING (Enterprise)
+1. `ddev craft password-policy/audit/generate-pii-key`.
+2. Output is a single 64-character hex string (32 bytes of entropy).
+3. Re-run produces a different string (true random, not seeded).
+
+### T15.7 — Verifier reads env-var `CRAFT_AUDIT_PII_KEY` — PENDING (Enterprise)
+1. With `CRAFT_AUDIT_PII_KEY=current-value`, run `audit/verify` → exit 0.
+2. Change `CRAFT_AUDIT_PII_KEY` to a different value (without re-keying historical rows).
+3. `audit/verify` → exit 0 still (chain integrity is `rowHash`-based, not PII-key-based). But `ddev craft password-policy/audit/list --filter=user:N` queries return 0 results (correlation broken — as designed).
+4. Restore original key. Correlation queries return results again.
+
+### T15.8 — Lite/Pro gate — PENDING (every edition gate)
+1. Flip to Lite. `ddev craft password-policy/audit/verify` → exit non-zero. stderr: "Enterprise edition required."
+2. Flip to Pro. Same.
+3. Restore Enterprise.
+
+---
+
+## Phase 16 — Compliance dashboard (Phase G G3, Enterprise) — ALL PENDING
+
+### T16.1 — Dashboard utility renders — PENDING (Enterprise)
+1. Visit Settings → Utilities → "Password Policy Compliance".
+2. Utility renders without errors. Top-level aggregate widgets: HIBP breach exposure, Expired passwords, Force-reset queue depth, Audit chain status.
+
+### T16.2 — HIBP breach exposure metric — PENDING (Enterprise)
+1. Verify breach metric counts users with `userState.lastBreachedAt` in the last 90 days.
+2. Set one editor's `lastBreachedAt = NOW() - INTERVAL 5 DAY`. Reload dashboard. Count + 1.
+3. Set `lastBreachedAt = NULL` to restore.
+
+### T16.3 — Expired-password metric — PENDING (Enterprise)
+1. With `expiryAmount` configured: dashboard shows count of users whose `lastPasswordChangeDate` is past the expiry threshold.
+2. Manually set one user's `lastPasswordChangeDate` to expiry + 1. Reload. Count + 1.
+
+### T16.4 — Force-reset queue depth — PENDING (Enterprise)
+1. Dashboard shows count of users with `passwordResetRequired = 1`.
+2. Trigger a force-reset bulk action on 3 users. Reload. Count + 3.
+3. Clear by having those users change their passwords.
+
+### T16.5 — Audit chain integrity widget — PENDING (Enterprise)
+1. With a clean chain: widget shows "Chain valid. N rows. Last verified: <timestamp>."
+2. Run T15.2 (corrupt a row). Reload dashboard. Widget shows red "Chain broken at row id <N>." Link to verifier output.
+3. Repair via re-running migration `m260507_081852_RecomputeAuditLogChain` (DEV ONLY — destroys forensic integrity). In production, this is a forensic finding, not a fix.
+
+### T16.6 — HTML report — PENDING (Enterprise)
+1. From the dashboard, click "Generate HTML report".
+2. Browser navigates to `/admin/password-policy/reports/generate?format=html`.
+3. Report renders with framework anchors: NIS2 Art. 21(2), NIST 800-63B Rev 4 § 3.1, PCI DSS v4.0.1 § 8.3, ISO 27001:2022 A.5.16, SOC 2 CC6.1.
+
+### T16.7 — CSV export — PENDING (Enterprise)
+1. From the dashboard, click "Export CSV".
+2. Downloads `compliance-report-YYYYMMDD.csv` with column headers + one row per metric.
+
+### T16.8 — Lite/Pro hide utility — PENDING (every edition gate)
+1. Flip to Lite. Settings → Utilities does NOT show "Password Policy Compliance".
+2. Flip to Pro. Same.
+3. Direct URL `/admin/password-policy/compliance` → 403 on Lite + Pro.
+4. Restore Enterprise.
+
+---
+
+## Phase 17 — SIEM forwarders (Phase G G8, Enterprise) — ALL PENDING
+
+### T17.1 — SIEM CRUD — PENDING (Enterprise)
+1. Visit `/admin/password-policy/siem-forwarders`.
+2. Index renders empty initially. Click "New forwarder".
+3. Edit screen: Name, Host, Port (default 6514 — syslog-over-TLS), TLS cert path, Enabled toggle, Event filter (multi-select).
+4. Save → forwarder row appears in index.
+5. Edit → values persist. Delete → row removed.
+
+### T17.2 — Test-send button delivers a synthetic event — PENDING (Enterprise)
+1. Set up a local receiver: in a separate shell, `nc -l 6514` (no TLS for the smoke test — temporarily disable TLS on the forwarder).
+2. From the SIEM forwarder edit screen, click "Send test event".
+3. `nc` shows a single RFC 5424 frame received.
+4. CP shows green notice: "Test event sent successfully."
+
+### T17.3 — Audit-log write enqueues `SiemForwardJob` — PENDING (Enterprise)
+1. With the forwarder Enabled, trigger an audit event (password change).
+2. `ddev craft queue/info` → `SiemForwardJob` waiting.
+3. `ddev craft queue/run --verbose` → job processes, frame received at `nc`.
+
+### T17.4 — `BaseBatchedJob` processes queue — PENDING (Enterprise)
+1. Generate 50 audit events (bulk password-change action).
+2. Queue contains 1 batched job (NOT 50 individual jobs).
+3. `queue/run` processes all 50 frames in sequence. `nc` shows 50 frames.
+
+### T17.5 — RFC 5424 frame format — PENDING (Enterprise)
+1. Inspect a captured `nc` frame.
+2. Format: `<PRI>VERSION TIMESTAMP HOSTNAME APP-NAME PROCID MSGID STRUCTURED-DATA MSG\n` (non-transparent newline framing).
+3. PRI value calculates correctly (facility=local0, severity per event).
+4. STRUCTURED-DATA contains the audit row's JSON.
+
+### T17.6 — TLS verify enforced — PENDING (Enterprise)
+1. Configure the forwarder against a TLS receiver with a self-signed cert.
+2. Without the cert configured in the forwarder model → connection refused, job fails, error logged.
+3. With the cert configured → connection succeeds.
+4. No plaintext fallback path exists (test by attempting against `tcp://host:514` — should fail).
+
+### T17.7 — Retry behavior on receiver downtime — PENDING (Enterprise)
+1. Stop the receiver (`Ctrl-C` the `nc`).
+2. Trigger an audit event.
+3. Queue job fails → re-queued for retry (ttr=300, canRetry≤5).
+4. After 5 failed retries → job moves to failed-jobs queue. Audit log shows `siem_forward_failed` event.
+
+### T17.8 — `AlertCooldownService` deduplicates burst failures — PENDING (Enterprise)
+1. With the forwarder Enabled and the receiver down, trigger 20 audit events in quick succession.
+2. Verify only ONE admin notification email is sent (cooldown window applies). See also Phase 20.
+3. Subsequent failures within the cooldown window suppress notification but still log.
+
+### T17.9 — Lite/Pro hide subnav — PENDING (every edition gate)
+1. Flip to Lite. Subnav: no "SIEM" link.
+2. Direct URL `/admin/password-policy/siem-forwarders` → 403.
+3. Flip to Pro. Same.
+4. Restore Enterprise.
+
+---
+
+## Phase 18 — Signed webhooks (Phase G G9, Enterprise) — ALL PENDING
+
+### T18.1 — Webhook CRUD — PENDING (Enterprise)
+1. Visit `/admin/password-policy/webhook-endpoints`.
+2. New webhook: Name, URL, Secret (auto-generated), Enabled, Event filter.
+3. Save → row in index. Edit → values persist. Delete → confirmed via modal (T25.16).
+
+### T18.2 — `X-PasswordPolicy-Signature` on every delivery — PENDING (Enterprise)
+1. Set up `webhook.site` or local `nc -l 8080` as the receiver.
+2. Trigger an audit event.
+3. `queue/run`. Receiver gets POST with headers including `X-PasswordPolicy-Signature: sha256=<hex>`, `X-PasswordPolicy-Idempotency: <uuid>`, `X-PasswordPolicy-Timestamp: <epoch>`, `Content-Type: application/json`.
+
+### T18.3 — Signature verification — PENDING (Enterprise)
+1. Receiver computes `hmac_sha256(secret, payload_body)`. Compares to `X-PasswordPolicy-Signature` minus `sha256=` prefix.
+2. Match → 200 OK. Mismatch → 401 (test by mangling the secret).
+
+### T18.4 — Idempotency UUID stable per attempt — PENDING (Enterprise)
+1. Capture the UUID from a successful delivery.
+2. Force a retry (block receiver, then unblock).
+3. Same `X-PasswordPolicy-Idempotency` value on retry.
+
+### T18.5 — Replay-window enforcement — PENDING (Enterprise)
+1. Receiver inspects `X-PasswordPolicy-Timestamp` header.
+2. Reject if `abs(now() - timestamp) > 5 min` → 401.
+3. Within 5 min → 200.
+
+### T18.6 — Secret rotation flow — PENDING (Enterprise)
+1. From the webhook edit screen, click "Rotate secret".
+2. UI shows: new secret + grace window (e.g., 10 min during which both old + new are valid).
+3. During grace window: deliveries signed with the new secret; receiver still accepts old-secret signatures.
+4. After grace window: old secret invalid.
+5. Confirm via `RotateWebhookSecretJob` queue state — job completes.
+
+### T18.7 — Secret never leaks in JSON responses — PENDING (Enterprise)
+1. POST a save to `/admin/actions/password-policy/webhook-endpoint/save`.
+2. `asModelSuccess` JSON response should NOT contain the plaintext `secret` field — only an obscured marker or empty (see T25.9 + `e45b9aa`).
+3. Same for the rotate-secret endpoint.
+
+### T18.8 — Delete webhook + in-flight job — PENDING (Enterprise)
+1. With a pending `WebhookForwardJob` in queue, delete the corresponding endpoint.
+2. `queue/run` → job either short-circuits (endpoint gone) or fails gracefully with `webhook_endpoint_deleted` log entry.
+3. No unhandled exception, no stale row in any audit/cooldown table.
+
+### T18.9 — Lite/Pro hide subnav — PENDING (every edition gate)
+1. Same pattern as T17.9. Flip Lite + Pro; subnav hidden + direct URL 403.
+
+---
+
+## Phase 19 — Audit export (Phase G G10, Enterprise) — ALL PENDING
+
+### T19.1 — CSV streaming export — PENDING (Enterprise)
+1. From the Audit Log index, "Export" → CSV.
+2. Generates a token; browser navigates to download URL.
+3. CSV downloads with column headers + one row per audit entry.
+
+### T19.2 — JSONL streaming export — PENDING (Enterprise)
+1. Same but choose JSONL.
+2. Downloads `.jsonl` file with one JSON object per line.
+
+### T19.3 — Token bound to requesting admin — PENDING (Enterprise — security audit polish)
+1. Admin A initiates an export → gets token URL.
+2. Copy the URL.
+3. Admin B (different admin user, logged in separately) opens the URL.
+4. Response → 403. (See T25.6 + `2c7c91d`.)
+
+### T19.4 — Token expiry — PENDING (Enterprise)
+1. Generate a token. Note the expiry (default 15 min).
+2. Wait past expiry.
+3. Open URL → 403, "Token expired."
+
+### T19.5 — Date range filter — PENDING (Enterprise)
+1. Export with `dateFrom` + `dateTo` query params.
+2. Output contains only rows in that range.
+
+### T19.6 — Filesystem-backed presigned download — PENDING (Enterprise)
+1. Large export (e.g. 50k rows) triggers a `BaseBatchedJob` instead of synchronous stream.
+2. Job writes to a Craft filesystem (default `local://audit-exports/`).
+3. Admin receives email notification when ready, with the presigned download URL.
+4. URL serves the file; deleted from filesystem after download or after TTL.
+
+### T19.7 — No PHP memory ceiling on large exports — PENDING (Enterprise)
+1. With `memory_limit = 128M`, trigger a 100k-row export.
+2. Job completes without OOM. Memory peak stays under ~80MB.
+
+### T19.8 — Stable filename per token — PENDING (Enterprise — security audit polish)
+1. Token issued → filename pinned at issue time (e.g. `audit-export-2026-05-18T10-30-00.csv`).
+2. Multiple GET requests within the token's validity → same filename. No regeneration. (See `8cad6ad`.)
+
+---
+
+## Phase 20 — Alert cooldowns (Phase G G7, Enterprise) — ALL PENDING
+
+### T20.1 — Table exists with correct shape — PENDING (Enterprise)
+1. `ddev craft db/query "DESCRIBE passwordpolicy_alert_cooldowns"`.
+2. Columns: id, eventClass (varchar, indexed), scopeKey (varchar, indexed), firedAt (datetime), expiresAt (datetime), payload (JSON), siteId.
+
+### T20.2 — HIBP-on-login mass detection registers cooldown — PENDING (Enterprise)
+1. Trigger 10 users' HIBP-on-login matches in <1 min (set 10 user passwords to known-breached, then bulk-login simulation).
+2. Cooldown row written with `eventClass = 'hibp_login_mass_detection'`, `scopeKey = 'global'` (or per-day), `expiresAt = NOW() + 24h`.
+3. Subsequent HIBP-on-login matches within the window suppress the admin notification (still log to user-side notification queue).
+
+### T20.3 — Cooldown window expiry — PENDING (Enterprise)
+1. From T20.2: manually set the cooldown row's `expiresAt` to NOW() - 1 min.
+2. Trigger the next HIBP-on-login match.
+3. New admin notification fires. A new cooldown row gets registered.
+
+### T20.4 — Group-deletion cascade registers cooldown — PENDING (Enterprise)
+1. Delete a group that has 50+ users.
+2. Cooldown row with `eventClass = 'group_deletion_cascade'`, scoped to the deleted group id.
+3. No "force-reset N users" spam.
+
+### T20.5 — Per-event-class scoping — PENDING (Enterprise)
+1. HIBP-on-login cooldown active.
+2. Trigger a group-deletion cascade.
+3. Group-deletion notification still fires (different `eventClass`). The two cooldowns are independent.
+
+### T20.6 — Cooldown UI in Audit subnav — PENDING (Enterprise)
+1. Visit `/admin/password-policy/alert-cooldowns` (or equivalent path).
+2. Read-only listing of active cooldowns with eventClass, scopeKey, firedAt, expiresAt.
+
+### T20.7 — Manual clear cooldown — PENDING (Enterprise)
+1. From the listing, "Clear" a cooldown row.
+2. Row deleted. Next event in that class fires a notification.
+
+### T20.8 — Lite/Pro silent — PENDING (every edition gate)
+1. Flip to Lite. Trigger 10 HIBP matches.
+2. No cooldown row written (capture also disabled — `AlertCooldownService` is Enterprise-gated since cooldowns only matter when audit notifications fire).
+3. Restore Enterprise.
+
+---
+
+## Phase 21 — Per-policy custom blocklist editor (Phase G G6, Enterprise) — ALL PENDING
+
+### T21.1 — Per-policy editor tab — PENDING (Enterprise)
+1. Edit any named policy. New tab: "Blocklist".
+2. EditableTable renders any existing per-policy entries. Empty for new policies.
+
+### T21.2 — Add custom word — PENDING (Enterprise)
+1. On Editors Policy, add `acmecorp-editors-only` to the per-policy blocklist. Save.
+2. `passwordpolicy_blocklist` row with `word = 'acmecorp-editors-only'`, `policyId = <editorsPolicyId>`, `source = 'custom'`.
+
+### T21.3 — Validator merges global + per-policy — PENDING (Enterprise)
+1. Global blocklist: `password` (common).
+2. Editors Policy blocklist: `acmecorp-editors-only`.
+3. As an Editors-group user, attempt `password` → rejected ("too common"). Attempt `acmecorp-editors-only` → rejected ("blocked").
+4. As a Team-group user (different policy, no per-policy blocklist), attempt `acmecorp-editors-only` → **accepted** (not in their resolved blocklist).
+
+### T21.4 — Multi-policy union — PENDING (Enterprise)
+1. Add `acmecorp-managers-only` to Managers Policy.
+2. As a multigroup user (Editors + Managers), both `acmecorp-editors-only` AND `acmecorp-managers-only` rejected.
+
+### T21.5 — Edition strip on save — PENDING (every edition gate)
+1. Flip to Pro. Try to POST a per-policy blocklist save via curl with crafted payload.
+2. Strip block in `BlocklistController::actionSave` rejects → no row written with `policyId` set on Pro.
+3. Restore Enterprise.
+
+### T21.6 — Cache key includes policyId set — PENDING (Enterprise)
+1. Add a per-policy word. Verify validation rejects.
+2. Delete that word via the editor.
+3. Same password no longer rejected on the next save (no stale cache).
+
+### T21.7 — Pro-tier global custom blocklist still works — PENDING (Pro)
+1. Flip to Pro. Visit `/admin/password-policy/blocklist`.
+2. Global EditableTable (entries with `policyId IS NULL`) renders + persists as in T5.18.
+3. Per-policy editor NOT visible on Pro.
+
+---
+
+## Phase 22 — Custom email template paths (Phase G G11, Enterprise) — ALL PENDING
+
+### T22.1 — Template path override renders the Twig file — PENDING (Enterprise)
+1. Create `cms/templates/_emails/expiry-reminder-custom.twig` with custom HTML.
+2. On the `expiry-reminder` template edit screen, switch to "Twig template path" mode. Enter `_emails/expiry-reminder-custom.twig`. Save.
+3. Trigger an expiry reminder (T9.8 procedure).
+4. Mailpit shows the email rendered from the custom Twig file, NOT the DB body.
+
+### T22.2 — Path mode disables DB body field — PENDING (Enterprise)
+1. With path mode enabled, the Body field becomes informational/read-only.
+2. Token picker chips disabled.
+
+### T22.3 — AJAX test-send uses the path — PENDING (Enterprise)
+1. With path mode enabled, click "Send test email".
+2. Renders against the custom Twig file. Mailpit confirms.
+
+### T22.4 — Multi-site per-site override — PENDING (Enterprise — needs multi-site Craft install)
+1. Multi-site Craft. Site A: path mode with custom file. Site B: DB body mode.
+2. Trigger expiry reminder for a user on each site.
+3. Site A user → email from custom file. Site B user → email from DB body.
+
+### T22.5 — Edition strip on save — PENDING (every edition gate)
+1. Flip to Pro. Try to POST a notification-template save with `templatePath` field set via curl.
+2. Strip block in `NotificationTemplateController::actionSave` rejects the field. DB row has `templatePath IS NULL`.
+3. Restore Enterprise.
+
+### T22.6 — Empty path falls back to DB body — PENDING (Enterprise)
+1. With path mode enabled but `templatePath` empty, save.
+2. Behavior falls through to DB body rendering.
+
+### T22.7 — Invalid path errors gracefully — PENDING (Enterprise)
+1. Set `templatePath = '_emails/does-not-exist.twig'`. Save.
+2. Trigger reminder.
+3. Notification log row written with `status = 'failed'`, `errorMessage` contains the Twig "template not found" message.
+4. Email NOT sent. Admin gets an alert via Phase 23's `admin-security-alert`.
+
+---
+
+## Phase 23 — Enterprise notification keys (Phase G G12, Enterprise) — ALL PENDING
+
+### T23.1 — `new-device-alert` seeded — PENDING (Enterprise)
+1. Fresh install on Enterprise.
+2. `passwordpolicy_notification_templates` has rows for `expiry-reminder`, `breach-detected`, `new-device-alert`, `admin-security-alert` × siteId 1, all with default content from `EmailDefaults::all()`.
+
+### T23.2 — `admin-security-alert` editor renders — PENDING (Enterprise)
+1. `/admin/password-policy/notifications` → both new keys appear in the index.
+2. Edit each → General + Advanced + Test-send tabs render as expected.
+
+### T23.3 — Test-send admin-alert mode — PENDING (Enterprise)
+1. For `admin-security-alert`, click "Send test".
+2. AJAX test-send renders against `?User = null` (admin-alert mode — no recipient user). Subject + body render correctly.
+3. Mailpit receives the message at the configured `adminAlertEmail`.
+
+### T23.4 — `composeFromTemplate()` widened to `?User` — PENDING (Enterprise — code verification)
+1. Review `NotificationService::composeFromTemplate()` signature: `?User $user` (nullable).
+2. Confirm the body rendering handles `$user === null` gracefully (no fatal on token expansion that would reference `{{ user.fullName }}` etc. — defaults to literal `''` or skips the variable).
+
+### T23.5 — Resend rejected for mailer-key types — PENDING (Enterprise)
+1. From the notification activity page, find a `new-device-alert` row.
+2. Click "Resend".
+3. CP shows error: "Resend not supported for mailer-key templates until 5.3+ adds template-vars snapshot."
+
+### T23.6 — Edition strip on save — PENDING (every edition gate)
+1. Flip to Pro. Try to POST a save for `new-device-alert` via crafted curl.
+2. Strip block rejects (the keys are Enterprise-only).
+3. Restore Enterprise.
+
+### T23.7 — `sendNewDeviceAlert` Pro guard — PENDING (every edition gate)
+1. Flip to Pro. Trigger a code path that calls `NotificationService::sendNewDeviceAlert()`.
+2. Guard rejects → no notification dispatched.
+3. Restore Enterprise. Same call now succeeds. (See `20013a6`.)
+
+---
+
+## Phase 24 — Phase 2 edition realignment (2026-05-15) — ALL PENDING
+
+The 2026-05-15 commits `3fdeee5` / `c2ae7b6` / `ac04e01` moved password history, compliance presets (NIST / OWASP / PCI-DSS / CIS), and expiry-reminder email dispatch from Pro-only to every edition. These T-rows verify the new Lite behavior + that the Pro/Enterprise levers still gate correctly on top.
+
+Flip to **Lite** for this block.
+
+### T24.1 — Password history runs on Lite — PENDING (Lite)
+1. Lite + `passwordHistoryCount = 5`.
+2. Change a user's password to "First!Password1". Then to "Second!Password2". Then attempt to change back to "First!Password1".
+3. Rejected with "This password has been used recently."
+4. Pest pin: `PasswordHistoryValidatorTest::it rejects reused passwords on Lite when passwordHistoryCount is set`.
+
+### T24.2 — NIST preset applies on Lite — PENDING (Lite)
+1. Lite + Configuration tab → "Apply preset" → NIST 800-63B.
+2. After save: `minLength = 8`, `cases/numbers/symbols = false`, `hibp = true`, `checkCommonPasswords = true` (per `61f47d1` correction — NIST §3.1.1.2 conformance), `expiryAmount = null`.
+
+### T24.3 — OWASP preset applies on Lite — PENDING (Lite)
+1. Apply OWASP ASVS L1.
+2. After save: `minLength = 12`, `maxLength = 128`, `hibp = true`.
+
+### T24.4 — PCI-DSS preset applies on Lite — PENDING (Lite)
+1. Apply PCI-DSS v4.0.
+2. After save: `minLength = 12`, `cases = true`, `numbers = true`, `symbols = false`, `hibp = true`, `passwordHistoryCount = 4`, `expiryAmount = 90`, `checkCommonPasswords = true`.
+
+### T24.5 — CIS Controls v8 preset applies on Lite — PENDING (Lite)
+1. Apply CIS Controls v8.
+2. After save: `minLength = 14`, `expiryAmount = 365`, `expiryPeriod = 'day'`, `hibp = true`, `checkCommonPasswords = true`.
+
+### T24.6 — Strict Enterprise preset rejects on Lite — PENDING (every edition gate)
+1. Lite + try to apply Strict Enterprise (UI either hides this option or rejects on save).
+2. Server-side: `SettingsController::actionApplyPreset` returns error "Pro edition required" — the preset relies on Pro validators (sequential / repeated / contextual).
+3. Flip to Pro → preset applies.
+
+### T24.7 — Expiry-reminder email dispatches on Lite — PENDING (Lite)
+1. Lite + `expiryAmount = 5` (days). Pick a user whose `lastPasswordChangeDate` lands 4 days from expiry.
+2. `ddev craft password-policy/notification/send-expiry-reminders --user=<id>`. Queue worker runs.
+3. Mailpit receives the rendered "your password expires in 4 days" message.
+4. Stock template used (no editor on Lite). Subject + body match `EmailDefaults::all()['expiry-reminder']`.
+
+### T24.8 — Lite settings UI: history visible always — PENDING (Lite)
+1. Settings → History tab visible on Lite (no Pro badge, no "Pro required" overlay).
+2. `passwordHistoryCount` + `passwordHistoryExpiryDays` editable.
+
+### T24.9 — Lite settings UI: preset apply visible — PENDING (Lite)
+1. Settings → Configuration tab shows "Apply preset" dropdown with NIST / OWASP / PCI-DSS / CIS options.
+2. Strict Enterprise option marked "(Pro)" or hidden.
+
+### T24.10 — Lite → Pro upgrade preserves history rows — PENDING (every edition gate)
+1. On Lite: change a user's password twice (creates 2 history rows).
+2. Flip to Pro via project.yaml + craft up.
+3. `SELECT COUNT(*) FROM passwordpolicy_password_history WHERE userId = <id>` → 2. Rows preserved.
+4. Per-group history overrides now functional.
+
+### T24.11 — Lite can't write audit/SIEM/webhook keys — PENDING (Lite — security)
+1. Lite. POST `/admin/actions/password-policy/settings/save` with crafted payload including `enableAuditLog=1`, `siemEndpointUrl='https://attacker.com'`, `webhookSigningSecret='...'`.
+2. `SettingsController::actionSave` strip block rejects these keys.
+3. `project.yaml` after save → none of those keys present.
+
+### T24.12 — Pro can't write Enterprise keys — PENDING (Pro — security)
+1. Pro. POST settings save with `enableAuditLog=1`, `auditLogRetentionDays=30`.
+2. Strip rejects. Project config clean.
+
+### T24.13 — Per-group history overrides still Pro-only — PENDING (every edition gate)
+1. Lite + try to add a per-group `passwordHistoryCount` via named-policy CRUD URL → 403 (named-policy CRUD is Pro-only).
+2. Pro → CRUD works, per-group history overrides save.
+
+---
+
+## Phase 25 — Security audit polish (2026-05-14 → 15) — ALL PENDING
+
+Verifications for the security review findings landed across the May 14-15 commit chain. Each T-row references the specific commit that drove the change.
+
+### T25.1 — `allowAdminChanges = false` blocks `UserPasswordController` — PENDING (every edition gate)
+1. Set `allowAdminChanges = false` in `config/general.php`.
+2. POST `/admin/actions/password-policy/user-password/set` → 403.
+3. Reset `allowAdminChanges = true`. (See `71d8beb`.)
+
+### T25.2 — `allowAdminChanges = false` blocks `NotificationTemplateController::actionSave` — PENDING (every edition gate)
+1. `allowAdminChanges = false`. POST notification-template save → 403.
+2. Restore.
+
+### T25.3 — `readOnly` attribute on CP form inputs — PENDING (every edition gate)
+1. `allowAdminChanges = false`. Visit `/admin/password-policy/notifications/expiry-reminder`.
+2. Inputs render with `readonly` attribute. Save button hidden.
+3. Same for `/admin/password-policy/blocklist` editable table.
+4. Restore. (See `47c1b46`.)
+
+### T25.4 — Translator XSS protection — PENDING
+1. Create a user with display name `<script>alert(1)</script>Admin`.
+2. Trigger any audit row that renders that display name.
+3. Audit log index renders the literal `<` and `>` as `&lt;` `&gt;`. No `alert(1)` execution. (See `47c1b46`.)
+
+### T25.5 — Radiogroup keyboard a11y — PENDING
+1. Open a settings page with a radiogroup (e.g. Configuration → HIBP fail-mode).
+2. Tab into the group. Arrow keys cycle options. Tab moves to next field.
+3. Each radio is reachable. Focus ring visible. (See `47c1b46`.)
+
+### T25.6 — Audit-export token bound to requesting admin — PENDING (Enterprise — also T19.3)
+1. Admin A initiates export. Token URL captured.
+2. Admin B opens URL → 403. (See `2c7c91d`.)
+
+### T25.7 — Webhook `actionRotateSecret` no exception leak — PENDING (Enterprise)
+1. Manually inject a failure into `rotateSecret` (e.g. block the queue temporarily).
+2. CP shows generic error: "Could not rotate secret. Please try again."
+3. NO `$e->getMessage()` text in the JSON response. (See `99f395e`.)
+
+### T25.8 — Webhook secret stripped from `asModelSuccess` JSON — PENDING (Enterprise)
+1. Save a webhook endpoint. Capture the JSON response.
+2. Response has NO `secret` field, or has it as `'***'` / empty.
+3. Same for the rotate-secret response. (See `e45b9aa`.)
+
+### T25.9 — HIBP-on-login dedup cache key — PENDING (Pro)
+1. With Pro + HIBP-on-login enabled, log in with a breached password.
+2. Inspect the Yii cache: cache key matches the pattern `pp:hibp-login:{userId}:breached` (NO `sha1Prefix` segment).
+3. Privacy improvement: cache no longer correlates user → password-bucket. (See `6703c88`.)
+
+### T25.10 — Lock/unlock listeners resolve via `UserEvent::$user` — PENDING (Enterprise)
+1. Trigger a user lock event programmatically with `Craft::$app->getUser()` returning a DIFFERENT user (e.g. a service-account context).
+2. Audit log row written with `userIdentifier` matching the LOCKED user, NOT the active session user.
+3. Same for unlock. (See `924f5e7`.)
+
+### T25.11 — Password compare via Craft Security service — PENDING (every edition gate)
+1. Inspect `PasswordHistoryService::matches()` — verify it calls `Craft::$app->getSecurity()->validatePassword($plaintext, $hash)`, NOT a direct `password_verify()`.
+2. This routes through Craft's centralised security primitive so any future algorithm change benefits the history check too. (See `9285f37`.)
+
+### T25.12 — NIST preset enables `checkCommonPasswords` — PENDING (every edition gate)
+1. Apply NIST 800-63B preset (on any edition — see T24.2 for Lite).
+2. After save: `checkCommonPasswords = true`. Per NIST §3.1.1.2 conformance. (See `61f47d1`.)
+
+### T25.13 — `canonicalize()` handles nested + null — PENDING (Enterprise — P2 bundle)
+1. Insert an audit row with `details` containing nested arrays + null values (programmatically).
+2. `canonicalize()` produces consistent output. `rowHash` validates.
+3. Re-canonicalize on a different PHP version (8.2 vs 8.3) → same bytes. (See `e41878e`.)
+
+### T25.14 — Uninstall drops G7/G8/G9 tables + element FK rows — PENDING (P2 bundle)
+1. On Enterprise with non-trivial audit/SIEM/webhook data: `ddev craft plugin/uninstall password-policy`.
+2. `SELECT COUNT(*) FROM information_schema.tables WHERE table_name LIKE 'passwordpolicy_%'` → 0.
+3. `SELECT COUNT(*) FROM craft_elements WHERE type LIKE 'craftpulse\\\\passwordpolicy\\\\elements\\\\%'` → 0 (CASCADE cleaned).
+4. Reinstall → fresh state. (See `e41878e`.)
+
+### T25.15 — Destructive webhook actions confirm — PENDING (Enterprise — P2 bundle)
+1. From a webhook edit screen: click "Rotate secret" → confirm modal appears with warning about grace window.
+2. Click "Delete" → confirm modal appears with warning about loss of audit chain link.
+3. Both modals require explicit confirmation. (See `e41878e`.)
+
+### T25.16 — Webhook + SIEM error strings generalised — PENDING (Enterprise — P3 bundle)
+1. Trigger error conditions (invalid URL, connection refused, etc.).
+2. CP renders generic error strings: "Could not save webhook. Please review the URL and try again." NO file paths, line numbers, exception class names. (See `00e6c33`.)
+
+### T25.17 — `hidden` attribute on edition-gated form sections — PENDING (a11y — P3 bundle)
+1. On Lite, visit settings pages where Pro/Enterprise tabs render gated. Inspect: gated sections use `hidden` attribute (NOT `display: none`).
+2. Screen reader skips the hidden sections cleanly.
+3. Tab navigation does NOT land on hidden inputs. (See `00e6c33`.)
+
+### T25.18 — `sendNewDeviceAlert` Pro guard + activity breadcrumbs — PENDING (every edition gate)
+1. From Lite: trigger a code path that would call `sendNewDeviceAlert()`. Verify rejection.
+2. From Pro: same path → notification dispatched.
+3. Notification activity page renders breadcrumbs correctly on every screen. Permission `pp:notification-log-view` gates the page; `pp:notification-templates-manage` is no longer the implicit grant. (See `20013a6`.)
 
 ---
 

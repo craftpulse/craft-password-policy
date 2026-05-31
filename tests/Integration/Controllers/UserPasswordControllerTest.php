@@ -35,6 +35,7 @@
  */
 
 use craft\db\Query;
+use craft\db\Table;
 use craft\web\Response;
 use craftpulse\passwordpolicy\controllers\UserPasswordController;
 use craftpulse\passwordpolicy\enums\ChangeReason;
@@ -63,6 +64,7 @@ beforeEach(function() {
     $this->originalCases = $this->settings->cases;
     $this->originalNumbers = $this->settings->numbers;
     $this->originalSymbols = $this->settings->symbols;
+    $this->originalForceChange = $this->settings->forceChangeOnFirstLogin;
 
     // Default web/CP context: CP request, JSON-accepting, elevated
     // session true, admin identity authenticated.
@@ -97,6 +99,7 @@ afterEach(function() {
     $this->settings->cases = $this->originalCases;
     $this->settings->numbers = $this->originalNumbers;
     $this->settings->symbols = $this->originalSymbols;
+    $this->settings->forceChangeOnFirstLogin = $this->originalForceChange;
 });
 
 // =============================================================================
@@ -214,6 +217,169 @@ it('rejects when the new password fails policy validation', function() {
     // unrelated save would pick up a stale `AdminChange` context).
     $consumed = $this->plugin->getUserState()->consumeExplicitContext($target);
     expect($consumed)->toBeNull();
+});
+
+// =============================================================================
+// actionChange — force-change-on-first-login preservation
+// =============================================================================
+//
+// Craft's `User::afterSave` clears `passwordResetRequired` whenever
+// `newPassword` is set on a non-new user that previously had the flag
+// (`vendor/craftcms/cms/src/elements/User.php` line 2632). That clear
+// is correct for ordinary admin password changes — admin reset on
+// behalf of an established user — and unwanted for initial-password-
+// setup flows where admin assigned a *temporary* password to a brand-
+// new user under the `forceChangeOnFirstLogin` policy. The controller
+// re-asserts the flag after save for the second case only.
+//
+// These tests pin both halves of the split: preservation for the
+// initial-setup case (force-change on + user never logged in + flag
+// was true pre-save) and Craft's default clear for everything else.
+//
+// 2026-05-22 Phase H smoke test S1.6 motivated this.
+
+it('preserves passwordResetRequired when admin sets initial password under force-change policy', function() {
+    $this->settings->forceChangeOnFirstLogin = true;
+
+    // Fresh user. With `forceChangeOnFirstLogin = true` set above, the
+    // plugin's own EVENT_AFTER_SAVE listener (registered at boot) fires
+    // synchronously inside the factory's saveElement, sets
+    // `passwordResetRequired = true`, and re-saves. So by the time
+    // `UserFactory::nonAdmin()` returns, the DB row for the user has
+    // `passwordResetRequired = true` — exactly the "fresh + flag set +
+    // never logged in" state the controller's preservation gate looks
+    // for. Note: `User::find()` and `getUserById()` will still report
+    // `$user->passwordResetRequired = false` because Craft's UserQuery
+    // doesn't select that column; the controller reads from the DB
+    // directly, same pattern the plugin uses for `lastPasswordChangeDate`.
+    $target = UserFactory::nonAdmin();
+
+    $dbFlag = (new Query())
+        ->select(['passwordResetRequired'])
+        ->from(Table::USERS)
+        ->where(['id' => $target->id])
+        ->scalar();
+    expect((bool)$dbFlag)->toBeTrue();
+
+    $this->request->stubBodyParams = [
+        'userId' => $target->id,
+        'newPassword' => 'NewStr0ngP@ssword!',
+        'newPasswordConfirm' => 'NewStr0ngP@ssword!',
+    ];
+
+    runUserPasswordAction('change');
+
+    // Direct DB read — `UserQuery::beforePrepare()` doesn't select
+    // `passwordResetRequired`, so re-fetching via `getUserById()` or
+    // `User::find()` would surface `false` regardless of DB state.
+    $postFlag = (new Query())
+        ->select(['passwordResetRequired'])
+        ->from(Table::USERS)
+        ->where(['id' => $target->id])
+        ->scalar();
+    expect((bool)$postFlag)->toBeTrue();
+});
+
+it('lets Craft clear passwordResetRequired when admin changes password for an established user', function() {
+    // Policy is enabled, but irrelevant — the established-user gate
+    // below trips the preservation. Test the "user has logged in
+    // before" path.
+    $this->settings->forceChangeOnFirstLogin = true;
+
+    $target = UserFactory::nonAdmin();
+    $target->passwordResetRequired = true;
+    expect(Craft::$app->getElements()->saveElement($target, false))->toBeTrue();
+
+    // Stamp `lastLoginDate` directly on the users row so the controller's
+    // `lastLoginDate === null` gate evaluates false. User::afterSave
+    // doesn't touch this column on save, so the DB-direct write survives
+    // the controller's subsequent `saveElement` call.
+    Craft::$app->getDb()->createCommand()
+        ->update('{{%users}}', [
+            'lastLoginDate' => \craft\helpers\Db::prepareDateForDb(new DateTime('-1 day')),
+        ], ['id' => $target->id])
+        ->execute();
+
+    $this->request->stubBodyParams = [
+        'userId' => $target->id,
+        'newPassword' => 'NewStr0ngP@ssword!',
+        'newPasswordConfirm' => 'NewStr0ngP@ssword!',
+    ];
+
+    runUserPasswordAction('change');
+
+    // Craft's standard semantic survives — admin set a new password on
+    // a user who's already engaged with the system, so the flag clears.
+    // Direct DB read for the same reason as the previous test.
+    $postFlag = (new Query())
+        ->select(['passwordResetRequired'])
+        ->from(Table::USERS)
+        ->where(['id' => $target->id])
+        ->scalar();
+    expect((bool)$postFlag)->toBeFalse();
+});
+
+it('does not re-assert passwordResetRequired when force-change policy is off', function() {
+    $this->settings->forceChangeOnFirstLogin = false;
+
+    $target = UserFactory::nonAdmin();
+    $target->passwordResetRequired = true;
+    expect(Craft::$app->getElements()->saveElement($target, false))->toBeTrue();
+
+    $this->request->stubBodyParams = [
+        'userId' => $target->id,
+        'newPassword' => 'NewStr0ngP@ssword!',
+        'newPasswordConfirm' => 'NewStr0ngP@ssword!',
+    ];
+
+    runUserPasswordAction('change');
+
+    // Policy off + flag had been set incidentally (manual admin flip
+    // earlier, etc.). No policy reason to sustain it through the save —
+    // Craft's clear holds.
+    $postFlag = (new Query())
+        ->select(['passwordResetRequired'])
+        ->from(Table::USERS)
+        ->where(['id' => $target->id])
+        ->scalar();
+    expect((bool)$postFlag)->toBeFalse();
+});
+
+it('re-pins FirstLoginForced so the preserved forced reset is captured accurately', function() {
+    $this->settings->forceChangeOnFirstLogin = true;
+
+    // Fresh user under the force-change policy: the plugin's creation
+    // listener set `passwordResetRequired = true` + pinned a
+    // `FirstLoginForced` pending reason.
+    $target = UserFactory::nonAdmin();
+    expect(UserStateRecord::findOne(['userId' => $target->id])?->pendingResetReason)
+        ->toBe(ChangeReason::FirstLoginForced->value);
+
+    $this->request->stubBodyParams = [
+        'userId' => $target->id,
+        'newPassword' => 'NewStr0ngP@ssword!',
+        'newPasswordConfirm' => 'NewStr0ngP@ssword!',
+    ];
+
+    runUserPasswordAction('change');
+
+    // The admin-change save consumed the pending reason and wrote an
+    // AdminChange history row (the admin's action). Because the flag was
+    // preserved, the user still owes a forced first-login reset — so the
+    // controller re-pins FirstLoginForced. Without the re-pin, that
+    // eventual reset would mis-record as self_service.
+    $state = UserStateRecord::findOne(['userId' => $target->id]);
+    expect($state)->not->toBeNull()
+        ->and($state->pendingResetReason)->toBe(ChangeReason::FirstLoginForced->value);
+
+    // The admin's own change still recorded admin_change.
+    $row = (new Query())
+        ->select(['changeReason'])
+        ->from('{{%passwordpolicy_password_history}}')
+        ->where(['userId' => $target->id])
+        ->orderBy(['dateCreated' => SORT_DESC])
+        ->one();
+    expect($row['changeReason'])->toBe(ChangeReason::AdminChange->value);
 });
 
 // =============================================================================

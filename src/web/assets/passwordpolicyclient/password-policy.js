@@ -234,19 +234,16 @@
             );
             button.classList.toggle('pp-toggle-on', isPassword);
 
-            // Flip the SVG halves
-            var svg = button.querySelector('svg');
-            if (svg) {
-                var open = svg.querySelector('.pp-eye-open');
-                var slash = svg.querySelector('.pp-eye-slash');
-                if (open && slash) {
-                    if (isPassword) {
-                        open.style.display = 'none';
-                        slash.style.display = '';
-                    } else {
-                        open.style.display = '';
-                        slash.style.display = 'none';
-                    }
+            // Flip the two glyph <svg> elements (open eye vs eye-slash).
+            var open = button.querySelector('.pp-eye-open');
+            var slash = button.querySelector('.pp-eye-slash');
+            if (open && slash) {
+                if (isPassword) {
+                    open.style.display = 'none';
+                    slash.style.display = '';
+                } else {
+                    open.style.display = '';
+                    slash.style.display = 'none';
                 }
             }
         });
