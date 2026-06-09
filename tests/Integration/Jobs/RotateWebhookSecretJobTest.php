@@ -125,21 +125,32 @@ it('is a no-op while still inside the grace window', function() {
 });
 
 it('parses the naive secretRotatedAt as UTC, not the site timezone', function() {
-    // Regression vector: parsing the naive UTC string in a non-UTC tz
-    // shifts `elapsed` by the offset. We pin a rotation a hair past the
-    // window (window + 60s). Parsed as UTC → elapsed and reaped. Parsed
-    // in a tz offset by >60s worth of skew (any real tz) → the original
-    // bug could flip the verdict. The record's secretRotatedAt comes back
-    // as the naive string ActiveRecord stored.
-    $graceSeconds = max(1, $this->plugin->getSettings()->webhookSecretGracePeriodHours) * 3600;
-    $endpoint = makeRotatedEndpoint($graceSeconds + 60);
+    // Force a BEHIND-UTC app timezone so the regression is deterministically
+    // catchable rather than false-greening in a UTC CI env. The pre-fix code
+    // parsed the naive UTC string in the app tz; for a negative offset that
+    // shifts the instant later and shrinks `elapsed` below the window,
+    // flipping the verdict to false. Honolulu is a fixed UTC-10 (no DST), so a
+    // rotation pinned just window+60s old reads as ~10h short under the bug.
+    // Parsed correctly as UTC it is genuinely past the window → reaped.
+    // makeRotatedEndpoint stamps secretRotatedAt via explicit Carbon::now('UTC'),
+    // so the STORED value is correct regardless of app tz — only the job's
+    // read-back parse (the code under test) is affected.
+    $originalTz = Craft::$app->getTimeZone();
+    Craft::$app->setTimeZone('Pacific/Honolulu');
 
-    /** @var WebhookEndpointRecord $record */
-    $record = WebhookEndpointRecord::findOne(['id' => $endpoint->id]);
+    try {
+        $graceSeconds = max(1, $this->plugin->getSettings()->webhookSecretGracePeriodHours) * 3600;
+        $endpoint = makeRotatedEndpoint($graceSeconds + 60);
 
-    $job = new RotateWebhookSecretJob();
+        /** @var WebhookEndpointRecord $record */
+        $record = WebhookEndpointRecord::findOne(['id' => $endpoint->id]);
 
-    expect(invokeGracePeriodElapsed($job, $record))->toBeTrue();
+        $job = new RotateWebhookSecretJob();
+
+        expect(invokeGracePeriodElapsed($job, $record))->toBeTrue();
+    } finally {
+        Craft::$app->setTimeZone($originalTz);
+    }
 });
 
 it('treats a null secretRotatedAt as elapsed (defensive reap)', function() {
