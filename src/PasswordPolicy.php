@@ -306,7 +306,12 @@ class PasswordPolicy extends Plugin
             $params['username'] = $user->username;
         }
 
-        $encoded_params = str_replace('\\', '', Json::encode($params));
+        // Encode with unescaped slashes/unicode so the log line stays
+        // readable. The previous `str_replace('\\', '', …)` mangled any
+        // namespaced class name or Windows path in the payload by stripping
+        // every backslash — the JSON flags solve the readability goal
+        // without corrupting legitimate backslashes.
+        $encoded_params = Json::encode($params, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
         $message = Craft::t('password-policy', $message . ' ' . $encoded_params, $params);
 
@@ -1307,8 +1312,10 @@ class PasswordPolicy extends Plugin
     /**
      * Registers listeners for Craft security events (Enterprise audit logging).
      *
-     * Listens to lockout, unlock, and login failure events to record them
-     * in the audit log. Gating happens inside AuditLogService::logEvent().
+     * Listens to the account lockout and unlock events
+     * (`Users::EVENT_AFTER_LOCK_USER` / `EVENT_AFTER_UNLOCK_USER`) to
+     * record them in the audit log. Gating happens inside
+     * AuditLogService::logEvent().
      *
      * @return void
      *
@@ -1495,8 +1502,9 @@ class PasswordPolicy extends Plugin
      * event that fires synchronously inside the login flow with the
      * plaintext password in scope). Hashes the plaintext to SHA-1, sends
      * only the 5-char k-anonymity prefix to the HIBP API, and on a match:
-     *  1. Sets `$user->passwordResetRequired = true` (saved with `muteEvents`
-     *     so the password-history listeners don't fire spuriously).
+     *  1. Sets `$user->passwordResetRequired = true` (saved under the
+     *     `$_processing` recursion guard so the password-history listener
+     *     skips the re-save — the password isn't actually changing).
      *  2. Sends the `breach-detected` notification email (Pro pipeline).
      *  3. Writes an Enterprise audit-log entry (gated inside the listener
      *     because Lite/Pro installs don't have the audit log enabled).
@@ -1642,15 +1650,26 @@ class PasswordPolicy extends Plugin
         // Breach detected — run side effects.
         $detectedAt = new \DateTime('now');
 
-        // 1. Force a password reset on next login. Save with muteEvents to
-        //    keep the password-history listeners from firing spurious
-        //    PasswordChangedEvent — the password isn't actually changing.
+        // 1. Force a password reset on next login. We set
+        //    `passwordResetRequired = true` and re-save WITHOUT changing
+        //    the password.
+        //
+        //    Why this is safe (the real reason): `ProjectConfig::muteEvents`
+        //    only gates project-config change events — it does NOT suppress
+        //    element-save events, so it would do nothing here. The actual
+        //    guard against the EVENT_AFTER_SAVE password-history listener
+        //    re-entering on this flag-only save is the `$_processing`
+        //    set, mirrored from the forceChangeOnFirstLogin re-save: the
+        //    listener checks `isset(self::$_processing[$user->id])` at the
+        //    top and returns early. Because `newPassword` is unset on this
+        //    save the listener wouldn't write a history row anyway (its
+        //    plaintext cache lookup misses), but the guard makes the intent
+        //    explicit and matches the sibling flow.
+        //
         //    Also pin a pending `BreachForced` reason on the user_state row
         //    so the user's NEXT password change records the right
         //    `changeReason` in history.
-        $projectConfig = Craft::$app->getProjectConfig();
-        $previousMute = $projectConfig->muteEvents;
-        $projectConfig->muteEvents = true;
+        self::$_processing[$user->id] = true;
         try {
             $user->passwordResetRequired = true;
             Craft::$app->getElements()->saveElement($user, false);
@@ -1661,7 +1680,7 @@ class PasswordPolicy extends Plugin
                 'password-policy',
             );
         } finally {
-            $projectConfig->muteEvents = $previousMute;
+            unset(self::$_processing[$user->id]);
         }
 
         // 2. Send the breach-detected notification.

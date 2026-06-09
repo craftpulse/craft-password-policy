@@ -248,7 +248,22 @@ class UserPasswordController extends Controller
         // Confirmed during the 2026-05-22 Phase H smoke walk (S1.6).
         if ($shouldPreserveForceReset) {
             $user->passwordResetRequired = true;
-            Craft::$app->getElements()->saveElement($user, false);
+
+            // Check the re-save result. If it fails, the force-reset
+            // guarantee is silently dropped while `setPendingReason()`
+            // still records the intent — leaving the user able to keep a
+            // breach/temporary password past first login. Log loud so the
+            // dropped guarantee is visible; still record the pending
+            // reason so audit capture stays accurate for any reset that
+            // does eventually occur.
+            if (!Craft::$app->getElements()->saveElement($user, false)) {
+                Craft::error(
+                    'Failed to re-assert passwordResetRequired on user ' . $user->id .
+                    ' after admin password change (force-change-on-first-login preservation): ' .
+                    implode('; ', $user->getFirstErrors()),
+                    'password-policy',
+                );
+            }
 
             // The user still owes a forced first-login reset. The admin-
             // change save above already consumed the FirstLoginForced

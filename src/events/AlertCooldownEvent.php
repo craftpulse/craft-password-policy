@@ -51,6 +51,14 @@ class AlertCooldownEvent extends Event
      *     event class: `user:<id>` for per-user windows, `event:<event>`
      *     for per-event-name windows, `prefix:<5char-sha1>` for HIBP
      *     bucket-level windows, etc.
+     *
+     *     Linkability warning: for HIBP-derived keys the suffix is a
+     *     5-char SHA-1 prefix — the same k-anonymity prefix sent to the
+     *     HIBP API (see {@see BreachDetectedEvent::$sha1Prefix}). It is
+     *     k-anonymity-safe in isolation, but listeners that persist
+     *     `(userId, prefix)` together off-site recreate the linkability
+     *     property k-anonymity is designed to eliminate. Don't store the
+     *     prefix alongside an identifiable user in a durable ledger.
      */
     public string $cooldownKey;
 

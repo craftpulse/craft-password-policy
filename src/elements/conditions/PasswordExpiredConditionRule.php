@@ -87,8 +87,20 @@ class PasswordExpiredConditionRule extends BaseLightswitchConditionRule implemen
             return;
         }
 
-        $operator = $this->value ? '<' : '>=';
-        $query->andWhere([$operator, 'users.lastPasswordChangeDate', Db::prepareDateForDb($expiryDate)]);
+        if ($this->value) {
+            // Expired = password older than the threshold OR never changed.
+            // `matchElement()` treats a NULL `lastPasswordChangeDate` as
+            // expired, but SQL `NULL < date` evaluates to NULL (not true),
+            // which would silently drop never-changed users from the index
+            // query. The explicit null branch keeps the two paths aligned.
+            $query->andWhere([
+                'or',
+                ['<', 'users.lastPasswordChangeDate', Db::prepareDateForDb($expiryDate)],
+                ['users.lastPasswordChangeDate' => null],
+            ]);
+        } else {
+            $query->andWhere(['>=', 'users.lastPasswordChangeDate', Db::prepareDateForDb($expiryDate)]);
+        }
     }
 
     /**

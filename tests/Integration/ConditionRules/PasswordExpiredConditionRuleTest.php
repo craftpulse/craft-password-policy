@@ -214,6 +214,39 @@ it('narrows User::find() to expired users via SQL', function() {
         ->and($ids)->not->toContain($fresh->id);
 });
 
+it('includes never-changed users in the expired SQL filter', function() {
+    // Finding 2: `matchElement()` treats a null change date as expired,
+    // but a bare `lastPasswordChangeDate < date` SQL predicate evaluates
+    // `NULL < date` to NULL (not true), silently dropping never-changed
+    // users from the index query. The ON branch now ORs in an explicit
+    // `IS NULL` clause so the two paths agree.
+    $expired = UserFactory::admin();
+    setLastPasswordChange($expired, Carbon::now()->subDays(60));
+
+    $never = UserFactory::admin();
+    Craft::$app->getDb()->createCommand()
+        ->update(
+            Table::USERS,
+            ['lastPasswordChangeDate' => null],
+            ['id' => $never->id],
+        )
+        ->execute();
+
+    $fresh = UserFactory::admin();
+    setLastPasswordChange($fresh, Carbon::now()->subDays(5));
+
+    $rule = new PasswordExpiredConditionRule();
+    $rule->value = true;
+
+    $query = User::find()->status(null);
+    $rule->modifyQuery($query);
+    $ids = $query->ids();
+
+    expect($ids)->toContain($expired->id)
+        ->and($ids)->toContain($never->id)
+        ->and($ids)->not->toContain($fresh->id);
+});
+
 // =============================================================================
 // Helpers
 // =============================================================================

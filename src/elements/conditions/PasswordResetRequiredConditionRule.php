@@ -13,6 +13,8 @@ namespace craftpulse\passwordpolicy\elements\conditions;
 use Craft;
 use craft\base\conditions\BaseLightswitchConditionRule;
 use craft\base\ElementInterface;
+use craft\db\Query;
+use craft\db\Table;
 use craft\elements\conditions\ElementConditionRuleInterface;
 use craft\elements\db\ElementQueryInterface;
 use craft\elements\User;
@@ -75,6 +77,13 @@ class PasswordResetRequiredConditionRule extends BaseLightswitchConditionRule im
     /**
      * Returns whether the given element matches this condition rule.
      *
+     * `craft\elements\db\UserQuery::beforePrepare()` does NOT addSelect
+     * `passwordResetRequired`, so reading it off a freshly-loaded User
+     * returns its typed default (`false`) regardless of the underlying
+     * column value — the ON branch would never match. Hydrate directly
+     * from the users table, the same direct-scalar pattern
+     * {@see PasswordExpiredConditionRule} uses for `lastPasswordChangeDate`.
+     *
      * @param ElementInterface $element
      * @return bool
      *
@@ -84,6 +93,32 @@ class PasswordResetRequiredConditionRule extends BaseLightswitchConditionRule im
     public function matchElement(ElementInterface $element): bool
     {
         /** @var User $element */
-        return $this->matchValue($element->passwordResetRequired);
+        return $this->matchValue($this->_hydrateResetRequired($element));
+    }
+
+    // Private Methods
+    // =========================================================================
+
+    /**
+     * Returns whether the user is flagged as requiring a password reset,
+     * read directly from the users table.
+     *
+     * `UserQuery::beforePrepare()` does not select `passwordResetRequired`,
+     * so the in-memory `$user->passwordResetRequired` is the typed default
+     * (`false`) on a freshly-loaded User regardless of DB state.
+     *
+     * @param User $user
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _hydrateResetRequired(User $user): bool
+    {
+        return (bool)(new Query())
+            ->select(['passwordResetRequired'])
+            ->from(Table::USERS)
+            ->where(['id' => $user->id])
+            ->scalar();
     }
 }
