@@ -98,4 +98,16 @@ class AuditExportCompleteEvent extends Event
      *     uses to look up the file.
      */
     public string $token;
+
+    /**
+     * @var string|null the handle of the configured filesystem the
+     *     export was written to, or `null` on the local-fallback path
+     *     (where `$filePath` is an absolute local path). Listeners that
+     *     mirror the artefact off-site resolve `$filePath` against this
+     *     filesystem so they read the same bytes the download controller
+     *     serves.
+     *
+     * @since 5.2.0
+     */
+    public ?string $filesystemHandle = null;
 }

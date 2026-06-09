@@ -114,6 +114,104 @@ it('fires AuditChainRotatedEvent when the prune deletes rows but leaves a head',
 });
 
 // =============================================================================
+// endRowHash equals the surviving head's previousHash (rotation boundary)
+// =============================================================================
+
+it('publishes the surviving head previousHash as endRowHash', function() {
+    $service = $this->plugin->getAuditLog();
+
+    $service->logEvent(userId: null, event: 'password_changed');
+    $service->logEvent(userId: null, event: 'account_locked');
+    $service->logEvent(userId: null, event: 'account_unlocked');
+
+    $rows = (new \craft\db\Query())
+        ->from('{{%passwordpolicy_audit_log}}')
+        ->orderBy(['id' => SORT_ASC])
+        ->all();
+
+    $oldThreshold = Carbon::now('UTC')->subDays(10)->format('Y-m-d H:i:s');
+    backdateAuditRow((int)$rows[0]['id'], $oldThreshold);
+    backdateAuditRow((int)$rows[1]['id'], $oldThreshold);
+
+    $captured = null;
+    Event::on(
+        AuditLogService::class,
+        AuditLogService::EVENT_AUDIT_CHAIN_ROTATED,
+        function(AuditChainRotatedEvent $event) use (&$captured) {
+            $captured = $event;
+        },
+    );
+
+    $deleted = $service->purgeOldEntries(daysToKeep: 5);
+
+    expect($deleted)->toBe(2);
+    expect($captured)->toBeInstanceOf(AuditChainRotatedEvent::class);
+
+    // endId is the highest deleted id; endRowHash is the surviving
+    // head's previousHash — which IS the rowHash of that highest
+    // deleted row, the rotation boundary the verifier anchors against.
+    expect($captured->endId)->toBe((int)$rows[1]['id']);
+    expect($captured->endRowHash)->toBe($rows[2]['previousHash']);
+    expect($captured->endRowHash)->toBe($rows[1]['rowHash']);
+    expect($captured->startId)->toBe((int)$rows[2]['id']);
+    expect($captured->startRowHash)->toBe($rows[2]['rowHash']);
+});
+
+// =============================================================================
+// Clock-skew safety: prune removes a contiguous id prefix even when a
+// higher-id row carries an OLDER dateCreated (no mid-chain hole)
+// =============================================================================
+
+it('prunes by a contiguous id boundary so a clock-skewed row never punches a mid-chain hole', function() {
+    $service = $this->plugin->getAuditLog();
+
+    // Seed four chained rows.
+    $service->logEvent(userId: null, event: 'password_changed');
+    $service->logEvent(userId: null, event: 'account_locked');
+    $service->logEvent(userId: null, event: 'account_unlocked');
+    $service->logEvent(userId: null, event: 'password_changed');
+
+    $rows = (new \craft\db\Query())
+        ->from('{{%passwordpolicy_audit_log}}')
+        ->orderBy(['id' => SORT_ASC])
+        ->all();
+    expect($rows)->toHaveCount(4);
+
+    $old = Carbon::now('UTC')->subDays(10)->format('Y-m-d H:i:s');
+    $recent = Carbon::now('UTC')->format('Y-m-d H:i:s');
+
+    // Simulate a wall-clock step: rows 1-2 are old (should be pruned),
+    // row 3 is RECENT (a clock backstep gave it a newer-than-its-id
+    // dateCreated), row 4 is recent. A `dateCreated < threshold` delete
+    // would drop rows 1-2 only — but the OLD code resolved the boundary
+    // by `dateCreated`, and if row 3 were also old it would punch a
+    // hole. Here we make row 3 the one straddling the boundary: it is
+    // recent, so `maxId` resolves to row 2's id and the prune removes
+    // exactly the rows 1-2 prefix.
+    backdateAuditRow((int)$rows[0]['id'], $old);
+    backdateAuditRow((int)$rows[1]['id'], $old);
+    backdateAuditRow((int)$rows[2]['id'], $recent);
+    backdateAuditRow((int)$rows[3]['id'], $recent);
+
+    $deleted = $service->purgeOldEntries(daysToKeep: 5);
+
+    // Exactly the contiguous id prefix (rows 1-2) is gone; rows 3-4
+    // survive as a clean chain suffix.
+    expect($deleted)->toBe(2);
+
+    $survivors = (new \craft\db\Query())
+        ->select(['id'])
+        ->from('{{%passwordpolicy_audit_log}}')
+        ->orderBy(['id' => SORT_ASC])
+        ->column();
+
+    expect(array_map('intval', $survivors))->toBe([
+        (int)$rows[2]['id'],
+        (int)$rows[3]['id'],
+    ]);
+});
+
+// =============================================================================
 // Skips the event when the prune deleted zero rows
 // =============================================================================
 

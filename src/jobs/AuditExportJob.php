@@ -387,13 +387,28 @@ class AuditExportJob extends BaseBatchedJob implements RetryableJobInterface
         $absolutePath = $this->_resolveLocalPath();
         FileHelper::createDirectory(dirname($absolutePath));
 
-        // Touch the file so an empty result set still produces a
-        // downloadable artifact (header-only CSV / zero-byte JSONL).
-        // Otherwise the download URL 404s for an admin who exported
-        // a date window with no rows.
-        if (!file_exists($absolutePath)) {
-            touch($absolutePath);
+        // Truncate to zero bytes at the top of `before()`. `before()`
+        // runs once per first batch (`itemOffset === 0`), but a first
+        // batch that THREW before committing its offset is re-run from
+        // the top on retry — and `before()` fires again. Opening with
+        // 'a' (the per-row `_appendLine` mode) on that retry would
+        // stack a SECOND CSV header + re-append every row the failed
+        // attempt already wrote, corrupting the export. A 'w' open here
+        // resets the file so the retry rebuilds it cleanly.
+        // Continuation batches (`itemOffset > 0`) never call `before()`,
+        // so a multi-batch export's earlier batches are never clobbered.
+        //
+        // This also satisfies the empty-result contract: the truncate
+        // leaves a zero-byte file (JSONL) or a header-only file (CSV)
+        // so the download URL never 404s for an admin who exported a
+        // date window with no rows.
+        $handle = @fopen($absolutePath, 'w');
+
+        if ($handle === false) {
+            throw new RuntimeException("Failed to open export file: {$absolutePath}");
         }
+
+        fclose($handle);
 
         // CSV gets a header row on the first write; JSONL does not
         // (each line is self-contained, so no header is meaningful).
@@ -422,13 +437,29 @@ class AuditExportJob extends BaseBatchedJob implements RetryableJobInterface
 
         $absolutePath = $this->_resolveLocalPath();
 
-        if ($this->format === 'jsonl') {
-            $this->_appendLine($absolutePath, self::formatJsonlRow($item));
+        // Per-row formatting is wrapped so one malformed row can't abort
+        // the whole export. `formatJsonlRow()` re-parses `dateCreated`
+        // through `_normaliseDateCreated()`, which throws on a value
+        // `DateTime` can't parse (a corrupt or hand-edited row). Without
+        // the guard a single bad row would bubble the throw up through
+        // `BaseBatchedJob`, fail the batch, and burn retries on a
+        // condition no retry can fix. Log the offending id and skip —
+        // the export completes with every row it COULD format.
+        try {
+            $line = $this->format === 'jsonl'
+                ? self::formatJsonlRow($item)
+                : self::formatCsvRow($item);
+        } catch (Throwable $e) {
+            Craft::warning(
+                'AuditExportJob skipped malformed audit row ' . (int)$item['id']
+                . ' during export: ' . $e->getMessage(),
+                'password-policy',
+            );
 
             return;
         }
 
-        $this->_appendLine($absolutePath, self::formatCsvRow($item));
+        $this->_appendLine($absolutePath, $line);
     }
 
     /**
@@ -457,6 +488,17 @@ class AuditExportJob extends BaseBatchedJob implements RetryableJobInterface
             $remoteRelativePath = $this->_uploadToFs($localPath);
         }
 
+        // Resolve the canonical file location ONCE and reuse it for both
+        // the cache entry and the completion event. On a remote-FS
+        // install `_uploadToFs()` returns the filesystem-relative path;
+        // the local temp file is incidental. Previously the cache stored
+        // the remote relative path while the completion event published
+        // the local temp path — listeners (SIEM mirrors, evidence
+        // queues) that resolved the event's `filePath` against the
+        // configured filesystem looked in the wrong place. A single
+        // resolved value keeps both surfaces consistent.
+        $resolvedPath = $remoteRelativePath ?? $localPath;
+
         // Cache the token with the file metadata. The download
         // controller looks this up, sends the file, and deletes the
         // entry. Stored as an array for forward-compat (a future
@@ -475,7 +517,7 @@ class AuditExportJob extends BaseBatchedJob implements RetryableJobInterface
             $this->_tokenCacheKey(),
             [
                 'exportDate' => Carbon::now('UTC')->format('Y-m-d'),
-                'filePath' => $remoteRelativePath ?? $localPath,
+                'filePath' => $resolvedPath,
                 'filesystemHandle' => $this->filesystemHandle,
                 'format' => $this->format,
                 'requestedById' => $this->requestedById,
@@ -489,7 +531,7 @@ class AuditExportJob extends BaseBatchedJob implements RetryableJobInterface
         // (the file already exists; the token is cached).
         $rowCount = $this->totalItems();
 
-        $this->_fireCompletionEvent($expiresAt, $rowCount);
+        $this->_fireCompletionEvent($expiresAt, $rowCount, $resolvedPath);
         $this->_sendCompletionEmail($expiresAt, $rowCount);
     }
 
@@ -607,14 +649,21 @@ class AuditExportJob extends BaseBatchedJob implements RetryableJobInterface
      * a listener exception logs and continues; the export file already
      * exists and the token is cached.
      *
+     * `$resolvedPath` is the SAME location written to the token cache —
+     * the filesystem-relative path on a remote-FS install, the absolute
+     * local path on the local-fallback path. Listeners resolve it
+     * against the configured filesystem so they read the bytes from the
+     * same place the download controller does.
+     *
      * @param DateTime $expiresAt
      * @param int $rowCount
+     * @param string $resolvedPath
      * @return void
      *
      * @author CraftPulse
      * @since 5.2.0
      */
-    private function _fireCompletionEvent(DateTime $expiresAt, int $rowCount): void
+    private function _fireCompletionEvent(DateTime $expiresAt, int $rowCount, string $resolvedPath): void
     {
         try {
             Event::trigger(
@@ -622,11 +671,12 @@ class AuditExportJob extends BaseBatchedJob implements RetryableJobInterface
                 self::EVENT_AUDIT_EXPORT_COMPLETE,
                 new AuditExportCompleteEvent([
                     'token' => $this->token,
-                    'filePath' => $this->_resolveLocalPath(),
+                    'filePath' => $resolvedPath,
                     'format' => $this->format,
                     'rowCount' => $rowCount,
                     'requestedById' => $this->requestedById,
                     'expiresAt' => $expiresAt,
+                    'filesystemHandle' => $this->filesystemHandle,
                 ]),
             );
         } catch (Throwable $e) {

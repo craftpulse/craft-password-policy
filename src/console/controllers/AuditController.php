@@ -15,6 +15,7 @@ use craft\console\Controller;
 use craft\db\Query;
 use craft\helpers\App;
 use craft\helpers\Json;
+use craftpulse\passwordpolicy\jobs\AuditExportJob;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\services\AuditLogService;
 use Throwable;
@@ -99,20 +100,18 @@ class AuditController extends Controller
     public string $format = 'csv';
 
     /**
-     * @var bool whether to include user email in export
-     */
-    public bool $includeUserDetails = false;
-
-    /**
      * @var bool when `true`, `actionExport` enqueues an `AuditExportJob`
      *     and writes the file to the configured filesystem (or local
      *     `@runtime` fallback). When `false` (the default — preserved
      *     for SIEM-piping operators), writes the export to stdout.
      *
-     * Console invocation bypasses the edition gate; the plan is that
-     * shell access is itself a privileged operation and CI pipelines
-     * shouldn't have to authenticate as a CP admin to run a verifier
-     * or export.
+     * Console invocation bypasses the PERMISSION gate (shell access is
+     * itself a privileged operation; CI pipelines shouldn't have to
+     * authenticate as a CP admin). It does NOT bypass the EDITION gate:
+     * export is the read-side exposure of the audit log and requires
+     * Enterprise in both modes — see `actionExport()`. The open-source
+     * `verify` / `schema` actions are the surfaces that stay fully
+     * console-bypassed.
      *
      * @since 5.2.0
      */
@@ -164,7 +163,6 @@ class AuditController extends Controller
         if ($actionID === 'export') {
             $options[] = 'format';
             $options[] = 'days';
-            $options[] = 'includeUserDetails';
             $options[] = 'queue';
         }
 
@@ -305,10 +303,14 @@ class AuditController extends Controller
      *    compatibility with the 5.2.0-alpha tooling; emits a
      *    deprecation hint and may be removed in 5.3. Use `jsonl`.
      *
-     * Console invocation bypasses the `pp:audit-export` permission
-     * gate (consistent with `actionVerify` — operators with shell
-     * access have already passed any meaningful gate, and CI pipelines
-     * need to inspect the table without a CP user identity).
+     * Console invocation bypasses the `pp:audit-export` PERMISSION gate
+     * (consistent with `actionVerify` — operators with shell access
+     * have already passed any meaningful gate, and CI pipelines need to
+     * inspect the table without a CP user identity). It does NOT bypass
+     * the EDITION gate: both the stdout and `--queue` modes require
+     * Enterprise, because export is the read-side EXPOSURE of the audit
+     * log (capture is universal, exposure is gated — see
+     * `project_audit_capture_principle.md`).
      *
      * @return int
      *
@@ -317,6 +319,22 @@ class AuditController extends Controller
      */
     public function actionExport(): int
     {
+        // Edition gate covers BOTH modes (stdout + --queue). Export is
+        // the read-side EXPOSURE of the audit log; capture runs on
+        // every edition but exposure is Enterprise-gated
+        // (`project_audit_capture_principle.md`). The `--queue` job
+        // self-gates too, but a fast console-side error beats enqueuing
+        // a job that silently no-ops. `verify` / `schema` stay
+        // console-bypass — those are the open-source verifier surface,
+        // not an exposure of the data itself.
+        if (!PasswordPolicy::$plugin->getIsEnterprise()) {
+            $this->stderr(
+                "Audit-log export requires the Enterprise edition.\n",
+            );
+
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
         if ($this->queue) {
             return $this->_exportViaQueue();
         }
@@ -326,7 +344,7 @@ class AuditController extends Controller
         $query = (new Query())
             ->from('{{%passwordpolicy_audit_log}}')
             ->where(['>=', 'dateCreated', $threshold])
-            ->orderBy(['dateCreated' => SORT_ASC]);
+            ->orderBy(['id' => SORT_ASC]);
 
         // Cursor-style iteration: stream rows one at a time so the
         // export's memory footprint stays O(batch size) regardless of
@@ -342,28 +360,31 @@ class AuditController extends Controller
         }
 
         $hasRows = false;
-        $emailCache = [];
 
         foreach ($query->each(1000) as $row) {
-            if ($this->includeUserDetails) {
-                $row['userEmail'] = $this->_resolveUserEmail((int)($row['userId'] ?? 0), $emailCache);
-            }
-
             // Defer per-format preamble (CSV header / opening `[`)
             // until the first row arrives so an empty result emits
             // nothing to stdout — matches the pre-streaming behaviour.
             if (!$hasRows) {
                 if ($this->format === 'json') {
                     $this->stdout('[');
-                } elseif ($this->format !== 'jsonl') {
-                    $this->stdout($this->_csvHeader() . "\n");
+                } elseif ($this->format === 'csv') {
+                    // Delegate to the queued job's static header so
+                    // stdout CSV is byte-identical to the file the
+                    // `--queue` path writes — same 12-column schema, same
+                    // `fputcsv` encoding. Previously stdout emitted its
+                    // own 6-column header (`id,userId,event,outcome,
+                    // source,dateCreated`), diverging from the job's
+                    // 12-column output and breaking any consumer that
+                    // parsed both surfaces with one schema.
+                    $this->stdout(AuditExportJob::csvHeader() . "\n");
                 }
             }
 
             match ($this->format) {
-                'jsonl' => $this->_emitJsonlRow($row),
+                'jsonl' => $this->stdout(AuditExportJob::formatJsonlRow($row) . "\n"),
                 'json' => $this->_emitJsonRow($row, !$hasRows),
-                default => $this->_emitCsvRow($row),
+                default => $this->stdout(AuditExportJob::formatCsvRow($row) . "\n"),
             };
 
             $hasRows = true;
@@ -535,28 +556,6 @@ class AuditController extends Controller
     }
 
     /**
-     * Returns the CSV header line — the same column set the per-row
-     * `_emitCsvRow()` writer emits, in the same order. Lifted out so
-     * `actionExport()` can emit the header once before the first
-     * streamed row.
-     *
-     * @return string
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _csvHeader(): string
-    {
-        $headers = ['id', 'userId', 'event', 'outcome', 'source', 'dateCreated'];
-
-        if ($this->includeUserDetails) {
-            $headers[] = 'userEmail';
-        }
-
-        return implode(',', $headers);
-    }
-
-    /**
      * Decodes the `details` JSON column to an array, or null when the
      * column is empty. JSON columns come back either as an already-
      * decoded array (Yii 2.0.50+) or as a JSON string — accept both.
@@ -698,40 +697,6 @@ class AuditController extends Controller
     }
 
     /**
-     * Writes a single CSV-formatted row to stdout. Matches the column
-     * set returned by `_csvHeader()`. Values containing commas or
-     * double quotes are double-quote-escaped per RFC 4180.
-     *
-     * @param array<string, mixed> $entry
-     * @return void
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _emitCsvRow(array $entry): void
-    {
-        $headers = ['id', 'userId', 'event', 'outcome', 'source', 'dateCreated'];
-
-        if ($this->includeUserDetails) {
-            $headers[] = 'userEmail';
-        }
-
-        $row = [];
-
-        foreach ($headers as $header) {
-            $value = $entry[$header] ?? '';
-
-            if (str_contains((string)$value, ',') || str_contains((string)$value, '"')) {
-                $value = '"' . str_replace('"', '""', (string)$value) . '"';
-            }
-
-            $row[] = $value;
-        }
-
-        $this->stdout(implode(',', $row) . "\n");
-    }
-
-    /**
      * Writes a single audit-log row as a JSON object inside the
      * legacy single-mega-array shape, comma-prefixed when it's not the
      * first row. The opening `[` and closing `]` are written by
@@ -758,35 +723,16 @@ class AuditController extends Controller
     }
 
     /**
-     * Writes a single JSON Lines row to stdout (one JSON object per
-     * line). Matches the queued-job format byte-for-byte — downstream
-     * tooling that consumes the queued export's bytes can pipe stdin
-     * through identical parsing logic.
-     *
-     * @param array<string, mixed> $entry
-     * @return void
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _emitJsonlRow(array $entry): void
-    {
-        $this->stdout(Json::encode(
-            $entry,
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
-        ) . "\n");
-    }
-
-    /**
      * Enqueues an `AuditExportJob` and prints the download token to
      * stdout. CI pipelines capture the token to drive a follow-up
      * download step; operators tail the email for the same link.
      *
-     * Edition gate: this path requires Enterprise (the underlying
-     * job's queue picker also gates on it, but we want a fast
-     * console-side error rather than a job that silently no-ops on
-     * Lite/Pro). Console invocation bypasses the `pp:audit-export`
-     * permission gate — see the action's main docblock.
+     * Edition gate: the Enterprise check is hoisted to `actionExport()`
+     * so it covers BOTH the stdout and `--queue` modes — this helper is
+     * only ever reached on an Enterprise install. The underlying job's
+     * queue picker also self-gates as defence in depth. Console
+     * invocation bypasses the `pp:audit-export` permission gate — see
+     * the action's main docblock.
      *
      * @return int
      *
@@ -795,14 +741,6 @@ class AuditController extends Controller
      */
     private function _exportViaQueue(): int
     {
-        if (!PasswordPolicy::$plugin->getIsEnterprise()) {
-            $this->stderr(
-                "Audit-log export via --queue requires the Enterprise edition.\n",
-            );
-
-            return ExitCode::UNSPECIFIED_ERROR;
-        }
-
         $format = $this->format === 'jsonl' ? 'jsonl' : 'csv';
 
         if ($this->format === 'json') {
@@ -815,7 +753,7 @@ class AuditController extends Controller
         $token = \Craft::$app->getSecurity()->generateRandomString(64);
         $admin = \Craft::$app->getUser()->getIdentity();
 
-        $job = new \craftpulse\passwordpolicy\jobs\AuditExportJob();
+        $job = new AuditExportJob();
         $job->daysFilter = $this->days;
         $job->format = $format;
         $job->filesystemHandle = PasswordPolicy::$plugin->getSettings()->auditExportFilesystem;
@@ -894,11 +832,14 @@ class AuditController extends Controller
      *     get the boundary tolerance because the user explicitly
      *     asked to start mid-chain; we can't distinguish "intentional
      *     mid-chain start" from "tamper at the lower bound".
-     *  2. The row's `dateCreated` is older than
+     *  2. The row's `dateCreated` is older than the WIDENED cutoff
      *     `now - auditLogRetentionDays + safety margin`. The 24h
-     *     safety margin tolerates clock drift between the prune-cron
-     *     host and the verifier host but doesn't paper over a recent
-     *     first row that doesn't anchor anywhere.
+     *     safety margin widens the acceptance window forward so a head
+     *     the prune left standing (whose anchor row sat right on the
+     *     retention threshold) still verifies despite clock drift
+     *     between the prune-cron host and the verifier host — without
+     *     papering over a recent first row that doesn't anchor
+     *     anywhere.
      *
      * @param array<string, mixed> $row
      * @return bool
@@ -915,9 +856,23 @@ class AuditController extends Controller
         }
 
         $retentionDays = PasswordPolicy::$plugin->getSettings()->auditLogRetentionDays;
+
+        // WIDEN the acceptance window with the safety margin, don't
+        // narrow it. The surviving head of a pruned chain is the row
+        // immediately newer than the retention threshold — its
+        // `dateCreated` sits at roughly `now - retentionDays`, give or
+        // take clock drift between the prune-cron host and this
+        // verifier host. Subtracting the margin (`now - retentionDays -
+        // margin`) would demand the head be even OLDER than the
+        // threshold, which it never is — so verify exited 1 on every
+        // pruned install. Adding the margin (`now - retentionDays +
+        // margin`) lets a head that the prune left standing — and whose
+        // anchor row was legitimately deleted — verify as a chain
+        // start. There is no smaller id to walk back to; the chain is
+        // verified forward only from this head.
         $cutoff = Carbon::now('UTC')
             ->subDays($retentionDays)
-            ->subSeconds(self::RETENTION_BOUNDARY_SAFETY_MARGIN_SECONDS);
+            ->addSeconds(self::RETENTION_BOUNDARY_SAFETY_MARGIN_SECONDS);
 
         $rowCreated = new \DateTime((string)$row['dateCreated'], new \DateTimeZone('UTC'));
 
@@ -943,45 +898,6 @@ class AuditController extends Controller
     {
         return (new \DateTime($value, new \DateTimeZone('UTC')))
             ->format(AuditLogService::CANONICAL_DATE_FORMAT);
-    }
-
-    /**
-     * Memoised user-email lookup for the `--includeUserDetails` export
-     * path. The streaming loop calls this once per row; cache hits
-     * short-circuit before the DB query so a noisy single user dropping
-     * a thousand audit rows still costs exactly one `users` table read.
-     *
-     * The `$cache` parameter is passed by reference so the caller's
-     * lookup table accumulates across rows — keeps the cache lifecycle
-     * scoped to a single export invocation without bolting state onto
-     * the controller.
-     *
-     * @param int $userId zero / negative ids short-circuit to null
-     * @param array<int, string|null> $cache passed by reference
-     * @return string|null
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _resolveUserEmail(int $userId, array &$cache): ?string
-    {
-        if ($userId <= 0) {
-            return null;
-        }
-
-        if (array_key_exists($userId, $cache)) {
-            return $cache[$userId];
-        }
-
-        $email = (new Query())
-            ->select(['email'])
-            ->from(\craft\db\Table::USERS)
-            ->where(['id' => $userId])
-            ->scalar();
-
-        $cache[$userId] = is_string($email) ? $email : null;
-
-        return $cache[$userId];
     }
 
     /**

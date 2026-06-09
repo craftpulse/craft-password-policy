@@ -533,17 +533,31 @@ class AuditLogService extends Component
     {
         $threshold = Carbon::now('UTC')->subDays($daysToKeep)->format('Y-m-d H:i:s');
 
-        // Capture the pre-prune chain head + the highest id about to be
-        // deleted. Done BEFORE the delete so the rows still exist; both
-        // are needed for the rotation event payload regardless of how
-        // many rows the delete actually removes.
-        $endRow = (new Query())
-            ->select(['id', 'rowHash'])
+        // Resolve the highest `id` that falls past the retention
+        // threshold, then delete by `id <= maxId` — NOT by `dateCreated
+        // < threshold` directly.
+        //
+        // The chain links rows by `id` order; `previousHash` references
+        // the `rowHash` of the immediately-lower `id`. A wall-clock step
+        // (NTP correction, DST jump, a manual backfill with an
+        // out-of-order `dateCreated`) can produce a row whose
+        // `dateCreated` is older than a lower-id neighbour's. A
+        // `dateCreated < threshold` delete would then drop that one row
+        // while keeping its id-neighbours — punching a mid-chain hole
+        // the verifier reports as tampering. Collapsing the predicate to
+        // a single `maxId` boundary guarantees a contiguous id prefix is
+        // removed, so the surviving rows are always a clean chain
+        // suffix.
+        $maxId = (new Query())
             ->from('{{%passwordpolicy_audit_log}}')
             ->where(['<', 'dateCreated', $threshold])
-            ->orderBy(['id' => SORT_DESC])
-            ->limit(1)
-            ->one();
+            ->max('id');
+
+        if ($maxId === null) {
+            return 0;
+        }
+
+        $maxId = (int)$maxId;
 
         // Audit retention is a compliance requirement — rows must be
         // GONE from disk past the retention boundary (L3 of the Step 5
@@ -559,17 +573,15 @@ class AuditLogService extends Component
         // both spams the event bus and bumps memory on a large prune
         // batch. Retention is a bulk operation by design.
         //
-        // SELECT-then-DELETE rather than DELETE-with-subquery so the
-        // deletion happens against a fixed id set (avoids MySQL's
-        // "can't reopen table in subquery" edge cases on some
-        // versions). Audit retention prune batches scale with
-        // `daysToKeep` and the event volume between prunes — for
-        // production volumes the id-list materialisation cost is in
-        // the noise.
+        // The id list is materialised against the same `id <= maxId`
+        // predicate so the CASCADE delete targets exactly the audit
+        // rows being pruned (the `elements` table holds rows for other
+        // element types too — an unqualified `id <= maxId` against it
+        // would over-delete).
         $expiredIds = (new Query())
             ->select(['id'])
             ->from('{{%passwordpolicy_audit_log}}')
-            ->where(['<', 'dateCreated', $threshold])
+            ->where(['<=', 'id', $maxId])
             ->column();
 
         $deleted = 0;
@@ -579,7 +591,7 @@ class AuditLogService extends Component
                 ->execute();
         }
 
-        if ($deleted < 1 || !is_array($endRow)) {
+        if ($deleted < 1) {
             return $deleted;
         }
 
@@ -587,8 +599,16 @@ class AuditLogService extends Component
         // prune emptied the table we have no anchor for downstream
         // listeners — skip the event entirely so consumers don't have
         // to handle a "rotation with no head" payload.
+        //
+        // `previousHash` is selected because it IS the rotation
+        // boundary: the surviving head's `previousHash` is the `rowHash`
+        // of the highest-id row the prune just deleted. Publishing the
+        // head's own stored link is more robust than re-querying the
+        // deleted row's `rowHash` (which is already gone post-delete)
+        // and is exactly the value the verifier accepts as the
+        // chain-start sentinel after rotation.
         $startRow = (new Query())
-            ->select(['id', 'rowHash'])
+            ->select(['id', 'rowHash', 'previousHash'])
             ->from('{{%passwordpolicy_audit_log}}')
             ->orderBy(['id' => SORT_ASC])
             ->limit(1)
@@ -603,8 +623,8 @@ class AuditLogService extends Component
             new AuditChainRotatedEvent([
                 'startId' => (int)$startRow['id'],
                 'startRowHash' => (string)$startRow['rowHash'],
-                'endId' => (int)$endRow['id'],
-                'endRowHash' => (string)$endRow['rowHash'],
+                'endId' => $maxId,
+                'endRowHash' => (string)$startRow['previousHash'],
                 'rotatedAt' => Carbon::now('UTC')->toDateTime(),
             ]),
         );

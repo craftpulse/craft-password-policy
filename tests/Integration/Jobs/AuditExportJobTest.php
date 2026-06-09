@@ -240,6 +240,113 @@ it('writes a JSONL file with one canonical JSON object per line', function() {
 });
 
 // =============================================================================
+// before() is idempotent across a first-batch retry (truncates, no dup header)
+// =============================================================================
+
+it('truncates on a re-run of before() so a first-batch retry does not stack a second header', function() {
+    makeExportRow(['event' => 'password_changed']);
+    makeExportRow(['event' => 'account_locked']);
+
+    $token = StringHelper::randomString(64);
+    $job = new AuditExportJob();
+    $job->daysFilter = 30;
+    $job->format = 'csv';
+    $job->token = $token;
+
+    $rows = (new \craft\db\Query())
+        ->from('{{%passwordpolicy_audit_log}}')
+        ->orderBy(['id' => SORT_ASC])
+        ->all();
+
+    $reflection = new ReflectionClass($job);
+    $before = $reflection->getMethod('before');
+    $process = $reflection->getMethod('processItem');
+
+    // First attempt: header + partial write, then "fails" before
+    // committing the batch offset (we just stop — itemOffset stays 0).
+    $before->invoke($job);
+    $process->invoke($job, $rows[0]);
+
+    // Retry of the same first batch: before() runs again because the
+    // offset never advanced. The truncating open must reset the file so
+    // the retry rebuilds it cleanly rather than appending a second
+    // header + the already-written row.
+    $before->invoke($job);
+
+    foreach ($rows as $row) {
+        $process->invoke($job, $row);
+    }
+
+    $contents = file_get_contents(exportFilePath($token, 'csv'));
+    $lines = explode("\n", trim($contents));
+
+    // Exactly one header + two data rows — no stacked header, no dup row.
+    expect(count($lines))->toBe(3);
+    expect($lines[0])->toBe(AuditExportJob::csvHeader());
+    expect($lines[1])->toContain('password_changed');
+    expect($lines[2])->toContain('account_locked');
+
+    // The header substring appears exactly once in the whole file.
+    expect(substr_count($contents, AuditExportJob::csvHeader()))->toBe(1);
+});
+
+// =============================================================================
+// processItem skips a malformed row instead of aborting the export
+// =============================================================================
+
+it('skips a row with an unparseable dateCreated and exports the rest (JSONL)', function() {
+    $goodId = makeExportRow(['event' => 'password_changed']);
+    // A dateCreated value DateTime cannot parse — `formatJsonlRow()`
+    // re-parses it through `_normaliseDateCreated()`, which throws.
+    // Without the per-row guard this single row would abort the whole
+    // export and burn retries.
+    $badRow = [
+        'id' => $goodId + 100000,
+        'event' => 'account_locked',
+        'outcome' => 'success',
+        'source' => 'admin',
+        'details' => null,
+        'ipHash' => null,
+        'userId' => null,
+        'changedByUserId' => null,
+        'userIdentifier' => null,
+        'rowHash' => str_repeat('a', 64),
+        'previousHash' => str_repeat('0', 64),
+        'dateCreated' => 'not-a-real-date',
+        'uid' => StringHelper::UUID(),
+    ];
+
+    $token = StringHelper::randomString(64);
+    $job = new AuditExportJob();
+    $job->daysFilter = 30;
+    $job->format = 'jsonl';
+    $job->token = $token;
+
+    $goodRow = (new \craft\db\Query())
+        ->from('{{%passwordpolicy_audit_log}}')
+        ->where(['id' => $goodId])
+        ->one();
+
+    // Feed the good row, then the malformed row. The export must
+    // complete; only the good row lands in the file.
+    runExportJob($job, [$goodRow, $badRow]);
+
+    $path = exportFilePath($token, 'jsonl');
+    expect(file_exists($path))->toBeTrue();
+
+    $lines = array_values(array_filter(
+        explode("\n", file_get_contents($path)),
+        fn($l) => $l !== '',
+    ));
+
+    expect($lines)->toHaveCount(1);
+
+    $decoded = json_decode($lines[0], true);
+    expect($decoded['id'])->toBe($goodId);
+    expect($decoded['payload']['event'])->toBe('password_changed');
+});
+
+// =============================================================================
 // Token cached on completion
 // =============================================================================
 
