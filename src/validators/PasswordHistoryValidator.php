@@ -41,6 +41,16 @@ class PasswordHistoryValidator extends Validator
      */
     public $skipOnError = false;
 
+    /**
+     * Resolved per-user history depth. Set by `UserRules::defineRules()` from
+     * the user's effective policy so a per-group history-depth override is
+     * enforced at save. Null falls back to the global `SettingsModel` count
+     * (AJAX/preview contexts without a target user).
+     *
+     * @var int|null
+     */
+    public ?int $passwordHistoryCount = null;
+
     // Public Methods
     // =========================================================================
 
@@ -53,13 +63,16 @@ class PasswordHistoryValidator extends Validator
     public function validateAttribute($model, $attribute): void
     {
         $plugin = PasswordPolicy::$plugin;
-        $settings = $plugin->getSettings();
+
+        // Resolved per-user depth wins; fall back to global only when unset.
+        $count = $this->passwordHistoryCount
+            ?? $plugin->getSettings()->passwordHistoryCount;
 
         // Gate: history feature enabled (count > 0). Available on every
         // edition since 5.2.0 — per-group history merge stays Pro via
-        // `PolicyResolverService`, but the global setting applies to
+        // `PolicyResolverService`, but the resolved count applies to
         // every edition.
-        if ($settings->passwordHistoryCount <= 0) {
+        if ($count <= 0) {
             return;
         }
 
@@ -73,7 +86,7 @@ class PasswordHistoryValidator extends Validator
             return;
         }
 
-        if ($plugin->getPasswordHistory()->isPasswordReused($model->id, $password)) {
+        if ($plugin->getPasswordHistory()->isPasswordReused($model->id, $password, $count)) {
             $this->addError(
                 $model,
                 $attribute,

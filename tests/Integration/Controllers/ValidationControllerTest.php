@@ -428,3 +428,80 @@ it('maps minLength failures to the client key `length`', function() {
         // The internal rule key `minLength` maps to client `length`.
         ->and($payload['errorsByKey'])->not->toHaveKey('minLength');
 });
+
+// =============================================================================
+// Input hardening — array coercion + multibyte length + pendingKeys
+// =============================================================================
+
+it('does not 500 when password arrives as an array (`password[]=x`)', function() {
+    // A raw `(string)` cast on an array would emit an "Array to string
+    // conversion" warning; the controller coerces non-scalar input to an
+    // empty string so the anonymous endpoint stays a clean 4xx/200 surface.
+    $this->request->stubBodyParams = [
+        'password' => ['injected', 'array'],
+    ];
+
+    $payload = invokeValidate();
+
+    // Empty string fails min-length but the request completes with the
+    // canonical shape rather than throwing.
+    expect($payload)->toHaveKey('isValid')
+        ->and($payload['isValid'])->toBeFalse()
+        ->and($payload['errorsByKey'])->toHaveKey('length');
+});
+
+it('counts multibyte passwords by code point, not byte, for min length', function() {
+    // Five 2-byte code points = 5 chars / 10 bytes. With a 5-char minimum
+    // the password passes under `mb_strlen` but a byte-counting `strlen`
+    // would also pass here — so set the minimum to 6 to force the split:
+    // mb_strlen('ééééé') == 5 < 6 (fail), strlen == 10 >= 6 (would pass).
+    $originalMin = $this->settings->minLength;
+    $this->settings->minLength = 6;
+
+    $this->request->stubBodyParams = [
+        'password' => 'ééééé',
+    ];
+
+    $payload = invokeValidate();
+
+    $this->settings->minLength = $originalMin;
+
+    $minRule = collect($payload['rules'])->firstWhere('key', 'minLength');
+
+    expect($minRule)->not->toBeNull()
+        // mb_strlen == 5 < 6 → fail (byte length 10 would have passed).
+        ->and($minRule['pass'])->toBeFalse();
+});
+
+it('surfaces an unverified HIBP result in pendingKeys, not as a pass', function() {
+    // Fail-open: HIBP unreachable → rule pass is null. The result must NOT
+    // be counted as passed, and the client needs to know the check is
+    // indeterminate — so the controller emits a `pendingKeys` bucket with
+    // the (client-mapped) `hibp` key.
+    $this->settings->hibp = true;
+    $this->hibpFake->nextResponse = null;
+
+    $this->request->stubBodyParams = [
+        'password' => 'ZQ7nUJfp8d!',
+    ];
+
+    $payload = invokeValidate();
+
+    expect($payload)->toHaveKey('pendingKeys')
+        ->and($payload['pendingKeys'])->toContain('hibp')
+        // A null HIBP rule is not an error — errorsByKey stays clean.
+        ->and($payload['errorsByKey'])->not->toHaveKey('hibp');
+});
+
+it('leaves pendingKeys empty when every active rule resolves to true/false', function() {
+    $this->settings->hibp = false;
+
+    $this->request->stubBodyParams = [
+        'password' => 'ZQ7nUJfp8d!',
+    ];
+
+    $payload = invokeValidate();
+
+    expect($payload)->toHaveKey('pendingKeys')
+        ->and($payload['pendingKeys'])->toBe([]);
+});

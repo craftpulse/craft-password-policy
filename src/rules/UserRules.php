@@ -70,22 +70,26 @@ class UserRules
 
         // Complexity: individual toggles or minimum character types
         if ($isPro && $settings->complexityMode === 'minimum' && $settings->minimumCharacterTypes > 0) {
-            // "X of 4 character types" mode — mutually exclusive with individual toggles
+            // "X of 4 character types" mode — mutually exclusive with individual
+            // toggles. Thread the resolved per-user count into the validator so a
+            // per-group override is enforced rather than the global setting.
             $rules[] = [
                 ['password', 'newPassword'],
                 MinimumCharacterTypesValidator::class,
+                'minimumCharacterTypes' => $settings->minimumCharacterTypes,
                 'skipOnError' => false,
             ];
         } else {
-            // Individual toggle mode (default)
+            // Individual toggle mode (default). Pass the resolved settings into
+            // the pattern/message builders so per-group complexity toggles win.
             $rules[] = [
                 ['password', 'newPassword'],
                 'match',
-                'pattern' => PasswordPolicy::$plugin->getPasswords()->generatePattern(),
+                'pattern' => PasswordPolicy::$plugin->getPasswords()->generatePattern($settings),
                 'message' => Craft::t(
                         'password-policy',
                         'Your password must contain at least one of each of the following: ',
-                    ) . PasswordPolicy::$plugin->getPasswords()->generateMessage(),
+                    ) . PasswordPolicy::$plugin->getPasswords()->generateMessage($settings),
                 'skipOnError' => false,
             ];
         }
@@ -165,11 +169,15 @@ class UserRules
             ];
         }
 
-        // Password history check last (Pro+, gating handled inside validator)
+        // Password history check last (gating handled inside validator). Thread
+        // the resolved per-user count through so a per-group history-depth
+        // override is enforced — the validator falls back to the global count
+        // only when null (AJAX/preview contexts without a target user).
         if ($settings->passwordHistoryCount > 0) {
             $rules[] = [
                 ['password', 'newPassword'],
                 PasswordHistoryValidator::class,
+                'passwordHistoryCount' => $settings->passwordHistoryCount,
                 'skipOnError' => false,
             ];
         }

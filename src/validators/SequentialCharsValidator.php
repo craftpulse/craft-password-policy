@@ -67,7 +67,7 @@ class SequentialCharsValidator extends Validator
      * @author CraftPulse
      * @since 5.2.0
      */
-    public function validateValue($value): ?array
+    public function validateValue(#[\SensitiveParameter] $value): ?array
     {
         $lower = strtolower($value);
 

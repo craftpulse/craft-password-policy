@@ -20,6 +20,7 @@
  * @since     5.2.0
  */
 
+use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
 
 // =============================================================================
@@ -165,6 +166,47 @@ it('joins multiple clauses with " and " before the last item', function() {
     expect($message)->toContain(' and ')
         ->and($message)->toContain('a lowercase character, an uppercase character')
         ->and($message)->toContain('a number');
+});
+
+// =============================================================================
+// Resolved-settings override — per-group policy wins over global
+// =============================================================================
+
+it('builds the pattern from a supplied settings model, not the global one', function() {
+    // Global has every toggle off — its pattern matches anything. A resolved
+    // per-group policy with `numbers` on must still require a digit when
+    // passed explicitly. Proves the per-group complexity override is honored
+    // rather than silently re-reading the global model from init().
+    $this->settings->cases = false;
+    $this->settings->numbers = false;
+    $this->settings->symbols = false;
+
+    $resolved = new SettingsModel();
+    $resolved->cases = false;
+    $resolved->numbers = true;
+    $resolved->symbols = false;
+
+    $pattern = $this->service->generatePattern($resolved);
+
+    expect((bool)preg_match($pattern, 'abc1'))->toBeTrue()
+        ->and((bool)preg_match($pattern, 'abcdef'))->toBeFalse()
+        // Global pattern (no arg) would match the digit-less string.
+        ->and((bool)preg_match($this->service->generatePattern(), 'abcdef'))->toBeTrue();
+});
+
+it('builds the message from a supplied settings model, not the global one', function() {
+    $this->settings->cases = false;
+    $this->settings->numbers = false;
+    $this->settings->symbols = false;
+
+    $resolved = new SettingsModel();
+    $resolved->cases = false;
+    $resolved->numbers = true;
+    $resolved->symbols = false;
+
+    expect($this->service->generateMessage($resolved))->toBe('a number')
+        // Global message (no arg) is empty — every toggle is off.
+        ->and($this->service->generateMessage())->toBe('');
 });
 
 it('rewrites only the trailing separator into " and " when three clauses join', function() {

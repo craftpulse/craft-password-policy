@@ -39,7 +39,7 @@ class RepeatedCharsValidator extends Validator
      * @author CraftPulse
      * @since 5.2.0
      */
-    public function validateValue($value): ?array
+    public function validateValue(#[\SensitiveParameter] $value): ?array
     {
         if (preg_match('/(.)\1{2,}/u', $value)) {
             return [

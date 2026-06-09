@@ -200,3 +200,30 @@ it('requires four distinct classes when set to four', function() {
     expect($this->validator->validateValue('Abcdef1'))->not->toBeNull()
         ->and($this->validator->validateValue('Abcdef1!'))->toBeNull();
 });
+
+// =============================================================================
+// Resolved per-user override — public property wins over global
+// =============================================================================
+
+it('uses the resolved minimumCharacterTypes property over the global setting', function() {
+    // Global says 1; the resolved per-group policy says 3. A 2-class password
+    // must fail because the validator honors the threaded property, not the
+    // (laxer) global value re-read from settings.
+    $this->settings->minimumCharacterTypes = 1;
+
+    $validator = new MinimumCharacterTypesValidator(['minimumCharacterTypes' => 3]);
+
+    // Lowercase + digit = 2 of 4 < 3.
+    expect($validator->validateValue('abcd1234'))->not->toBeNull()
+        // 3 classes satisfies the resolved requirement.
+        ->and($validator->validateValue('Abcd1234'))->toBeNull();
+});
+
+it('falls back to the global setting when the property is null', function() {
+    $this->settings->minimumCharacterTypes = 3;
+
+    $validator = new MinimumCharacterTypesValidator(); // property null
+
+    // Lowercase + digit = 2 of 4 < 3 (global).
+    expect($validator->validateValue('abcd1234'))->not->toBeNull();
+});
