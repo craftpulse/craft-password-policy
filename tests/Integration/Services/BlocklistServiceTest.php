@@ -13,6 +13,7 @@
  * @since     5.2.0
  */
 
+use craftpulse\passwordpolicy\exceptions\EditionRequiredException;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\tests\Support\Factories\BlocklistFactory;
 
@@ -22,10 +23,18 @@ use craftpulse\passwordpolicy\tests\Support\Factories\BlocklistFactory;
 
 beforeEach(function() {
     $this->service = PasswordPolicy::$plugin->getBlocklist();
+
+    // `addCustomWord()` is Pro-gated (the custom blocklist editor is a Pro
+    // feature). Pin Pro so these CRUD tests exercise the write path rather
+    // than the edition throw — the gate itself is covered separately below.
+    $this->originalEdition = PasswordPolicy::$plugin->edition;
+    PasswordPolicy::$plugin->edition = PasswordPolicy::EDITION_PRO;
+
     $this->service->clearCache();
 });
 
 afterEach(function() {
+    PasswordPolicy::$plugin->edition = $this->originalEdition;
     $this->service->clearCache();
 });
 
@@ -267,4 +276,39 @@ it('preserves custom entries on re-seed', function() {
     $this->service->seedCommonPasswords();
 
     expect($this->service->isWordBlocked('keepme'))->toBe('custom');
+});
+
+it('does not collide when a custom word matches a bundled common word', function() {
+    // The `word` column carries a single-column unique index spanning every
+    // source. A common seed word that equals an existing custom row would
+    // throw an IntegrityException mid-batch and self-lock on re-run. Seed a
+    // custom word equal to a known bundled common entry ('123456'), then
+    // re-seed — the seed must skip the collision rather than throw, and the
+    // custom row stays authoritative.
+    BlocklistFactory::customWord('123456');
+
+    $count = $this->service->seedCommonPasswords();
+
+    expect($count)->toBeGreaterThan(0)
+        // '123456' stays 'custom' — the common seed skipped it.
+        ->and($this->service->isWordBlocked('123456'))->toBe('custom');
+
+    // A second seed is still idempotent (no half-seeded self-lock).
+    $second = $this->service->seedCommonPasswords();
+    expect($second)->toBe($count)
+        ->and($this->service->isWordBlocked('123456'))->toBe('custom');
+});
+
+// =============================================================================
+// Edition gate — the custom blocklist editor is a Pro feature
+// =============================================================================
+
+it('throws below Pro when adding a custom word', function() {
+    PasswordPolicy::$plugin->edition = PasswordPolicy::EDITION_LITE;
+
+    expect(fn() => $this->service->addCustomWord('liteword'))
+        ->toThrow(EditionRequiredException::class);
+
+    // Nothing landed in the table — the throw fires before the insert.
+    expect($this->service->isWordBlocked('liteword'))->toBeNull();
 });

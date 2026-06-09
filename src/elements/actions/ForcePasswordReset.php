@@ -66,9 +66,39 @@ class ForcePasswordReset extends ElementAction
     }
 
     /**
+     * Returns the trigger HTML rendered into the index actions menu.
+     *
+     * Returns `null` when `allowAdminChanges` is disabled so the trigger
+     * never registers on the element index in a read-only environment —
+     * mirrors the `SendPasswordResetEmail` sibling. When admin changes are
+     * allowed, returning `null` lets `ElementAction`'s default confirm-
+     * dialog plumbing take over (no custom JS needed).
+     *
+     * @return string|null
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getTriggerHtml(): ?string
+    {
+        if (!Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
+            return null;
+        }
+
+        return null;
+    }
+
+    /**
      * Performs the action on the given element query.
      *
      * Sets `passwordResetRequired = true` on each selected user and saves.
+     *
+     * Defense-in-depth gate: the trigger only registers for users with
+     * `pp:force-reset-passwords` when admin changes are allowed, but
+     * `performAction()` is reachable by any caller that bypasses the
+     * trigger (Craft internals, crafted POSTs). Reject those explicitly
+     * — require the force-reset permission AND `allowAdminChanges` before
+     * mutating any user, matching the `SendPasswordResetEmail` guard.
      *
      * @param ElementQueryInterface $query
      * @return bool
@@ -78,6 +108,24 @@ class ForcePasswordReset extends ElementAction
      */
     public function performAction(ElementQueryInterface $query): bool
     {
+        $currentUser = Craft::$app->getUser()->getIdentity();
+
+        if ($currentUser === null || !$currentUser->can('pp:force-reset-passwords')) {
+            $this->setMessage(Craft::t(
+                'password-policy',
+                'You don’t have permission to force a password reset.',
+            ));
+            return false;
+        }
+
+        if (!Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
+            $this->setMessage(Craft::t(
+                'app',
+                'Administrative changes are disallowed in this environment.',
+            ));
+            return false;
+        }
+
         /** @var User[] $users */
         $users = $query->all();
         $elementsService = Craft::$app->getElements();

@@ -137,6 +137,27 @@ class SettingsModel extends Model
      */
     public int $expiryReminderDays = 14;
 
+    /**
+     * @var bool whether the hash-chained audit log CAPTURES events. Universal
+     *     across editions and ON by default — the audit trail is written on
+     *     every edition so an upgrade to Enterprise inherits the full history
+     *     (project_audit_capture_principle.md: gate exposure, not capture).
+     *     The compliance dashboard, exports, and SIEM/webhook forwarding that
+     *     READ this data remain Enterprise-only.
+     *
+     * @since 5.2.0
+     */
+    public bool $enableAuditLog = true;
+
+    /**
+     * @var int the number of days to retain audit log entries before the
+     *     `password-policy/gc/run` cron prunes them. Universal — capture is
+     *     universal, so retention is too.
+     *
+     * @since 5.2.0
+     */
+    public int $auditLogRetentionDays = 365;
+
     // Public Properties — Pro
     // =========================================================================
 
@@ -203,20 +224,11 @@ class SettingsModel extends Model
 
     // Public Properties — Enterprise
     // =========================================================================
-
-    /**
-     * @var bool whether audit logging is enabled
-     *
-     * @since 5.2.0
-     */
-    public bool $enableAuditLog = false;
-
-    /**
-     * @var int the number of days to retain audit log entries
-     *
-     * @since 5.2.0
-     */
-    public int $auditLogRetentionDays = 365;
+    //
+    // NOTE: audit-log CAPTURE (`enableAuditLog` + `auditLogRetentionDays`)
+    // lives in the Lite section above — capture is universal. The
+    // Enterprise tier gates the EXPOSURE of that data (dashboard, export,
+    // SIEM, webhooks, admin alerts), declared below.
 
     /**
      * @var bool whether login anomaly detection with new device alerts is enabled
@@ -529,6 +541,32 @@ class SettingsModel extends Model
     }
 
     /**
+     * Returns the list of fields surfaced by [[toArray()]], stripped of the
+     * legacy `pwned` / `pwnedFailMode` aliases.
+     *
+     * `getAttributes()` already strips the aliases from the default-list
+     * read surface, but `toArray()` builds its field list from
+     * [[attributes()]] directly (not via `getAttributes()`), so the
+     * aliases would otherwise leak back through any `toArray()` /
+     * JSON-serialization round-trip — the same overwrite hazard the
+     * `getAttributes()` override documents. Closing both doors keeps the
+     * read surface canonical.
+     *
+     * @return array
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function fields(): array
+    {
+        $fields = parent::fields();
+
+        unset($fields['pwned'], $fields['pwnedFailMode']);
+
+        return $fields;
+    }
+
+    /**
      * Returns whether reading `$name` is allowed. Overridden so the legacy
      * `pwned` / `pwnedFailMode` keys resolve through this model even though
      * no native property or `getXxx()` method exists for them — required so
@@ -785,6 +823,16 @@ class SettingsModel extends Model
 
             // Integer rules
             [
+                ['expiryAmount'],
+                'number',
+                'integerOnly' => true,
+                'min' => 1,
+                'message' => Craft::t('password-policy', 'The expiry amount must be at least 1.'),
+                'when' => function($setting) {
+                    return $setting->expiryAmount !== null;
+                },
+            ],
+            [
                 ['passwordHistoryCount'],
                 'number',
                 'integerOnly' => true,
@@ -856,6 +904,20 @@ class SettingsModel extends Model
                 'min' => 1,
                 'max' => 168,
                 'message' => Craft::t('password-policy', 'Webhook secret grace period must be between 1 and 168 hours (7 days).'),
+            ],
+            [
+                ['siemCircuitCooldownSeconds'],
+                'number',
+                'integerOnly' => true,
+                'min' => 1,
+                'message' => Craft::t('password-policy', 'SIEM circuit cooldown must be at least 1 second.'),
+            ],
+            [
+                ['siemCircuitFailureThreshold'],
+                'number',
+                'integerOnly' => true,
+                'min' => 1,
+                'message' => Craft::t('password-policy', 'SIEM circuit failure threshold must be at least 1.'),
             ],
         ]);
     }

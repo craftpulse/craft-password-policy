@@ -33,10 +33,17 @@ use craftpulse\passwordpolicy\tests\Support\Factories\PolicyFactory;
 
 beforeEach(function() {
     $this->service = PasswordPolicy::$plugin->getBlocklist();
+
+    // The per-policy custom blocklist editor is Pro+. `addCustomWord()`
+    // throws below Pro, so pin Pro for the service-shape tests here.
+    $this->originalEdition = PasswordPolicy::$plugin->edition;
+    PasswordPolicy::$plugin->edition = PasswordPolicy::EDITION_PRO;
+
     $this->service->clearCache();
 });
 
 afterEach(function() {
+    PasswordPolicy::$plugin->edition = $this->originalEdition;
     $this->service->clearCache();
 });
 

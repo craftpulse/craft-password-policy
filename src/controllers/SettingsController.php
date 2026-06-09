@@ -190,49 +190,7 @@ class SettingsController extends Controller
         $settings = array_merge($existingSettings, $submittedSettings);
 
         // Strip edition-gated settings on lower editions
-        /** @var PasswordPolicy $plugin */
-        if (!$plugin->getIsPro()) {
-            unset(
-                $settings['checkSequentialChars'],
-                $settings['checkRepeatedChars'],
-                $settings['checkContextual'],
-                $settings['complexityMode'],
-                $settings['minimumCharacterTypes'],
-                $settings['enablePerGroupPolicies'],
-                $settings['notificationLogRetentionDays'],
-                $settings['enableHibpOnLogin'],
-            );
-        }
-        if (!$plugin->getIsEnterprise()) {
-            unset(
-                $settings['enableAuditLog'],
-                $settings['auditLogRetentionDays'],
-                $settings['enableNewDeviceAlerts'],
-                $settings['deviceRetentionDays'],
-                $settings['adminAlertEmail'],
-                $settings['adminAlertEvents'],
-                $settings['siemEnabled'],
-                $settings['siemDestinationType'],
-                $settings['siemEndpointUrl'],
-                $settings['siemAuthType'],
-                $settings['siemAuthToken'],
-                $settings['siemCustomHeaders'],
-                $settings['siemIpHandling'],
-                $settings['siemDeviceHandling'],
-                $settings['siemForwardEventClasses'],
-                $settings['siemCircuitCooldownSeconds'],
-                $settings['siemCircuitFailureThreshold'],
-                $settings['webhooksEnabled'],
-                $settings['webhooks'],
-                $settings['webhookForwardEventClasses'],
-                $settings['webhookCircuitCooldownSeconds'],
-                $settings['webhookCircuitFailureThreshold'],
-                $settings['webhookSecretGracePeriodHours'],
-                $settings['auditExportFilesystem'],
-                $settings['auditPiiKey'],
-                $settings['apiEnabled'],
-            );
-        }
+        $settings = $this->_stripEditionGatedKeys($plugin, $settings);
 
         if (!Craft::$app->getPlugins()->savePluginSettings($plugin, $settings)) {
             Craft::$app->getSession()->setError(Craft::t('app', "Couldn't save plugin settings."));
@@ -313,6 +271,14 @@ class SettingsController extends Controller
             }
         }
 
+        // Re-strip edition-gated keys before persisting. `$existingSettings`
+        // is the full attribute set, so a stale Enterprise/Pro key already
+        // sitting in project config (e.g. left over from a downgrade) would
+        // otherwise be re-persisted verbatim. Apply the same defense-in-depth
+        // strip `actionSave` uses so the preset path can never resurrect a
+        // gated key on a sub-edition install.
+        $settings = $this->_stripEditionGatedKeys($plugin, $settings);
+
         if (!Craft::$app->getPlugins()->savePluginSettings($plugin, $settings)) {
             Craft::$app->getSession()->setError(
                 Craft::t('password-policy', "Couldn't apply the {preset} preset.", ['preset' => $preset->label()]),
@@ -330,6 +296,85 @@ class SettingsController extends Controller
 
     // Private Methods
     // =========================================================================
+
+    /**
+     * Strips edition-gated setting keys from a settings array so a
+     * sub-edition install can never persist a higher-edition key — even
+     * via a crafted POST or a stale value carried over from `$existingSettings`.
+     *
+     * Shared by `actionSave()` and `actionApplyPreset()`; both build their
+     * settings array on top of the full existing attribute set, so the
+     * strip has to run on both paths or the preset path silently re-persists
+     * gated keys on downgrade.
+     *
+     * Edition tiers follow `docs/user/editions.md`:
+     *  - Pro keys (stripped below Pro): complexity/contextual validators,
+     *    per-group policies, HIBP-on-login, notification retention,
+     *    new-device alerts (`enableNewDeviceAlerts` / `deviceRetentionDays`)
+     *    and their cooldown map (`alertCooldowns`) — the new-device alert is
+     *    a documented Pro feature, not Enterprise.
+     *  - Enterprise keys (stripped below Enterprise): audit log, SIEM,
+     *    webhooks, audit export, API tokens.
+     *
+     * @param PasswordPolicy $plugin
+     * @param array<string, mixed> $settings
+     * @return array<string, mixed> the settings array with out-of-edition keys removed
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _stripEditionGatedKeys(PasswordPolicy $plugin, array $settings): array
+    {
+        if (!$plugin->getIsPro()) {
+            unset(
+                $settings['checkSequentialChars'],
+                $settings['checkRepeatedChars'],
+                $settings['checkContextual'],
+                $settings['complexityMode'],
+                $settings['minimumCharacterTypes'],
+                $settings['enablePerGroupPolicies'],
+                $settings['notificationLogRetentionDays'],
+                $settings['enableHibpOnLogin'],
+                $settings['enableNewDeviceAlerts'],
+                $settings['deviceRetentionDays'],
+                $settings['alertCooldowns'],
+            );
+        }
+        if (!$plugin->getIsEnterprise()) {
+            // NOTE: `enableAuditLog` + `auditLogRetentionDays` are
+            // deliberately NOT stripped here. Audit CAPTURE is universal
+            // across editions (project_audit_capture_principle.md: gate
+            // exposure, not capture); only the EXPOSURE surfaces below
+            // (admin alerts, SIEM, webhooks — plus the dashboard/export
+            // controllers, gated at their own layer) are Enterprise-only.
+            unset(
+                $settings['adminAlertEmail'],
+                $settings['adminAlertEvents'],
+                $settings['siemEnabled'],
+                $settings['siemDestinationType'],
+                $settings['siemEndpointUrl'],
+                $settings['siemAuthType'],
+                $settings['siemAuthToken'],
+                $settings['siemCustomHeaders'],
+                $settings['siemIpHandling'],
+                $settings['siemDeviceHandling'],
+                $settings['siemForwardEventClasses'],
+                $settings['siemCircuitCooldownSeconds'],
+                $settings['siemCircuitFailureThreshold'],
+                $settings['webhooksEnabled'],
+                $settings['webhooks'],
+                $settings['webhookForwardEventClasses'],
+                $settings['webhookCircuitCooldownSeconds'],
+                $settings['webhookCircuitFailureThreshold'],
+                $settings['webhookSecretGracePeriodHours'],
+                $settings['auditExportFilesystem'],
+                $settings['auditPiiKey'],
+                $settings['apiEnabled'],
+            );
+        }
+
+        return $settings;
+    }
 
     /**
      * Pushes a blocklist seed job when the common passwords toggle is enabled

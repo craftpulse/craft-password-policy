@@ -14,6 +14,7 @@ use Carbon\Carbon;
 use Craft;
 use craft\db\Query;
 use craft\helpers\DateTimeHelper;
+use craftpulse\passwordpolicy\exceptions\EditionRequiredException;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use DateTime;
 use InvalidArgumentException;
@@ -95,6 +96,21 @@ class BlocklistService extends Component
             ->delete('{{%passwordpolicy_blocklist}}', ['source' => 'common'])
             ->execute();
 
+        // Pre-filter against existing custom rows. The `word` column carries
+        // a single-column unique index spanning every source, so a common
+        // word that collides with an admin-entered custom word would throw
+        // an IntegrityException mid-batch — leaving the table half-seeded
+        // and self-locking on the next re-run (the delete clears 'common'
+        // but the partial insert from the previous failed run is gone, so
+        // the same collision recurs). Skipping the collision keeps the
+        // custom row authoritative and the seed idempotent.
+        $customWords = (new Query())
+            ->select(['word'])
+            ->from('{{%passwordpolicy_blocklist}}')
+            ->where(['source' => 'custom'])
+            ->column();
+        $reserved = array_flip(array_map('strval', $customWords));
+
         // Batch insert new entries (deduplicated)
         $now = Carbon::now('UTC')->format('Y-m-d H:i:s');
         $rows = [];
@@ -102,7 +118,7 @@ class BlocklistService extends Component
 
         foreach ($words as $word) {
             $word = strtolower(trim($word));
-            if (empty($word) || isset($seen[$word])) {
+            if (empty($word) || isset($seen[$word]) || isset($reserved[$word])) {
                 continue;
             }
             $seen[$word] = true;
@@ -146,11 +162,21 @@ class BlocklistService extends Component
      * out of stack traces; admin-entered blocklist tokens are commonly
      * drawn from the same pool as real passwords.
      *
+     * The custom blocklist editor is a Pro feature. This write is the
+     * single chokepoint for every custom-word insert (CP controller,
+     * console import, per-policy editor), so the edition gate lives here
+     * per the service-layer convention — sub-Pro installs throw
+     * `EditionRequiredException` rather than silently persisting a word
+     * a Lite UI never exposed. HTTP / console callers gate ahead of this
+     * with their own layer-appropriate responses (403 / non-zero exit)
+     * so the throw is a defense-in-depth backstop, not the primary UX.
+     *
      * @param string $word the word to block (case-insensitive)
      * @param int|null $policyId the policy ID to scope the entry to, or null for global
      * @return bool whether the word was added (false if duplicate)
      *
      * @throws Exception
+     * @throws EditionRequiredException when the install is below the Pro edition
      * @throws InvalidArgumentException when `$policyId` references a non-existent policy
      *
      * @author CraftPulse
@@ -158,6 +184,12 @@ class BlocklistService extends Component
      */
     public function addCustomWord(#[\SensitiveParameter] string $word, ?int $policyId = null): bool
     {
+        if (!PasswordPolicy::$plugin->getIsPro()) {
+            throw new EditionRequiredException(
+                'The custom blocklist editor requires the Pro edition.',
+            );
+        }
+
         $word = strtolower(trim($word));
 
         if (empty($word)) {

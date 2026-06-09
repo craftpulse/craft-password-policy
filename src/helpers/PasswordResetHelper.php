@@ -66,6 +66,15 @@ class PasswordResetHelper
     {
         $settings = PasswordPolicy::$plugin->getSettings();
 
+        // Mirror the guard in the condition rules / variable: a null,
+        // zero, or negative amount means "no expiry policy configured."
+        // Without it, `expiryAmount = 0` would build `P0D` (resets every
+        // user immediately) and a negative value would crash
+        // `DateInterval`'s ISO-8601 parse.
+        if ($settings->expiryAmount === null || $settings->expiryAmount <= 0) {
+            return null;
+        }
+
         return match ($settings->expiryPeriod) {
             'day' => "P{$settings->expiryAmount}D",
             'week' => "P{$settings->expiryAmount}W",

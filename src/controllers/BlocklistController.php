@@ -79,6 +79,11 @@ class BlocklistController extends Controller
     public function actionIndex(): Response
     {
         $plugin = PasswordPolicy::$plugin;
+
+        if (!$plugin->getIsPro()) {
+            throw new ForbiddenHttpException('The blocklist editor requires the Pro edition.');
+        }
+
         $blocklist = $plugin->getBlocklist();
 
         $pluginName = 'Password Policy';
@@ -177,6 +182,10 @@ class BlocklistController extends Controller
     {
         $this->requirePostRequest();
         $this->requirePermission('pp:blocklist-manage');
+
+        if (!PasswordPolicy::$plugin->getIsPro()) {
+            throw new ForbiddenHttpException('The custom blocklist editor requires the Pro edition.');
+        }
 
         $rows = (array)Craft::$app->getRequest()->getBodyParam('words', []);
         $blocklist = PasswordPolicy::$plugin->getBlocklist();

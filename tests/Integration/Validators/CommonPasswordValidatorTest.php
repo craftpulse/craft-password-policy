@@ -24,10 +24,20 @@ use craftpulse\passwordpolicy\validators\CommonPasswordValidator;
 
 beforeEach(function() {
     $this->validator = new CommonPasswordValidator();
+
+    // Custom-word enforcement is Pro-gated inside `validateValue()` (the
+    // custom blocklist editor is a Pro feature). Common-word enforcement
+    // stays universal. Pin Pro so the source-aware custom-word tests below
+    // exercise the match path; the Lite custom-word suppression is pinned
+    // explicitly in its own test.
+    $this->originalEdition = PasswordPolicy::$plugin->edition;
+    PasswordPolicy::$plugin->edition = PasswordPolicy::EDITION_PRO;
+
     PasswordPolicy::$plugin->getBlocklist()->clearCache();
 });
 
 afterEach(function() {
+    PasswordPolicy::$plugin->edition = $this->originalEdition;
     PasswordPolicy::$plugin->getBlocklist()->clearCache();
 });
 
@@ -156,17 +166,13 @@ it('reflects new rows after the cache is cleared', function() {
 });
 
 // =============================================================================
-// No edition gate — validator is registered conditionally on
-// `checkCommonPasswords` upstream, but the validator itself is edition-blind
+// Edition gate — common enforcement is universal, custom enforcement is Pro+
 // =============================================================================
 
-it('runs without an edition gate of its own', function() {
-    // The validator's only branch is on row presence — there's no
-    // PasswordPolicy::$plugin->getIsPro() check inside `validateValue()`.
-    // UserRules::defineRules() decides whether to register the validator
-    // at all (gated on the `checkCommonPasswords` toggle, which is
-    // universal since 5.2.0); once registered, the validator runs
-    // identically across editions. This test pins that contract.
+it('enforces common-source matches on every edition', function() {
+    // Common-password enforcement is a Lite feature (the `checkCommonPasswords`
+    // toggle ships on every edition). The validator must reject a common
+    // match identically across editions — no `getIsPro()` gate on this branch.
     BlocklistFactory::commonWord('edition-blind');
 
     PasswordPolicy::$plugin->edition = PasswordPolicy::EDITION_LITE;
@@ -177,4 +183,22 @@ it('runs without an edition gate of its own', function() {
 
     expect($liteResult)->not->toBeNull()
         ->and($proResult)->not->toBeNull();
+});
+
+it('does not enforce custom-source matches below Pro', function() {
+    // The custom blocklist editor is a Pro feature. A Lite install that
+    // still holds custom rows (e.g. seeded under Pro then downgraded) must
+    // NOT enforce them — otherwise it would enforce a blocklist it can no
+    // longer edit. Pro enforces the same row.
+    BlocklistFactory::customWord('pro-only-custom');
+
+    PasswordPolicy::$plugin->edition = PasswordPolicy::EDITION_LITE;
+    $liteResult = $this->validator->validateValue('pro-only-custom');
+
+    PasswordPolicy::$plugin->edition = PasswordPolicy::EDITION_PRO;
+    $proResult = $this->validator->validateValue('pro-only-custom');
+
+    expect($liteResult)->toBeNull()
+        ->and($proResult)->not->toBeNull()
+        ->and($proResult[0])->toContain('blocked');
 });
