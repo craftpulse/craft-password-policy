@@ -11,6 +11,7 @@
 namespace craftpulse\passwordpolicy\migrations;
 
 use Craft;
+use craft\db\Connection;
 use craft\db\Migration;
 use craft\db\Query;
 use craft\db\Table;
@@ -72,20 +73,28 @@ class m260513_142613_DeduplicateElementTableForeignKeys extends Migration
         $auditLog = '{{%passwordpolicy_audit_log}}';
         $notificationLog = '{{%passwordpolicy_notification_log}}';
 
-        $this->_dropAllForeignKeysByName($auditLog);
-        $this->_dropAllForeignKeysByName($notificationLog);
+        // Guard each table independently. A fresh install never created
+        // the pre-conversion shape, so the table may be absent (or already
+        // canonical) when this normaliser runs out of band.
+        if ($this->db->tableExists($auditLog)) {
+            $this->_dropAllForeignKeysByName($auditLog);
 
-        // audit_log: id → elements (CASCADE), userId + changedByUserId → users (SET NULL).
-        $this->addForeignKey(null, $auditLog, ['id'], Table::ELEMENTS, ['id'], 'CASCADE', null);
-        $this->addForeignKey(null, $auditLog, ['userId'], Table::USERS, ['id'], 'SET NULL', null);
-        $this->addForeignKey(null, $auditLog, ['changedByUserId'], Table::USERS, ['id'], 'SET NULL', null);
+            // audit_log: id → elements (CASCADE), userId + changedByUserId → users (SET NULL).
+            $this->addForeignKey(null, $auditLog, ['id'], Table::ELEMENTS, ['id'], 'CASCADE', null);
+            $this->addForeignKey(null, $auditLog, ['userId'], Table::USERS, ['id'], 'SET NULL', null);
+            $this->addForeignKey(null, $auditLog, ['changedByUserId'], Table::USERS, ['id'], 'SET NULL', null);
+        }
 
-        // notification_log: id → elements (CASCADE), userId → users (SET NULL),
-        // siteId → sites (SET NULL), resentFromId → self (SET NULL).
-        $this->addForeignKey(null, $notificationLog, ['id'], Table::ELEMENTS, ['id'], 'CASCADE', null);
-        $this->addForeignKey(null, $notificationLog, ['userId'], Table::USERS, ['id'], 'SET NULL', null);
-        $this->addForeignKey(null, $notificationLog, ['siteId'], Table::SITES, ['id'], 'SET NULL', null);
-        $this->addForeignKey(null, $notificationLog, ['resentFromId'], $notificationLog, ['id'], 'SET NULL', null);
+        if ($this->db->tableExists($notificationLog)) {
+            $this->_dropAllForeignKeysByName($notificationLog);
+
+            // notification_log: id → elements (CASCADE), userId → users (SET NULL),
+            // siteId → sites (SET NULL), resentFromId → self (SET NULL).
+            $this->addForeignKey(null, $notificationLog, ['id'], Table::ELEMENTS, ['id'], 'CASCADE', null);
+            $this->addForeignKey(null, $notificationLog, ['userId'], Table::USERS, ['id'], 'SET NULL', null);
+            $this->addForeignKey(null, $notificationLog, ['siteId'], Table::SITES, ['id'], 'SET NULL', null);
+            $this->addForeignKey(null, $notificationLog, ['resentFromId'], $notificationLog, ['id'], 'SET NULL', null);
+        }
 
         return true;
     }
@@ -97,10 +106,13 @@ class m260513_142613_DeduplicateElementTableForeignKeys extends Migration
      */
     public function safeDown(): bool
     {
-        // Cannot meaningfully revert — restoring the duplicate state
-        // would re-create the constraint mess the up migration cleaned
-        // up. Down-migration is a no-op success.
-        return true;
+        // Cannot meaningfully revert — restoring the duplicate state would
+        // re-create the constraint mess the up migration cleaned up.
+        // Matches the non-revertable contract of the element conversions
+        // (`m260511_133103`, `m260511_154624`, `m260513_172440`).
+        echo "m260513_142613_DeduplicateElementTableForeignKeys cannot be reverted.\n";
+
+        return false;
     }
 
     // Private Methods
@@ -127,19 +139,11 @@ class m260513_142613_DeduplicateElementTableForeignKeys extends Migration
         $db = Craft::$app->getDb();
         $resolvedTable = $db->getSchema()->getRawTableName($table);
 
-        // `Schema::defaultSchema` is empty string for MySQL — it tracks
-        // a PostgreSQL concept that doesn't exist in MySQL where
-        // "schemas" are "databases". Use `SELECT DATABASE()` to get
-        // the current database name so the INFORMATION_SCHEMA lookup
-        // scopes correctly. Without this, the query matches no rows
-        // and the drop loop becomes a silent no-op.
-        $currentDatabase = $db->createCommand('SELECT DATABASE()')->queryScalar();
-
         $constraints = (new Query())
             ->select('CONSTRAINT_NAME')
             ->from('INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS')
             ->where([
-                'CONSTRAINT_SCHEMA' => $currentDatabase,
+                'CONSTRAINT_SCHEMA' => $this->_informationSchemaScope(),
                 'TABLE_NAME' => $resolvedTable,
             ])
             ->column();
@@ -147,5 +151,39 @@ class m260513_142613_DeduplicateElementTableForeignKeys extends Migration
         foreach ($constraints as $name) {
             $this->dropForeignKey($name, $table);
         }
+    }
+
+    /**
+     * Returns the value that scopes INFORMATION_SCHEMA lookups to the
+     * current connection.
+     *
+     * On MySQL, INFORMATION_SCHEMA's `*_SCHEMA` columns hold the database
+     * name (`DATABASE()`) — MySQL has no separate namespace concept. On
+     * PostgreSQL, the same columns hold the namespace (`current_schema()`,
+     * typically `public`); the database name lives in the `*_CATALOG`
+     * columns instead. Scoping by the wrong value matches no rows and turns
+     * the FK enumeration into a silent no-op.
+     *
+     * @return string the schema/database name to filter on
+     *
+     * @throws \RuntimeException on an unsupported driver
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _informationSchemaScope(): string
+    {
+        $db = Craft::$app->getDb();
+        $driver = $db->getDriverName();
+
+        if ($driver === Connection::DRIVER_MYSQL) {
+            return (string)$db->createCommand('SELECT DATABASE()')->queryScalar();
+        }
+
+        if ($driver === Connection::DRIVER_PGSQL) {
+            return (string)$db->createCommand('SELECT current_schema()')->queryScalar();
+        }
+
+        throw new \RuntimeException("Unsupported database driver for INFORMATION_SCHEMA enumeration: {$driver}.");
     }
 }

@@ -10,6 +10,7 @@
 
 namespace craftpulse\passwordpolicy\migrations;
 
+use craft\db\Connection;
 use craft\db\Migration;
 use craft\db\Table;
 
@@ -160,12 +161,15 @@ class m260511_154624_ConvertAuditLogToElement extends Migration
 
     /**
      * Drops the primary key on a table. MySQL's primary-key drop syntax
-     * doesn't require a name — `ALTER TABLE ... DROP PRIMARY KEY` is
-     * the canonical form. Yii's `dropPrimaryKey()` requires a name
-     * parameter, so issue the raw SQL.
+     * doesn't require a name — `ALTER TABLE ... DROP PRIMARY KEY` is the
+     * canonical form. PostgreSQL names the constraint `<table>_pkey` by
+     * convention, dropped via `ALTER TABLE ... DROP CONSTRAINT
+     * "<table>_pkey"`. Issue the raw per-driver SQL.
      *
      * @param string $table table reference
      * @return void
+     *
+     * @throws \RuntimeException on an unsupported driver
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -173,7 +177,21 @@ class m260511_154624_ConvertAuditLogToElement extends Migration
     private function _dropPrimaryKey(string $table): void
     {
         $rawName = $this->db->getSchema()->getRawTableName($table);
-        $this->execute("ALTER TABLE `{$rawName}` DROP PRIMARY KEY");
+        $driver = $this->db->getDriverName();
+
+        if ($driver === Connection::DRIVER_MYSQL) {
+            $this->execute("ALTER TABLE `{$rawName}` DROP PRIMARY KEY");
+
+            return;
+        }
+
+        if ($driver === Connection::DRIVER_PGSQL) {
+            $this->execute("ALTER TABLE \"{$rawName}\" DROP CONSTRAINT \"{$rawName}_pkey\"");
+
+            return;
+        }
+
+        throw new \RuntimeException("Unsupported database driver for primary-key drop: {$driver}.");
     }
 
     /**

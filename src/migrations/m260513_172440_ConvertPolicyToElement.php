@@ -11,6 +11,7 @@
 namespace craftpulse\passwordpolicy\migrations;
 
 use Craft;
+use craft\db\Connection;
 use craft\db\Migration;
 use craft\db\Query;
 use craft\db\Table;
@@ -94,6 +95,19 @@ class m260513_172440_ConvertPolicyToElement extends Migration
         $table = '{{%passwordpolicy_policies}}';
         $junction = '{{%passwordpolicy_policy_groups}}';
         $blocklist = '{{%passwordpolicy_blocklist}}';
+
+        // Fail fast on non-MySQL before any partial DDL runs. This
+        // conversion's FK-rewrite machinery relies on MySQL-only
+        // INFORMATION_SCHEMA extensions (`KEY_COLUMN_USAGE.REFERENCED_*`).
+        // A clear early throw beats a cryptic mid-migration SQL error or a
+        // silent no-op that leaves the schema half-converted.
+        if ($this->db->getDriverName() !== Connection::DRIVER_MYSQL) {
+            throw new \RuntimeException(
+                'm260513_172440_ConvertPolicyToElement requires MySQL — its FK rewrite '
+                . 'depends on MySQL-only INFORMATION_SCHEMA extensions. PostgreSQL upgraders '
+                . 'should land on the converted shape via a fresh install (Install.php) instead.',
+            );
+        }
 
         if (!$this->db->tableExists($table)) {
             // Fresh install path — `Install.php` creates the converted
@@ -222,19 +236,11 @@ class m260513_172440_ConvertPolicyToElement extends Migration
         $db = Craft::$app->getDb();
         $resolvedTable = $db->getSchema()->getRawTableName($table);
 
-        // `Schema::defaultSchema` is empty string for MySQL — it tracks
-        // a PostgreSQL concept that doesn't exist in MySQL where
-        // "schemas" are "databases". Use `SELECT DATABASE()` to get
-        // the current database name so the INFORMATION_SCHEMA lookup
-        // scopes correctly. Without this, the query matches no rows
-        // and the drop loop becomes a silent no-op.
-        $currentDatabase = $db->createCommand('SELECT DATABASE()')->queryScalar();
-
         $constraints = (new Query())
             ->select('CONSTRAINT_NAME')
             ->from('INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS')
             ->where([
-                'CONSTRAINT_SCHEMA' => $currentDatabase,
+                'CONSTRAINT_SCHEMA' => $this->_informationSchemaScope(),
                 'TABLE_NAME' => $resolvedTable,
             ])
             ->column();
@@ -246,12 +252,15 @@ class m260513_172440_ConvertPolicyToElement extends Migration
 
     /**
      * Drops the primary key on a table. MySQL's primary-key drop syntax
-     * doesn't require a name — `ALTER TABLE ... DROP PRIMARY KEY` is
-     * the canonical form. Yii's `dropPrimaryKey()` requires a name
-     * parameter, so issue the raw SQL.
+     * doesn't require a name — `ALTER TABLE ... DROP PRIMARY KEY` is the
+     * canonical form. PostgreSQL names the constraint `<table>_pkey` by
+     * convention, dropped via `ALTER TABLE ... DROP CONSTRAINT
+     * "<table>_pkey"`. Issue the raw per-driver SQL.
      *
      * @param string $table table reference
      * @return void
+     *
+     * @throws \RuntimeException on an unsupported driver
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -259,7 +268,54 @@ class m260513_172440_ConvertPolicyToElement extends Migration
     private function _dropPrimaryKey(string $table): void
     {
         $rawName = $this->db->getSchema()->getRawTableName($table);
-        $this->execute("ALTER TABLE `{$rawName}` DROP PRIMARY KEY");
+        $driver = $this->db->getDriverName();
+
+        if ($driver === Connection::DRIVER_MYSQL) {
+            $this->execute("ALTER TABLE `{$rawName}` DROP PRIMARY KEY");
+
+            return;
+        }
+
+        if ($driver === Connection::DRIVER_PGSQL) {
+            $this->execute("ALTER TABLE \"{$rawName}\" DROP CONSTRAINT \"{$rawName}_pkey\"");
+
+            return;
+        }
+
+        throw new \RuntimeException("Unsupported database driver for primary-key drop: {$driver}.");
+    }
+
+    /**
+     * Returns the database name that scopes INFORMATION_SCHEMA lookups to
+     * the current connection.
+     *
+     * MySQL-only by design. The FK enumeration in this migration leans on
+     * MySQL extensions to INFORMATION_SCHEMA — `KEY_COLUMN_USAGE`'s
+     * `REFERENCED_TABLE_NAME` / `REFERENCED_TABLE_SCHEMA` columns are not in
+     * the SQL standard and don't exist on PostgreSQL, where inbound FKs are
+     * discovered via `pg_constraint` or `TABLE_CONSTRAINTS` joins instead.
+     * `safeUp()` fails fast on non-MySQL drivers before reaching here; this
+     * guard is the belt-and-braces second line.
+     *
+     * @return string the database name to filter on
+     *
+     * @throws \RuntimeException on a non-MySQL driver
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _informationSchemaScope(): string
+    {
+        $db = Craft::$app->getDb();
+
+        if ($db->getDriverName() !== Connection::DRIVER_MYSQL) {
+            throw new \RuntimeException(
+                'm260513_172440_ConvertPolicyToElement requires MySQL — its FK rewrite '
+                . 'depends on MySQL-only INFORMATION_SCHEMA extensions.',
+            );
+        }
+
+        return (string)$db->createCommand('SELECT DATABASE()')->queryScalar();
     }
 
     /**
@@ -286,7 +342,6 @@ class m260513_172440_ConvertPolicyToElement extends Migration
     private function _ensureDependentForeignKeys(string $junction, string $blocklist, string $policies): void
     {
         $db = Craft::$app->getDb();
-        $currentDatabase = $db->createCommand('SELECT DATABASE()')->queryScalar();
         $resolvedJunction = $db->getSchema()->getRawTableName($junction);
         $resolvedBlocklist = $db->getSchema()->getRawTableName($blocklist);
         $resolvedPolicies = $db->getSchema()->getRawTableName($policies);
@@ -296,7 +351,7 @@ class m260513_172440_ConvertPolicyToElement extends Migration
             ->select(['k.TABLE_NAME', 'k.COLUMN_NAME', 'k.REFERENCED_TABLE_NAME'])
             ->from(['k' => 'INFORMATION_SCHEMA.KEY_COLUMN_USAGE'])
             ->where([
-                'k.TABLE_SCHEMA' => $currentDatabase,
+                'k.TABLE_SCHEMA' => $this->_informationSchemaScope(),
                 'k.TABLE_NAME' => [$resolvedJunction, $resolvedBlocklist],
             ])
             ->andWhere(['is not', 'k.REFERENCED_TABLE_NAME', null])
@@ -362,15 +417,15 @@ class m260513_172440_ConvertPolicyToElement extends Migration
     private function _dropInboundForeignKeys(string $table): void
     {
         $db = Craft::$app->getDb();
-        $currentDatabase = $db->createCommand('SELECT DATABASE()')->queryScalar();
+        $scope = $this->_informationSchemaScope();
         $resolvedTable = $db->getSchema()->getRawTableName($table);
 
         $rows = (new Query())
             ->select(['CONSTRAINT_NAME', 'TABLE_NAME'])
             ->from('INFORMATION_SCHEMA.KEY_COLUMN_USAGE')
             ->where([
-                'TABLE_SCHEMA' => $currentDatabase,
-                'REFERENCED_TABLE_SCHEMA' => $currentDatabase,
+                'TABLE_SCHEMA' => $scope,
+                'REFERENCED_TABLE_SCHEMA' => $scope,
                 'REFERENCED_TABLE_NAME' => $resolvedTable,
             ])
             ->all();

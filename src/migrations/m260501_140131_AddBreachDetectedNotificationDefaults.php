@@ -50,7 +50,10 @@ class m260501_140131_AddBreachDetectedNotificationDefaults extends Migration
     public function safeUp(): bool
     {
         $sites = Craft::$app->getSites()->getAllSites();
-        $now = (new \DateTime())->format('Y-m-d H:i:s');
+        // UTC — `dateCreated` / `dateUpdated` are UTC columns. A bare
+        // `new \DateTime()` records the site-local wall clock and skews the
+        // displayed timestamps on non-UTC installs.
+        $now = (new \DateTime('now', new \DateTimeZone('UTC')))->format('Y-m-d H:i:s');
         $key = 'breach-detected';
 
         $factory = EmailDefaults::all()[$key] ?? null;
