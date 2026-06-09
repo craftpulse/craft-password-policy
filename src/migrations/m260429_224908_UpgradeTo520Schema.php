@@ -126,7 +126,11 @@ class m260429_224908_UpgradeTo520Schema extends Migration
                 ->all();
 
             $rows = [];
-            $now = (new \DateTime())->format('Y-m-d H:i:s');
+            // UTC, not the site timezone — `dateCreated` is a UTC column and
+            // retention prune compares against UTC. A bare `new \DateTime()`
+            // would record the server/site-local wall clock and skew both the
+            // seeded history timestamps and the prune window on non-UTC installs.
+            $now = (new \DateTime('now', new \DateTimeZone('UTC')))->format('Y-m-d H:i:s');
 
             // Migration-seed rows record `ChangeReason::MigrationSeed` so
             // Phase G audit-log queries can distinguish "the upgrade

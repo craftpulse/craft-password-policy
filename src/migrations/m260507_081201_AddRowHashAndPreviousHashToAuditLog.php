@@ -22,7 +22,7 @@ use craft\db\Migration;
  *    `canonicalize(payload) . previousHash`. The default `'0'` is a
  *    placeholder that lets the NOT NULL add succeed against existing
  *    rows; the recompute migration
- *    {@see m260507_081202_RecomputeAuditLogChain} (sibling, ships in the
+ *    {@see m260507_081852_RecomputeAuditLogChain} (sibling, ships in the
  *    same commit) walks the table in id-ASC order and rewrites every
  *    row to the real chain hash.
  *  - `previousHash` — `CHAR(64) NOT NULL DEFAULT '0'`. Hex SHA-256 of

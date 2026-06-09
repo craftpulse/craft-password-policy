@@ -222,6 +222,47 @@ it('is idempotent on re-run — second migrate up does not duplicate rows', func
     expect($secondCount)->toBe($firstCount);
 });
 
+it('seeds password history dateCreated in UTC, not the PHP-local wall clock', function() {
+    // Regression: the seed previously used a bare `new \DateTime()`, which
+    // reads PHP's default timezone. `dateCreated` is a UTC column and
+    // retention prune compares against UTC, so a non-UTC server skewed both
+    // the stored timestamp and the prune window. The fix pins the seed to
+    // `new \DateTime('now', new \DateTimeZone('UTC'))`.
+    //
+    // Force PHP into a non-UTC zone for the duration of the seed so a
+    // regression to the bare constructor produces a timestamp offset by the
+    // zone's UTC offset (≈4-5h for New York) — well outside the tolerance
+    // window below.
+    $originalTz = date_default_timezone_get();
+    date_default_timezone_set('America/New_York');
+
+    try {
+        $utcBefore = (new \DateTime('now', new \DateTimeZone('UTC')))->getTimestamp();
+
+        runPendingPluginMigrations();
+
+        $seeded = (new Query())
+            ->select(['dateCreated'])
+            ->from('{{%passwordpolicy_password_history}}')
+            ->scalar();
+
+        $utcAfter = (new \DateTime('now', new \DateTimeZone('UTC')))->getTimestamp();
+    } finally {
+        date_default_timezone_set($originalTz);
+    }
+
+    expect($seeded)->not->toBeFalse();
+
+    // The stored string is a UTC wall-clock value. Parse it back as UTC and
+    // confirm it sits inside the [before, after] UTC window the seed ran in
+    // (allowing a 5s slack for clock granularity). A local-time regression
+    // would land hours outside this band.
+    $seededTs = (new \DateTime($seeded, new \DateTimeZone('UTC')))->getTimestamp();
+
+    expect($seededTs)->toBeGreaterThanOrEqual($utcBefore - 5)
+        ->and($seededTs)->toBeLessThanOrEqual($utcAfter + 5);
+});
+
 // =============================================================================
 // TX.2 — zero behavior change on 5.1.1 upgrade
 // =============================================================================
@@ -325,6 +366,37 @@ it('seeds notification template defaults for every key on the primary site', fun
 
         expect($exists)->toBeTrue("expected default seed for {$key} on primary site");
     }
+});
+
+it('seeds notification template dateCreated in UTC, not the PHP-local wall clock', function() {
+    // Same regression class as the password-history seed: the notification
+    // template defaults seed (Install + the follow-up default migrations)
+    // formerly used a bare `new \DateTime()`. `dateCreated` is a UTC column;
+    // the seed now pins UTC explicitly.
+    $originalTz = date_default_timezone_get();
+    date_default_timezone_set('America/New_York');
+
+    try {
+        $utcBefore = (new \DateTime('now', new \DateTimeZone('UTC')))->getTimestamp();
+
+        runPendingPluginMigrations();
+
+        $seeded = (new Query())
+            ->select(['dateCreated'])
+            ->from('{{%passwordpolicy_notification_templates}}')
+            ->scalar();
+
+        $utcAfter = (new \DateTime('now', new \DateTimeZone('UTC')))->getTimestamp();
+    } finally {
+        date_default_timezone_set($originalTz);
+    }
+
+    expect($seeded)->not->toBeFalse();
+
+    $seededTs = (new \DateTime($seeded, new \DateTimeZone('UTC')))->getTimestamp();
+
+    expect($seededTs)->toBeGreaterThanOrEqual($utcBefore - 5)
+        ->and($seededTs)->toBeLessThanOrEqual($utcAfter + 5);
 });
 
 // =============================================================================

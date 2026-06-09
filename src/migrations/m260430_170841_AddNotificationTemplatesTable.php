@@ -118,7 +118,10 @@ class m260430_170841_AddNotificationTemplatesTable extends Migration
     private function _seedDefaults(): void
     {
         $sites = Craft::$app->getSites()->getAllSites();
-        $now = (new \DateTime())->format('Y-m-d H:i:s');
+        // UTC — `dateCreated` / `dateUpdated` are UTC columns. A bare
+        // `new \DateTime()` records the site-local wall clock and skews the
+        // displayed timestamps on non-UTC installs.
+        $now = (new \DateTime('now', new \DateTimeZone('UTC')))->format('Y-m-d H:i:s');
 
         foreach (EmailDefaults::all() as $key => $factory) {
             $content = call_user_func($factory);

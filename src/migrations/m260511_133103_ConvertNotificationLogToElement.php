@@ -10,6 +10,7 @@
 
 namespace craftpulse\passwordpolicy\migrations;
 
+use craft\db\Connection;
 use craft\db\Migration;
 use craft\db\Table;
 
@@ -212,15 +213,16 @@ class m260511_133103_ConvertNotificationLogToElement extends Migration
      * list under `primaryKey`).
      *
      * MySQL's primary-key drop syntax doesn't require a name — `ALTER
-     * TABLE ... DROP PRIMARY KEY` is the canonical form. Yii's
-     * `dropPrimaryKey()` requires a name parameter, so pass an empty
-     * string; Yii's MySQL `QueryBuilder` ignores the name in that case.
-     * PostgreSQL: the constraint is named `<table>_pkey` by convention
-     * — same dropPrimaryKey call with the right name works there too;
-     * the project ships MySQL playground only for 5.2.0.
+     * TABLE ... DROP PRIMARY KEY` is the canonical form. PostgreSQL names
+     * the constraint `<table>_pkey` by convention, dropped via `ALTER
+     * TABLE ... DROP CONSTRAINT "<table>_pkey"`. Yii's `dropPrimaryKey()`
+     * would need an explicit name on MySQL (where the name is ignored
+     * anyway), so issue the raw per-driver SQL.
      *
      * @param string $table table reference
      * @return void
+     *
+     * @throws \RuntimeException on an unsupported driver
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -228,7 +230,21 @@ class m260511_133103_ConvertNotificationLogToElement extends Migration
     private function _dropPrimaryKey(string $table): void
     {
         $rawName = $this->db->getSchema()->getRawTableName($table);
-        $this->execute("ALTER TABLE `{$rawName}` DROP PRIMARY KEY");
+        $driver = $this->db->getDriverName();
+
+        if ($driver === Connection::DRIVER_MYSQL) {
+            $this->execute("ALTER TABLE `{$rawName}` DROP PRIMARY KEY");
+
+            return;
+        }
+
+        if ($driver === Connection::DRIVER_PGSQL) {
+            $this->execute("ALTER TABLE \"{$rawName}\" DROP CONSTRAINT \"{$rawName}_pkey\"");
+
+            return;
+        }
+
+        throw new \RuntimeException("Unsupported database driver for primary-key drop: {$driver}.");
     }
 
     /**
