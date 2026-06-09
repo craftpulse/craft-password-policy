@@ -87,6 +87,29 @@ it('does not match anyone when expiry is not configured', function() {
 });
 
 // =============================================================================
+// matchElement — hydration for a freshly-loaded user
+// =============================================================================
+
+it('hydrates lastPasswordChangeDate from the DB for a freshly-loaded user', function() {
+    $rule = new PasswordExpiringWithinConditionRule();
+    $rule->value = '7';
+
+    // 28 days old + 30-day expiry = 2 days from expiry → within the 7-day window.
+    $user = UserFactory::admin();
+    setLastChange($user, Carbon::now()->subDays(28));
+
+    // Reload via the element query — UserQuery::beforePrepare() does NOT
+    // select lastPasswordChangeDate, so the in-memory value is null. This is
+    // the gap matchElement() must hydrate around; without the DB-scalar
+    // hydration the rule would mis-classify every freshly-loaded user.
+    /** @var User $reloaded */
+    $reloaded = User::find()->id($user->id)->status(null)->one();
+    expect($reloaded->lastPasswordChangeDate)->toBeNull();
+
+    expect($rule->matchElement($reloaded))->toBeTrue();
+});
+
+// =============================================================================
 // modifyQuery — SQL filter narrows the result set
 // =============================================================================
 

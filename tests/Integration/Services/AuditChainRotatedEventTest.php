@@ -180,23 +180,25 @@ it('prunes by a contiguous id boundary so a clock-skewed row never punches a mid
     $old = Carbon::now('UTC')->subDays(10)->format('Y-m-d H:i:s');
     $recent = Carbon::now('UTC')->format('Y-m-d H:i:s');
 
-    // Simulate a wall-clock step: rows 1-2 are old (should be pruned),
-    // row 3 is RECENT (a clock backstep gave it a newer-than-its-id
-    // dateCreated), row 4 is recent. A `dateCreated < threshold` delete
-    // would drop rows 1-2 only — but the OLD code resolved the boundary
-    // by `dateCreated`, and if row 3 were also old it would punch a
-    // hole. Here we make row 3 the one straddling the boundary: it is
-    // recent, so `maxId` resolves to row 2's id and the prune removes
-    // exactly the rows 1-2 prefix.
-    backdateAuditRow((int)$rows[0]['id'], $old);
+    // The dangerous case the id-boundary fix guards against: an OLD-dated
+    // row sitting at a HIGHER id than a RECENT row (a backward clock step
+    // stamped row 2 with an old date while the lower-id row 1 stayed
+    // recent). The OLD `DELETE WHERE dateCreated < threshold` code would
+    // drop ONLY row 2 — punching a mid-chain hole (rows 1, 3, 4 survive,
+    // 2 missing). The fix resolves `maxId = MAX(id) WHERE dateCreated <
+    // threshold` (= row 2's id) and deletes the whole `id <= maxId`
+    // prefix, so the survivors are always a contiguous, unbroken suffix —
+    // it sacrifices the recent row 1 to keep the chain whole. This setup
+    // FAILS against the pre-fix code (which would delete 1 row, not 2).
+    backdateAuditRow((int)$rows[0]['id'], $recent);
     backdateAuditRow((int)$rows[1]['id'], $old);
     backdateAuditRow((int)$rows[2]['id'], $recent);
     backdateAuditRow((int)$rows[3]['id'], $recent);
 
     $deleted = $service->purgeOldEntries(daysToKeep: 5);
 
-    // Exactly the contiguous id prefix (rows 1-2) is gone; rows 3-4
-    // survive as a clean chain suffix.
+    // The whole id<=row2 prefix (rows 1-2) is gone — including the recent
+    // row 1 — so rows 3-4 survive as a clean, hole-free chain suffix.
     expect($deleted)->toBe(2);
 
     $survivors = (new \craft\db\Query())
