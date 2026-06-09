@@ -76,6 +76,43 @@ class GuzzleHibpClient extends Component implements HibpClientInterface
      */
     public const DEFAULT_BACKOFF_SECONDS = 60;
 
+    /**
+     * Hard ceiling, in seconds, for the 429 backoff window. A misbehaving
+     * (or hostile) `Retry-After` header carrying an absurd value
+     * (e.g. years) would otherwise wedge HIBP-on-login off for the whole
+     * site until a cache flush. Clamped to 24h — long enough to clear any
+     * real rate-limit, short enough that a bad header self-heals next day.
+     *
+     * @var int seconds
+     *
+     * @since 5.2.0
+     */
+    public const MAX_BACKOFF_SECONDS = 86400;
+
+    /**
+     * Connect timeout, in seconds, for the HIBP request. HIBP-on-login
+     * runs synchronously on the authentication path — a slow-not-down
+     * peer (TCP accepts but stalls) would otherwise hang the login until
+     * Guzzle's default (no) timeout. Bounded so the existing fail-open
+     * catch absorbs the stall as an "unable to check" null.
+     *
+     * @var int seconds
+     *
+     * @since 5.2.0
+     */
+    public const CONNECT_TIMEOUT_SECONDS = 2;
+
+    /**
+     * Total request timeout, in seconds (connect + TLS + send + receive).
+     * Caps the worst-case synchronous stall on the login path. A timeout
+     * surfaces as a `GuzzleException`, caught fail-open below.
+     *
+     * @var int seconds
+     *
+     * @since 5.2.0
+     */
+    public const TIMEOUT_SECONDS = 4;
+
     // Public Methods
     // =========================================================================
 
@@ -107,6 +144,8 @@ class GuzzleHibpClient extends Component implements HibpClientInterface
         try {
             $client = Craft::createGuzzleClient([
                 'verify' => true,
+                'connect_timeout' => self::CONNECT_TIMEOUT_SECONDS,
+                'timeout' => self::TIMEOUT_SECONDS,
                 'headers' => [
                     'Add-Padding' => 'true',
                 ],
@@ -176,6 +215,12 @@ class GuzzleHibpClient extends Component implements HibpClientInterface
      * to keep the path simple — the default window is short enough to be
      * safe regardless).
      *
+     * The parsed value is clamped to `[1, MAX_BACKOFF_SECONDS]` — the
+     * floor guards against a `Retry-After: 0` producing a never-expiring
+     * sentinel (Yii treats a 0 TTL as "forever"); the ceiling guards
+     * against an absurd / hostile value wedging HIBP-on-login off for the
+     * whole site indefinitely.
+     *
      * @param ClientException $exception
      * @return int seconds
      *
@@ -196,6 +241,6 @@ class GuzzleHibpClient extends Component implements HibpClientInterface
             return self::DEFAULT_BACKOFF_SECONDS;
         }
 
-        return max(1, (int)$value);
+        return max(1, min((int)$value, self::MAX_BACKOFF_SECONDS));
     }
 }

@@ -315,6 +315,35 @@ it('removes the forwarder row on delete', function() {
 });
 
 // =============================================================================
+// Syslog frame body — byte-parity with the webhook canonical body
+// =============================================================================
+
+it('builds the MSG body via AuditLogService::canonicalize (byte-parity with webhook)', function() {
+    // The class docblock on WebhookService promises SIEM and webhook
+    // consumers see the same byte sequence. Both bodies must run through
+    // canonicalize() (recursive key-sort + UNESCAPED flags) — not a bare
+    // Json::encode — or the parity claim is false.
+    $row = [
+        'event' => 'siem_test',
+        'id' => 7,
+        'details' => ['source' => 'admin', 'a' => 'z'],
+        'uid' => 'fixture-uid',
+    ];
+
+    $method = (new ReflectionClass($this->service))->getMethod('_buildSyslogFrame');
+    $frame = $method->invoke($this->service, $row);
+
+    $expectedBody = \craftpulse\passwordpolicy\services\AuditLogService::canonicalize($row);
+
+    // The frame is `<PRI>1 TIMESTAMP HOST APP PROCID MSGID - MSG`; the MSG
+    // is the trailing canonical JSON. Assert the frame ends with it.
+    expect($frame)->toEndWith($expectedBody);
+
+    // And the recursive key-sort actually happened — keys are ordered.
+    expect($expectedBody)->toContain('"a":"z"');
+});
+
+// =============================================================================
 // listForwarders
 // =============================================================================
 

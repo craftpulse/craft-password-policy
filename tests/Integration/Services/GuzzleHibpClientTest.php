@@ -242,3 +242,69 @@ it('exposes the canonical cache key and default backoff constants', function() {
         ->and(GuzzleHibpClient::DEFAULT_BACKOFF_SECONDS)->toBe(60)
         ->and(GuzzleHibpClient::ENDPOINT)->toBe('https://api.pwnedpasswords.com/range/');
 });
+
+// =============================================================================
+// Synchronous-login hardening — request timeouts + backoff ceiling
+// =============================================================================
+
+it('exposes the connect/total timeout and backoff ceiling constants', function() {
+    // HIBP-on-login runs synchronously on the auth path; a slow-not-down
+    // peer must be bounded. Pinned so a refactor that drops the timeouts
+    // (re-introducing the unbounded stall) flags itself here.
+    expect(GuzzleHibpClient::CONNECT_TIMEOUT_SECONDS)->toBe(2)
+        ->and(GuzzleHibpClient::TIMEOUT_SECONDS)->toBe(4)
+        ->and(GuzzleHibpClient::MAX_BACKOFF_SECONDS)->toBe(86400);
+});
+
+it('clamps an absurd Retry-After to the MAX_BACKOFF_SECONDS ceiling', function() {
+    // A hostile / misconfigured `Retry-After: 999999999` (≈31 years) must
+    // not wedge HIBP-on-login off site-wide forever. `_parseRetryAfter`
+    // clamps to MAX_BACKOFF_SECONDS. Reflected directly because the cache
+    // TTL isn't observable deterministically across drivers (see the file
+    // header note).
+    $client = new GuzzleHibpClient();
+
+    $response = new Response(429, ['Retry-After' => '999999999']);
+    $exception = new \GuzzleHttp\Exception\ClientException(
+        'rate limited',
+        new \GuzzleHttp\Psr7\Request('GET', GuzzleHibpClient::ENDPOINT . '00000'),
+        $response,
+    );
+
+    $method = (new ReflectionClass($client))->getMethod('_parseRetryAfter');
+    $parsed = $method->invoke($client, $exception);
+
+    expect($parsed)->toBe(GuzzleHibpClient::MAX_BACKOFF_SECONDS);
+});
+
+it('floors Retry-After to 1 second on zero (clamp lower bound)', function() {
+    $client = new GuzzleHibpClient();
+
+    $response = new Response(429, ['Retry-After' => '0']);
+    $exception = new \GuzzleHttp\Exception\ClientException(
+        'rate limited',
+        new \GuzzleHttp\Psr7\Request('GET', GuzzleHibpClient::ENDPOINT . '00000'),
+        $response,
+    );
+
+    $method = (new ReflectionClass($client))->getMethod('_parseRetryAfter');
+    $parsed = $method->invoke($client, $exception);
+
+    expect($parsed)->toBe(1);
+});
+
+it('keeps a sane Retry-After value unchanged through the clamp', function() {
+    $client = new GuzzleHibpClient();
+
+    $response = new Response(429, ['Retry-After' => '120']);
+    $exception = new \GuzzleHttp\Exception\ClientException(
+        'rate limited',
+        new \GuzzleHttp\Psr7\Request('GET', GuzzleHibpClient::ENDPOINT . '00000'),
+        $response,
+    );
+
+    $method = (new ReflectionClass($client))->getMethod('_parseRetryAfter');
+    $parsed = $method->invoke($client, $exception);
+
+    expect($parsed)->toBe(120);
+});

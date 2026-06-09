@@ -14,7 +14,6 @@ use Carbon\Carbon;
 use Craft;
 use craft\db\Query;
 use craft\helpers\App;
-use craft\helpers\Json;
 use craft\helpers\StringHelper;
 use craftpulse\passwordpolicy\models\SiemForwarderModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
@@ -510,7 +509,12 @@ class SiemService extends Component
      * - PROCID = current process id.
      * - MSGID = `audit-log`.
      * - STRUCTURED-DATA = `-` (no SDATA blocks).
-     * - MSG = JSON-encoded audit row body (BOM-free).
+     * - MSG = canonical JSON of the audit row via
+     *   `AuditLogService::canonicalize()` — recursively key-sorted,
+     *   BOM-free, `JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE`. This
+     *   is the SAME byte sequence the webhook forwarder signs and sends,
+     *   so SIEM and webhook consumers see an identical body (the
+     *   byte-parity contract documented on `WebhookService`).
      *
      * @param array<string, mixed> $auditRow
      * @return string
@@ -524,10 +528,7 @@ class SiemService extends Component
         $timestamp = Carbon::now('UTC')->format('Y-m-d\TH:i:s\Z');
         $hostname = (string)(gethostname() ?: '-');
         $procId = (string)getmypid() ?: '-';
-        $body = Json::encode(
-            $auditRow,
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
-        );
+        $body = AuditLogService::canonicalize($auditRow);
 
         return sprintf(
             '<%d>1 %s %s %s %s %s - %s',
@@ -734,11 +735,30 @@ class SiemService extends Component
             ));
         }
 
+        // Bound the write/read window. `stream_socket_client`'s timeout
+        // argument covers connect only — a half-open peer (TLS handshake
+        // completes, the socket accepts, but the far end never drains the
+        // buffer) would otherwise stall the write until the whole job TTR
+        // elapses, and the circuit breaker would never engage because no
+        // exception is raised. `stream_set_timeout` + the explicit
+        // `timed_out` check below turn that stall into a thrown
+        // RuntimeException, which `forward()` records as a failure.
+        stream_set_timeout($socket, self::TLS_CONNECT_TIMEOUT);
+
         // Append a newline so a downstream syslog reader using
         // line-delimited framing can split frames cleanly.
         $payload = $frame . "\n";
         $written = @fwrite($socket, $payload);
+
+        // `stream_get_meta_data()` must be read BEFORE the socket is
+        // closed — `timed_out` reflects whether the last fwrite/fread
+        // hit the stream timeout (rather than completing).
+        $meta = stream_get_meta_data($socket);
         @fclose($socket);
+
+        if (!empty($meta['timed_out'])) {
+            throw new RuntimeException('TLS write timed out; the SIEM peer accepted the connection but did not drain the frame.');
+        }
 
         if ($written === false || $written < strlen($payload)) {
             throw new RuntimeException('TLS write was incomplete or failed.');

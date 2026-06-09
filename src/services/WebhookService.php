@@ -129,6 +129,19 @@ class WebhookService extends Component
     public const TEST_RESPONSE_BODY_LIMIT = 1024;
 
     /**
+     * Maximum number of bytes read from a non-2xx response body when
+     * building the operator-facing `errorMessage`. The endpoint controls
+     * what it echoes back; this caps the read so a hostile or chatty
+     * endpoint can't balloon the diagnostic stored on the delivery event
+     * / surfaced in the CP test panel.
+     *
+     * @var int
+     *
+     * @since 5.2.0
+     */
+    public const ERROR_BODY_READ_LIMIT = 512;
+
+    /**
      * Total Guzzle request timeout in seconds. Applies to connect + TLS
      * handshake + send + receive. An endpoint that doesn't respond
      * within this window is treated as failed for the purpose of the
@@ -221,6 +234,33 @@ class WebhookService extends Component
             return false;
         }
 
+        // Re-check the RESOLVED scheme. The model rule enforces https on a
+        // literal URL, but an env-var reference (`$PP_WEBHOOK_URL`) skips
+        // that rule — resolution happens here. A signed payload must never
+        // traverse plaintext http, so refuse a non-https resolved target
+        // outright. (Guzzle would also follow a 3xx by default; that's
+        // handled separately via allow_redirects below.)
+        if (stripos($url, 'https://') !== 0) {
+            Craft::warning(
+                'Webhook dispatch refused for endpoint ' . $endpoint->id
+                . ': resolved URL is not https://.',
+                'password-policy',
+            );
+
+            $this->_recordFailure($endpoint);
+
+            $this->_fireDeliveryEvent(
+                endpointId: (int)$endpoint->id,
+                auditRowId: isset($auditRow['id']) ? (int)$auditRow['id'] : 0,
+                statusCode: null,
+                duration: 0,
+                success: false,
+                errorMessage: 'Resolved webhook URL is not https://; refusing to send a signed payload over plaintext.',
+            );
+
+            return false;
+        }
+
         $auditRowId = isset($auditRow['id']) ? (int)$auditRow['id'] : 0;
         $eventId = isset($auditRow['uid']) ? (string)$auditRow['uid'] : StringHelper::UUID();
 
@@ -241,6 +281,12 @@ class WebhookService extends Component
             $client = Craft::createGuzzleClient([
                 'verify' => true,
                 'http_errors' => false,
+                // Never follow redirects. A 307/308 from the registered
+                // host would otherwise re-POST the signed payload + HMAC
+                // header to whatever Location the response names — an
+                // unregistered host the operator never approved. Treat a
+                // 3xx as a non-success outcome instead (handled below).
+                'allow_redirects' => false,
                 'timeout' => self::TIMEOUT_SECONDS,
             ]);
 
@@ -255,7 +301,18 @@ class WebhookService extends Component
             ]);
 
             $statusCode = $response->getStatusCode();
+            // Only a 2xx is a success. 3xx (redirect — not followed), 4xx,
+            // and 5xx all count as failures.
             $success = $statusCode >= 200 && $statusCode < 300;
+
+            if (!$success) {
+                // `http_errors => false` means Guzzle never throws on a
+                // non-2xx, so without this the operator sees nothing.
+                // Read a BOUNDED slice of the response body and pair it
+                // with the status line so the CP test panel / delivery
+                // event carry an actionable diagnostic.
+                $errorMessage = $this->_buildResponseError($statusCode, $response->getBody()->getContents());
+            }
         } catch (Throwable $e) {
             // NEVER log the request body or signature — they're already
             // in the audit log and the cryptographic identifier
@@ -654,6 +711,38 @@ class WebhookService extends Component
 
     // Private Methods
     // =========================================================================
+
+    /**
+     * Builds the operator-facing error message for a non-2xx webhook
+     * response: an `HTTP <status>` status line plus a bounded slice of
+     * the response body (capped at {@see ERROR_BODY_READ_LIMIT} bytes,
+     * whitespace-trimmed). The body slice is best-effort — many endpoints
+     * return an empty body on error, in which case only the status line
+     * is kept. NEVER echoes back the request body or signature.
+     *
+     * @param int $statusCode the non-2xx HTTP status returned by the
+     *     endpoint
+     * @param string $responseBody the raw response body
+     * @return string
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _buildResponseError(int $statusCode, string $responseBody): string
+    {
+        $message = 'HTTP ' . $statusCode;
+
+        $snippet = trim($responseBody);
+        if ($snippet !== '') {
+            if (strlen($snippet) > self::ERROR_BODY_READ_LIMIT) {
+                $snippet = substr($snippet, 0, self::ERROR_BODY_READ_LIMIT) . '...';
+            }
+
+            $message .= ': ' . $snippet;
+        }
+
+        return $message;
+    }
 
     /**
      * Returns the configured circuit-breaker cooldown window in

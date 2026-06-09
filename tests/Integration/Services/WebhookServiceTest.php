@@ -185,6 +185,123 @@ it('returns false on a 4xx client error without throwing', function() {
 });
 
 // =============================================================================
+// dispatch() — redirect / scheme hardening
+// =============================================================================
+
+it('treats a 3xx redirect as a failure and never follows it', function() {
+    // A 307/308 from the registered host would otherwise re-POST the
+    // signed payload + HMAC to whatever Location it names — an
+    // unregistered host. We disable allow_redirects and treat any 3xx as
+    // a non-success outcome. Only ONE response is queued: if the service
+    // followed the redirect the mock queue would exhaust and throw.
+    $endpoint = makeEndpoint();
+    $this->mockHandler->append(new Response(308, ['Location' => 'https://evil.example.test/steal']));
+
+    $result = $this->service->dispatch(['id' => 1, 'uid' => 'x'], $endpoint);
+
+    expect($result)->toBeFalse();
+
+    // The single queued response was consumed exactly once — no follow.
+    expect($this->mockHandler->count())->toBe(0);
+});
+
+it('refuses to dispatch to a non-https resolved URL (env-var escape hatch)', function() {
+    // A literal http:// URL is rejected by the model rule; but an env-var
+    // reference skips that rule and is resolved at dispatch. The resolved
+    // scheme is re-checked here. We force the resolved URL to http:// by
+    // pointing the endpoint at a plain http literal via direct record
+    // write (bypassing model validation), then dispatching.
+    $endpoint = makeEndpoint();
+
+    Craft::$app->getDb()->createCommand()
+        ->update(
+            '{{%passwordpolicy_webhook_endpoints}}',
+            ['url' => 'http://insecure.example.test/audit'],
+            ['id' => $endpoint->id],
+        )
+        ->execute();
+
+    $endpoint = $this->service->getEndpointById((int)$endpoint->id);
+
+    // No response queued — if the service reached Guzzle the mock would
+    // throw "Mock queue is empty". The scheme guard must short-circuit.
+    $result = $this->service->dispatch(['id' => 1, 'uid' => 'x'], $endpoint);
+
+    expect($result)->toBeFalse();
+    expect($this->mockHandler->count())->toBe(0);
+
+    // The refusal still counts as a failure for the circuit breaker.
+    /** @var WebhookEndpointRecord $record */
+    $record = WebhookEndpointRecord::findOne(['id' => $endpoint->id]);
+    expect((int)$record->consecutiveFailures)->toBe(1);
+});
+
+// =============================================================================
+// dispatch() — error message surfacing (http_errors => false)
+// =============================================================================
+
+it('surfaces the status line and bounded body in the delivery event errorMessage', function() {
+    $endpoint = makeEndpoint();
+    $this->mockHandler->append(new Response(503, [], 'upstream unavailable'));
+
+    $captured = null;
+    $handler = function(\craftpulse\passwordpolicy\events\WebhookDeliveryAttemptEvent $event) use (&$captured): void {
+        $captured = $event->errorMessage;
+    };
+
+    $this->service->on($this->service::EVENT_WEBHOOK_DELIVERY_ATTEMPT, $handler);
+    try {
+        $this->service->dispatch(['id' => 1, 'uid' => 'x'], $endpoint);
+    } finally {
+        $this->service->off($this->service::EVENT_WEBHOOK_DELIVERY_ATTEMPT, $handler);
+    }
+
+    expect($captured)->toContain('HTTP 503');
+    expect($captured)->toContain('upstream unavailable');
+});
+
+it('truncates an oversized error body to ERROR_BODY_READ_LIMIT', function() {
+    $endpoint = makeEndpoint();
+    $hugeBody = str_repeat('x', \craftpulse\passwordpolicy\services\WebhookService::ERROR_BODY_READ_LIMIT + 500);
+    $this->mockHandler->append(new Response(500, [], $hugeBody));
+
+    $captured = null;
+    $handler = function(\craftpulse\passwordpolicy\events\WebhookDeliveryAttemptEvent $event) use (&$captured): void {
+        $captured = $event->errorMessage;
+    };
+
+    $this->service->on($this->service::EVENT_WEBHOOK_DELIVERY_ATTEMPT, $handler);
+    try {
+        $this->service->dispatch(['id' => 1, 'uid' => 'x'], $endpoint);
+    } finally {
+        $this->service->off($this->service::EVENT_WEBHOOK_DELIVERY_ATTEMPT, $handler);
+    }
+
+    expect($captured)->toEndWith('...');
+    // 'HTTP 500: ' prefix (10) + LIMIT bytes + '...' (3).
+    expect(strlen($captured))->toBe(10 + \craftpulse\passwordpolicy\services\WebhookService::ERROR_BODY_READ_LIMIT + 3);
+});
+
+it('surfaces the error body through sendTestEvent body field on a non-2xx', function() {
+    $previousAuditEnabled = $this->plugin->getSettings()->enableAuditLog;
+    $this->plugin->getSettings()->enableAuditLog = true;
+
+    try {
+        $endpoint = makeEndpoint();
+        $this->mockHandler->append(new Response(422, [], 'validation failed'));
+
+        $result = $this->service->sendTestEvent($endpoint);
+
+        expect($result['success'])->toBeFalse();
+        expect($result['statusCode'])->toBe(422);
+        expect($result['body'])->toContain('HTTP 422');
+        expect($result['body'])->toContain('validation failed');
+    } finally {
+        $this->plugin->getSettings()->enableAuditLog = $previousAuditEnabled;
+    }
+});
+
+// =============================================================================
 // getActiveEndpoints
 // =============================================================================
 
