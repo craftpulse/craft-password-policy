@@ -131,7 +131,7 @@ class PasswordResetFormTag extends BaseTag
     /**
      * @inheritdoc
      *
-     * @throws InvalidArgumentException when `code` or `userUid` are missing
+     * @throws InvalidArgumentException when `code` or `id` are missing
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -140,7 +140,8 @@ class PasswordResetFormTag extends BaseTag
     {
         if (empty($this->config['code']) || empty($this->config['userUid'])) {
             throw new InvalidArgumentException(
-                'PasswordResetFormTag requires `code` and `userUid` — pass them from the URL query string.',
+                'PasswordResetFormTag requires `code` and `id` — pass them from the URL query string '
+                . "(e.g. `.code(craft.app.request.queryParam('code')).id(craft.app.request.queryParam('id'))`).",
             );
         }
 

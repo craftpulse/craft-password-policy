@@ -18,7 +18,8 @@ use craft\db\ActiveRecord;
  * @property int $id
  * @property string $word
  * @property string $source
- * @property \DateTime $dateCreated
+ * @property int|null $policyId
+ * @property \DateTime|string $dateCreated
  *
  * @author      CraftPulse
  * @package     PasswordPolicy

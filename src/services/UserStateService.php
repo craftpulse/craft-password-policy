@@ -241,6 +241,25 @@ class UserStateService extends Component
         return $context;
     }
 
+    /**
+     * Clears every pinned explicit context. Request-end safety net: a
+     * context pinned via {@see self::setExplicitContext()} that was never
+     * consumed — e.g. `saveElement()` threw before the history-write
+     * listener ran — would otherwise linger in the static map and could
+     * be picked up by an unrelated save later in a long-lived process
+     * (console command, queue worker). Wired to
+     * `Application::EVENT_AFTER_REQUEST`.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function clearExplicitContexts(): void
+    {
+        self::$_explicitContexts = [];
+    }
+
     // Private Methods
     // =========================================================================
 

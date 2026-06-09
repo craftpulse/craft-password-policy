@@ -38,6 +38,9 @@ import '~/css/app.css';
  * Failure mode: silent. If the AJAX request fails or returns non-2xx, the
  * bars freeze at their last known state. Strength UX is non-blocking; the
  * server-side validator on save remains the gate.
+ *
+ * @author CraftPulse
+ * @since 5.2.0
  */
 
 // =========================================================================

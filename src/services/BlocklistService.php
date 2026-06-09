@@ -552,8 +552,15 @@ class BlocklistService extends Component
             ];
         }
 
-        // 1 hour TTL matches the legacy validator cache.
-        $cache->set(self::CACHE_KEY_FULL, $full, 3600);
+        // Cache only a populated map (1 hour TTL, matching the legacy
+        // validator cache). An empty blocklist is trivially cheap to
+        // re-query, and caching `[]` is indistinguishable from a cache
+        // miss — a word added without a matching clearCache() could be
+        // masked for the whole TTL. Skipping the empty case sidesteps
+        // that footgun.
+        if ($full !== []) {
+            $cache->set(self::CACHE_KEY_FULL, $full, 3600);
+        }
 
         return $full;
     }
