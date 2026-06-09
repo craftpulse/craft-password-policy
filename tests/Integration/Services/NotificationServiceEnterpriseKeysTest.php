@@ -38,6 +38,7 @@ use Carbon\Carbon;
 use craft\helpers\DateTimeHelper;
 use craftpulse\passwordpolicy\elements\NotificationLogElement;
 use craftpulse\passwordpolicy\enums\NotificationStatus;
+use craftpulse\passwordpolicy\exceptions\EditionRequiredException;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\records\NotificationLogRecord;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
@@ -107,6 +108,9 @@ it('dispatches new-device-alert with rendered subject + body captured', function
 // =============================================================================
 
 it('dispatches admin-security-alert with rendered subject + body captured', function() {
+    // Admin security alerts are an Enterprise surface — the service throws
+    // EditionRequiredException below the Enterprise tier.
+    $this->plugin->edition = PasswordPolicy::EDITION_ENTERPRISE;
     $this->settings->adminAlertEmail = 'ops@example.test';
     $this->settings->adminAlertEvents = null; // null = all events trigger
 
@@ -135,6 +139,66 @@ it('dispatches admin-security-alert with rendered subject + body captured', func
     // Event token substituted into both subject + body.
     expect($row->subject)->toContain('breach_detected');
     expect($row->body)->toContain('breach_detected');
+});
+
+// =============================================================================
+// Edition gate — admin-security-alert is Enterprise-only
+// =============================================================================
+//
+// The service-layer gate throws EditionRequiredException below Enterprise
+// (defense-in-depth: the driving caller registers on Enterprise only, but a
+// config override or direct caller must not bypass the edition tier). This
+// matches the Pro gates on sendBreachDetected() / sendNewDeviceAlert().
+
+it('throws EditionRequiredException for admin-security-alert on Pro', function() {
+    $this->plugin->edition = PasswordPolicy::EDITION_PRO;
+    $this->settings->adminAlertEmail = 'ops@example.test';
+    $this->settings->adminAlertEvents = null;
+
+    $this->plugin->getNotification()->sendAdminSecurityAlert('breach_detected', ['userId' => 7]);
+})->throws(EditionRequiredException::class);
+
+it('throws EditionRequiredException for admin-security-alert on Lite', function() {
+    $this->plugin->edition = PasswordPolicy::EDITION_LITE;
+    $this->settings->adminAlertEmail = 'ops@example.test';
+    $this->settings->adminAlertEvents = null;
+
+    $this->plugin->getNotification()->sendAdminSecurityAlert('breach_detected', ['userId' => 7]);
+})->throws(EditionRequiredException::class);
+
+// =============================================================================
+// Missing-template branch writes a captured `failed` row
+// =============================================================================
+//
+// The dedup gate (`shouldFire()`) records the fire on the dispatch ATTEMPT,
+// so a silent return on a missing template would suppress every retry for
+// the cooldown window with no operator-visible trail. _dispatch() now writes
+// a `status = failed` row on the missing-template branch, honouring the
+// capture invariant (every dispatch attempt writes a row).
+
+it('writes a failed row when the template row is missing', function() {
+    $user = UserFactory::admin();
+    $user->email = 'recipient@example.test';
+
+    // Delete the seeded expiry-reminder row so the dispatch finds no
+    // template — the missing-template branch must still capture a row.
+    deleteNotificationTemplate('expiry-reminder');
+
+    $this->plugin->getNotification()->sendPasswordExpiryReminder($user, 7);
+
+    /** @var NotificationLogRecord|null $row */
+    $row = NotificationLogRecord::find()
+        ->where(['userId' => $user->id, 'notificationType' => 'expiry_reminder'])
+        ->orderBy(['id' => SORT_DESC])
+        ->one();
+
+    expect($row)->not->toBeNull();
+    expect($row->status)->toBe(NotificationStatus::Failed->value);
+    expect($row->recipientEmail)->toBe('recipient@example.test');
+    expect($row->subject)->toBeNull();
+    expect($row->body)->toBeNull();
+    expect($row->errorMessage)->not->toBeNull();
+    expect($row->errorMessage)->toContain('template');
 });
 
 // =============================================================================
@@ -167,6 +231,7 @@ it('captures a failed row for new-device-alert when template rendering throws', 
 });
 
 it('captures a failed row for admin-security-alert when template rendering throws', function() {
+    $this->plugin->edition = PasswordPolicy::EDITION_ENTERPRISE;
     $this->settings->adminAlertEmail = 'ops@example.test';
     $this->settings->adminAlertEvents = null;
 
@@ -264,4 +329,18 @@ function breakEnterpriseTemplate(string $key): void
 
     $template->body = '{% include "absolutely-nonexistent-template-that-throws" %}';
     $service->saveTemplate($template);
+}
+
+/**
+ * Deletes every template row for a notification key (all sites) so the
+ * dispatch path's `getTemplate()` lookup returns null — exercising the
+ * missing-template branch of `_dispatch()`. `getTemplate()` falls back to
+ * the primary-site row, so a per-site delete alone wouldn't make the
+ * template truly absent; we clear all rows for the key.
+ */
+function deleteNotificationTemplate(string $key): void
+{
+    Craft::$app->getDb()->createCommand()
+        ->delete('{{%passwordpolicy_notification_templates}}', ['notificationKey' => $key])
+        ->execute();
 }

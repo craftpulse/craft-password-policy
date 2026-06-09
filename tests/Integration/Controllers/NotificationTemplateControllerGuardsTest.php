@@ -43,6 +43,12 @@ beforeEach(function() {
     $this->originalUser = Craft::$app->getUser();
     $this->originalResponse = Craft::$app->getResponse();
 
+    // Stash mailer state so test-send tests can restore after setting up
+    // file transport + a valid `from` address for the send path.
+    $mailer = Craft::$app->getMailer();
+    $this->originalMailerFrom = $mailer->from;
+    $this->originalMailerUseFileTransport = $mailer->useFileTransport;
+
     // Pro edition — the controller's beforeAction rejects Lite outright,
     // so every test runs at Pro+ to reach the inner guards.
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
@@ -68,6 +74,11 @@ afterEach(function() {
     Craft::$app->set('request', $this->originalRequest);
     Craft::$app->set('user', $this->originalUser);
     Craft::$app->set('response', $this->originalResponse);
+
+    $mailer = Craft::$app->getMailer();
+    /** @phpstan-ignore-next-line — PHPStan narrows the property type */
+    $mailer->from = $this->originalMailerFrom;
+    $mailer->useFileTransport = $this->originalMailerUseFileTransport;
 });
 
 // =============================================================================
@@ -186,4 +197,87 @@ it('actionTestSend failure path returns a static message, not the exception', fu
         ->and($message)->not->toContain('Mime')
         ->and($message)->not->toContain('From')
         ->and($message)->not->toContain('exception');
+});
+
+// =============================================================================
+// actionTestSend per-key sample vars — devMode strict_variables
+// =============================================================================
+//
+// Craft renders with `strict_variables` ON in devMode (the test config sets
+// devMode = true). Pre-fix, actionTestSend built a fixed context
+// (`user` + `daysUntilExpiry` + `siteName`) for EVERY key, so test-sending
+// breach-detected / new-device-alert / admin-security-alert threw an
+// "undefined variable" error on their key-specific tokens — the test-send
+// always failed in dev. The per-key sample-var map resolves every key's
+// tokens. These tests pin a successful test-send for the keys that carry
+// distinct tokens.
+
+it('test-sends the breach-detected template (detectedAt token) without a strict-variable error', function() {
+    // Capture outgoing mail with file transport so no SMTP infrastructure is
+    // required. Pin a valid `from` address — Symfony Mime requires one when
+    // composing a message; the project config's system email may be unset in
+    // the test DB, which would cause the send to throw before the render.
+    $mailer = Craft::$app->getMailer();
+    $mailer->useFileTransport = true;
+    /** @phpstan-ignore-next-line — PHPStan narrows the property type */
+    $mailer->from = ['tests@craftpulse.test' => 'Password Policy Tests'];
+
+    $this->request->stubBodyParams = [
+        'notificationKey' => 'breach-detected',
+        'siteId' => $this->primarySiteId,
+    ];
+    $this->request->stubAcceptsJson = true;
+
+    /** @var Response $response */
+    $response = runNotificationTemplateAction('test-send');
+    $data = (array)$response->data;
+
+    expect($data['success'] ?? null)->toBeTrue();
+    // The rendered body excerpt actually substituted the per-key token —
+    // it is not the literal `{{ detectedAt ... }}` token text.
+    expect((string)($data['renderedBodyExcerpt'] ?? ''))->not->toContain('{{ detectedAt');
+});
+
+it('test-sends the new-device-alert template (deviceLabel / maskedIp tokens) without a strict-variable error', function() {
+    // Same file-transport + from setup as the breach-detected test.
+    $mailer = Craft::$app->getMailer();
+    $mailer->useFileTransport = true;
+    /** @phpstan-ignore-next-line — PHPStan narrows the property type */
+    $mailer->from = ['tests@craftpulse.test' => 'Password Policy Tests'];
+
+    $this->request->stubBodyParams = [
+        'notificationKey' => 'new-device-alert',
+        'siteId' => $this->primarySiteId,
+    ];
+    $this->request->stubAcceptsJson = true;
+
+    /** @var Response $response */
+    $response = runNotificationTemplateAction('test-send');
+    $data = (array)$response->data;
+
+    expect($data['success'] ?? null)->toBeTrue();
+    // Sample device label resolved into the rendered body.
+    expect((string)($data['renderedBodyExcerpt'] ?? ''))->toContain('Chrome on macOS');
+});
+
+it('test-sends the admin-security-alert template (event / context tokens, no user) without a strict-variable error', function() {
+    // Same file-transport + from setup as the breach-detected test.
+    $mailer = Craft::$app->getMailer();
+    $mailer->useFileTransport = true;
+    /** @phpstan-ignore-next-line — PHPStan narrows the property type */
+    $mailer->from = ['tests@craftpulse.test' => 'Password Policy Tests'];
+
+    $this->request->stubBodyParams = [
+        'notificationKey' => 'admin-security-alert',
+        'siteId' => $this->primarySiteId,
+    ];
+    $this->request->stubAcceptsJson = true;
+
+    /** @var Response $response */
+    $response = runNotificationTemplateAction('test-send');
+    $data = (array)$response->data;
+
+    expect($data['success'] ?? null)->toBeTrue();
+    // The `event` token resolved in the rendered subject.
+    expect((string)($data['renderedSubject'] ?? ''))->toContain('breach_detected');
 });
