@@ -48,11 +48,15 @@ class AuditChainRotatedEvent extends Event
     public int $endId;
 
     /**
-     * @var string the `rowHash` of the LAST surviving row at prune
-     *     time — the chain head that the new first row's
-     *     `previousHash` will reference if both still exist (i.e. the
-     *     prune left at least two rows). When the prune left exactly
-     *     one row, `endRowHash === startRowHash`.
+     * @var string the `previousHash` of the new first surviving row —
+     *     equivalently, the `rowHash` of the highest deleted row
+     *     (`endId`). This IS the rotation boundary: an off-site verifier
+     *     that archived the pruned rows confirms continuity by checking
+     *     that the surviving head's `previousHash` equals this value.
+     *     Pair with `endId` to anchor the last row that left the
+     *     database. (Note: this is NOT the surviving head's own
+     *     `rowHash` — that is `startRowHash` — and the two are never
+     *     equal under the id-boundary prune.)
      */
     public string $endRowHash;
 

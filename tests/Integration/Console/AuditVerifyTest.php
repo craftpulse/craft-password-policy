@@ -283,6 +283,88 @@ it('accepts non-genesis previousHash on a row older than retention + 24h', funct
 });
 
 // =============================================================================
+// Retention boundary widening: head sitting just past the threshold but
+// INSIDE the safety margin → exit 0 (regression guard for the flipped
+// `subSeconds` → `addSeconds` boundary fix)
+// =============================================================================
+
+it('accepts a pruned head whose dateCreated is within the retention safety margin', function() {
+    // Tighten retention so the margin is exercised against a controllable
+    // back-date. The head we keep sits a few hours OLDER than the
+    // retention threshold (so it legitimately survived a prune that
+    // dropped its anchor) but NEWER than `threshold - 24h`. The buggy
+    // boundary (`now - retentionDays - margin`) demanded the head be
+    // older than that and rejected it → exit 1. The fixed boundary
+    // (`now - retentionDays + margin`) widens the window forward and
+    // accepts it → exit 0.
+    $this->plugin->getSettings()->auditLogRetentionDays = 30;
+
+    $service = $this->plugin->getAuditLog();
+    $service->logEvent(userId: null, event: 'password_changed');
+    $service->logEvent(userId: null, event: 'account_locked');
+
+    $rows = fetchAllRows();
+    expect($rows)->toHaveCount(2);
+
+    // Delete the genesis row — row 2's previousHash now references a
+    // legitimately-pruned row.
+    Craft::$app->getDb()->createCommand()
+        ->delete('{{%passwordpolicy_audit_log}}', ['id' => $rows[0]['id']])
+        ->execute();
+
+    // Back-date row 2 to 30 days + 2 hours ago: past the retention
+    // threshold (so it's a real boundary) but well inside the 24h
+    // safety margin.
+    $boundaryDate = (new \DateTime('-30 days -2 hours', new \DateTimeZone('UTC')))
+        ->format('Y-m-d H:i:s');
+    Craft::$app->getDb()->createCommand()
+        ->update(
+            '{{%passwordpolicy_audit_log}}',
+            ['dateCreated' => $boundaryDate],
+            ['id' => $rows[1]['id']],
+        )
+        ->execute();
+
+    // Re-stamp the surviving row's rowHash against its new dateCreated
+    // so only the boundary tolerance — not a rowHash drift — is under
+    // test.
+    $row = (new Query())
+        ->from('{{%passwordpolicy_audit_log}}')
+        ->where(['id' => $rows[1]['id']])
+        ->one();
+
+    $payload = \craftpulse\passwordpolicy\services\AuditLogService::canonicalize([
+        'changedByUserId' => $row['changedByUserId'] !== null
+            ? (int)$row['changedByUserId']
+            : null,
+        'dateCreated' => (new \DateTime($row['dateCreated'], new \DateTimeZone('UTC')))
+            ->format('Y-m-d\TH:i:s\Z'),
+        'details' => null,
+        'event' => $row['event'],
+        'ipHash' => $row['ipHash'],
+        'outcome' => $row['outcome'],
+        'source' => $row['source'],
+        'uid' => $row['uid'],
+        'userId' => $row['userId'] !== null ? (int)$row['userId'] : null,
+        'userIdentifier' => $row['userIdentifier'],
+    ]);
+    $newRowHash = hash('sha256', $payload . $row['previousHash']);
+
+    Craft::$app->getDb()->createCommand()
+        ->update(
+            '{{%passwordpolicy_audit_log}}',
+            ['rowHash' => $newRowHash],
+            ['id' => $rows[1]['id']],
+        )
+        ->execute();
+
+    $verifier = newVerifier();
+    $exitCode = $verifier->runAction('verify');
+
+    expect($exitCode)->toBe(0);
+});
+
+// =============================================================================
 // Retention boundary failure: recent first row with non-genesis previousHash → exit 1
 // =============================================================================
 
