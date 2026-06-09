@@ -26,6 +26,7 @@ use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\records\UserStateRecord;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
+use craftpulse\passwordpolicy\tests\Support\UserStub;
 
 // =============================================================================
 // Setup
@@ -34,6 +35,23 @@ use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 beforeEach(function() {
     $this->plugin = PasswordPolicy::$plugin;
     $this->action = new ForcePasswordReset();
+
+    $this->originalUser = Craft::$app->getUser();
+    $this->originalAllowAdminChanges = Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
+    Craft::$app->getConfig()->getGeneral()->allowAdminChanges = true;
+
+    // `performAction()` gates on a logged-in user with the
+    // `pp:force-reset-passwords` permission. An admin identity passes the
+    // `can()` check, so the happy-path tests reach the action body.
+    $this->userStub = new UserStub();
+    Craft::$app->set('user', $this->userStub);
+    $this->actingAdmin = UserFactory::admin();
+    $this->userStub->setIdentity($this->actingAdmin);
+});
+
+afterEach(function() {
+    Craft::$app->set('user', $this->originalUser);
+    Craft::$app->getConfig()->getGeneral()->allowAdminChanges = $this->originalAllowAdminChanges;
 });
 
 // =============================================================================
@@ -93,6 +111,48 @@ it('skips users already flagged passwordResetRequired without writing state', fu
         // intentionally avoids re-stamping a state row that may already
         // be tracking a different reason (e.g. ExpiryForced from cron).
         ->and(UserStateRecord::findOne(['userId' => $user->id]))->toBeNull();
+});
+
+// =============================================================================
+// Permission + admin-changes gate — defense-in-depth in performAction
+// =============================================================================
+
+it('refuses to force-reset when the acting user lacks the permission', function() {
+    // A non-admin identity does NOT auto-pass `can()`. Without the
+    // `pp:force-reset-passwords` permission the action must reject before
+    // touching any user.
+    $nonAdmin = UserFactory::nonAdmin();
+    $this->userStub->setIdentity($nonAdmin);
+
+    $target = UserFactory::admin();
+    $query = User::find()->id($target->id);
+
+    expect($this->action->performAction($query))->toBeFalse();
+
+    // No column flip, no pending reason — the gate fired first.
+    $flag = (new Query())
+        ->select(['passwordResetRequired'])
+        ->from(Table::USERS)
+        ->where(['id' => $target->id])
+        ->scalar();
+    expect((bool)$flag)->toBeFalse()
+        ->and(UserStateRecord::findOne(['userId' => $target->id]))->toBeNull();
+});
+
+it('refuses to force-reset when admin changes are disabled', function() {
+    Craft::$app->getConfig()->getGeneral()->allowAdminChanges = false;
+
+    $target = UserFactory::admin();
+    $query = User::find()->id($target->id);
+
+    expect($this->action->performAction($query))->toBeFalse();
+
+    $flag = (new Query())
+        ->select(['passwordResetRequired'])
+        ->from(Table::USERS)
+        ->where(['id' => $target->id])
+        ->scalar();
+    expect((bool)$flag)->toBeFalse();
 });
 
 // =============================================================================

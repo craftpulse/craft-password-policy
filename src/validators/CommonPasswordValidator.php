@@ -67,12 +67,22 @@ class CommonPasswordValidator extends Validator
      * @author CraftPulse
      * @since 5.2.0
      */
-    public function validateValue($value): ?array
+    public function validateValue(#[\SensitiveParameter] $value): ?array
     {
         $word = strtolower(trim($value));
         $blocklist = $this->_getScopedBlocklist();
 
         if (!isset($blocklist[$word])) {
+            return null;
+        }
+
+        // The custom blocklist editor is a Pro feature. Common-password
+        // enforcement stays universal across editions, but a `custom`
+        // match must not fire on a sub-Pro install — a Lite install that
+        // still holds custom rows (e.g. seeded under Pro, then downgraded)
+        // would otherwise enforce a Pro-only blocklist it can no longer
+        // edit. Common matches always enforce regardless of edition.
+        if ($blocklist[$word] === 'custom' && !PasswordPolicy::$plugin->getIsPro()) {
             return null;
         }
 

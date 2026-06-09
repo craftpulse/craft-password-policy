@@ -35,10 +35,17 @@ use craftpulse\passwordpolicy\validators\CommonPasswordValidator;
 // =============================================================================
 
 beforeEach(function() {
+    // Custom-word enforcement is Pro-gated inside `validateValue()`; the
+    // per-policy filter contract pinned here is itself a Pro+/Enterprise
+    // surface, so run at Pro so the custom rows actually match.
+    $this->originalEdition = PasswordPolicy::$plugin->edition;
+    PasswordPolicy::$plugin->edition = PasswordPolicy::EDITION_PRO;
+
     PasswordPolicy::$plugin->getBlocklist()->clearCache();
 });
 
 afterEach(function() {
+    PasswordPolicy::$plugin->edition = $this->originalEdition;
     PasswordPolicy::$plugin->getBlocklist()->clearCache();
 });
 

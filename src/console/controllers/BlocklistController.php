@@ -89,6 +89,15 @@ class BlocklistController extends Controller
      */
     public function actionImport(): int
     {
+        // The custom blocklist editor is a Pro feature. The console surface
+        // can't tolerate exception-driven control flow, so it gates with a
+        // graceful stderr + non-zero exit rather than letting the throw in
+        // `BlocklistService::addCustomWord()` surface mid-import.
+        if (!PasswordPolicy::$plugin->getIsPro()) {
+            $this->stderr("Error: Custom blocklist import requires the Pro edition.\n");
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
         if ($this->file === null) {
             $this->stderr("Error: --file option is required.\n");
             return ExitCode::USAGE;
