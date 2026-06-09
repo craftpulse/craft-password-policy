@@ -101,8 +101,11 @@ class NotificationService extends Component
             return;
         }
 
-        // Check dedup — only send once per expiry window. Filters on
-        // status='sent' so failed-then-retried doesn't suppress.
+        // Check dedup — only one attempt per expiry window. The cooldown
+        // is recorded on the dispatch ATTEMPT (via
+        // `AlertCooldownService::shouldFire()`), so a failed-then-retried
+        // call inside the window IS suppressed — operators get one attempt
+        // per window, full stop, and re-fire via the Resend action.
         if ($this->_hasRecentNotification($user->id, 'expiry_reminder')) {
             return;
         }
@@ -234,15 +237,28 @@ class NotificationService extends Component
      * one alert per (event, cooldownKey) per window, recorded on the
      * dispatch attempt regardless of outcome.
      *
+     * Enterprise-only — admin security alerts are an Enterprise surface
+     * (the only edition that exposes `adminAlertEmail` / `adminAlertEvents`
+     * config). The driving callers register on Enterprise only, but the
+     * guard duplicates here as defense-in-depth so a config override or a
+     * direct caller can't bypass the edition gate — matches the
+     * `sendBreachDetected()` / `sendNewDeviceAlert()` shape.
+     *
      * @param string $event
      * @param array<string, mixed> $context
      * @return void
+     *
+     * @throws EditionRequiredException when the plugin is not running the Enterprise edition
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function sendAdminSecurityAlert(string $event, array $context = []): void
     {
+        if (!PasswordPolicy::$plugin->getIsEnterprise()) {
+            throw new EditionRequiredException('Admin security alerts require the Enterprise edition.');
+        }
+
         $settings = PasswordPolicy::$plugin->getSettings();
         $email = Craft::parseEnv($settings->adminAlertEmail);
 
@@ -343,7 +359,12 @@ class NotificationService extends Component
                 'daysUntilExpiry' => $this->_estimateDaysUntilExpiry($user),
             ],
             'breach_detected' => [
-                'detectedAt' => new DateTime('now'),
+                // `detectedAt` is a historical fact — the breach was
+                // detected when the original alert fired, not now. Reuse
+                // the original row's `sentAt` so the re-rendered email
+                // reflects the real detection time; fall back to now only
+                // when the snapshot is missing.
+                'detectedAt' => $original->sentAt ?? new DateTime('now'),
             ],
             default => [],
         };
@@ -496,10 +517,13 @@ class NotificationService extends Component
      *    render context omits `{{ user }}` and `userId` writes as null
      *    on the log row. Used by `admin_alert_*`.
      *
-     * Missing template is a config error — log a warning and return
-     * without writing a log row. Send/render failures DO write a
-     * `status = failed` row so operators see the failure on the
-     * activity index.
+     * Missing template is a config error — log a warning AND write a
+     * `status = failed` log row, then return. The row matters because
+     * `shouldFire()` has already recorded the cooldown by the time we
+     * get here, so a silent return would suppress retries for the whole
+     * window with nothing on the activity index to explain it. Send and
+     * render failures likewise write a `status = failed` row so
+     * operators see every failure on the activity index.
      *
      * @param User|null $user the recipient user, or null for admin-scoped sends
      * @param string $type machine-key matching `notification_log.notificationType`
@@ -542,15 +566,31 @@ class NotificationService extends Component
             ->getTemplate($templateKey, $siteId);
 
         if ($template === null) {
-            // Missing-template is a config error, not a send failure —
-            // log and return without writing a notification_log row.
-            // Operator should fix the template before any further
-            // sends fire.
+            // Missing-template is a config error, but the dedup gate
+            // (`shouldFire()`) has already recorded the fire on this
+            // attempt — so a silent return here would suppress every
+            // retry for the cooldown window WITHOUT leaving an
+            // operator-visible trail. Write a `status = failed` row so
+            // the activity index shows the missing-template failure,
+            // honouring the capture invariant (every dispatch attempt
+            // writes a row). Operator should re-seed the template before
+            // the cooldown clears.
             $userContext = $userId !== null ? "user {$userId}" : "admin-scoped";
-            Craft::warning(
-                "No {$templateKey} template found for {$userContext} (siteId {$siteId})",
-                'password-policy',
+            $errorMessage = "No {$templateKey} template found for {$userContext} (siteId {$siteId})";
+            Craft::warning($errorMessage, 'password-policy');
+
+            $this->_logNotification(
+                userId: $userId,
+                type: $type,
+                status: NotificationStatus::Failed,
+                recipient: $recipient,
+                siteId: $siteId,
+                subject: null,
+                body: null,
+                errorMessage: $errorMessage,
+                resentFromId: $resentFromId,
             );
+
             return;
         }
 

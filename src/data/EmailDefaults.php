@@ -158,7 +158,7 @@ class EmailDefaults
                 . "{% if context|length %}"
                 . "Context:\n"
                 . "{% for key, value in context %}"
-                . "  - {{ key }}: {{ value }}\n"
+                . "  - {{ key }}: {{ value is iterable ? value|join(', ') : value }}\n"
                 . "{% endfor %}"
                 . "{% endif %}\n"
                 . "Review the password-policy audit log or notifications activity surface "

@@ -145,6 +145,55 @@ it('re-renders the template fresh and reflects post-edit changes', function() {
 });
 
 // =============================================================================
+// Resend of breach_detected reuses the original detection time
+// =============================================================================
+//
+// `detectedAt` is a historical fact — the breach was detected when the
+// original alert fired, not at resend time. resend() reuses the original
+// row's `sentAt` for the `detectedAt` token rather than stamping
+// `new DateTime('now')`, so the re-rendered email reflects the real
+// detection time.
+
+it('reuses the original sentAt as detectedAt when resending a breach alert', function() {
+    $user = UserFactory::admin();
+    $user->email = 'recipient@example.test';
+
+    // Seed a breach_detected row with a fixed, clearly-historical sentAt.
+    $originalSentAt = DateTimeHelper::toDateTime('2020-01-15 09:30:00');
+
+    $seed = new NotificationLogElement();
+    $seed->userId = $user->id;
+    $seed->notificationType = 'breach_detected';
+    $seed->status = NotificationStatus::Sent->value;
+    $seed->recipientEmail = 'recipient@example.test';
+    $seed->subject = 'Breach detected';
+    $seed->body = 'Body';
+    $seed->sentAt = $originalSentAt;
+    Craft::$app->getElements()->saveElement($seed, false);
+
+    // Make the rendered body echo the detectedAt token unambiguously so we
+    // can assert on the historical date rather than "now".
+    overwriteNotificationTemplateSubject('breach-detected', 'Breach at {{ detectedAt|date("Y-m-d") }}');
+
+    $dispatched = $this->plugin->getNotification()->resend($seed);
+
+    expect($dispatched)->toBeTrue();
+
+    /** @var NotificationLogElement $resent */
+    $resent = NotificationLogElement::find()
+        ->userId($user->id)
+        ->notificationType('breach_detected')
+        ->status(null)
+        ->orderBy(['elements.id' => SORT_DESC])
+        ->one();
+
+    // The re-rendered subject reflects the original detection date, NOT
+    // the resend timestamp (which would be the current year).
+    expect($resent->subject)->toContain('2020-01-15');
+    expect($resent->subject)->not->toContain(date('Y'));
+});
+
+// =============================================================================
 // Resend rejects mailer-key types (new_device, admin_alert_*)
 // =============================================================================
 

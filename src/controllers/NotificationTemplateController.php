@@ -11,6 +11,7 @@
 namespace craftpulse\passwordpolicy\controllers;
 
 use Craft;
+use craft\elements\User;
 use craft\helpers\Json;
 use craft\helpers\StringHelper;
 use craft\helpers\UrlHelper;
@@ -19,6 +20,7 @@ use craft\web\Controller;
 use craftpulse\passwordpolicy\data\EmailDefaults;
 use craftpulse\passwordpolicy\models\NotificationTemplateModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
+use DateTime;
 use Throwable;
 use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
@@ -325,8 +327,16 @@ class NotificationTemplateController extends Controller
     }
 
     /**
-     * Renders the template against the current admin user (with sample
-     * `daysUntilExpiry: 7`) and sends through the real mailer pipeline.
+     * Renders the template against a per-key sample render context (see
+     * `_sampleVarsForKey()`) and sends through the real mailer pipeline.
+     *
+     * The sample context is switched on the notification key so each
+     * template's tokens resolve — `strict_variables` is ON in devMode, so
+     * a fixed context that omitted a key's tokens (e.g. `detectedAt`,
+     * `deviceLabel`, `event`) would throw "Variable does not exist" and the
+     * test-send would always fail in dev. Rendering runs once via
+     * `composeFromTemplate()`'s out-param, inside the try/catch, so a broken
+     * admin-edited template returns friendly JSON instead of a 500.
      *
      * Returns JSON for the inline test-send panel: success or failure
      * with the rendered subject + a body excerpt for visual confirmation.
@@ -375,14 +385,8 @@ class NotificationTemplateController extends Controller
         }
 
         $service = PasswordPolicy::$plugin->getNotificationTemplates();
-        $template = $service->getTemplate($key, $siteId);
-
-        if ($template === null) {
-            return $this->asJson([
-                'success' => false,
-                'message' => Craft::t('password-policy', 'No template found for this site.'),
-            ]);
-        }
+        $template = $service->getTemplate($key, $siteId)
+            ?? $this->_seedDefaultsModel($key, $siteId);
 
         // Use posted subject/body so the admin can test edits *before* saving.
         $previewSubject = (string)$request->getBodyParam('subject', $template->subject);
@@ -409,15 +413,34 @@ class NotificationTemplateController extends Controller
         }
 
         $site = Craft::$app->getSites()->getSiteById($siteId);
-        $vars = [
-            'user' => $admin,
-            'daysUntilExpiry' => 7,
-            'siteName' => $site?->getName() ?? Craft::$app->getSystemName(),
-        ];
+        $siteName = $site?->getName() ?? Craft::$app->getSystemName();
+
+        // Build a per-key sample-var context. Every notification key
+        // references a different set of Twig tokens (breach-detected →
+        // `detectedAt`; new-device-alert → `deviceLabel` / `maskedIp`;
+        // admin-security-alert → `event` / `context` and NO `user`). Craft
+        // renders templates with `strict_variables` ON in devMode, so a
+        // fixed context that omits a key's tokens throws an "undefined
+        // variable" error — the test-send would always fail in dev. The
+        // sample map mirrors the real `_dispatch()` render context per key.
+        $vars = $this->_sampleVarsForKey($key, $admin, $siteName);
+
+        // Admin-recipient templates (admin-security-alert) omit the `user`
+        // var — the recipient is the operator, not an end-user. Pass the
+        // sample user through only when the per-key context includes it.
+        $renderUser = ($vars['user'] ?? null) instanceof User ? $vars['user'] : null;
+
+        // Capture the rendered subject + body via `composeFromTemplate()`'s
+        // out-param so we render Twig exactly once and reuse the strings for
+        // the JSON response. Rendering happens inside the try/catch — a
+        // broken admin-edited template throws here, and previously the
+        // separate post-send `renderString()` calls (outside the catch)
+        // would 500 the request instead of returning the friendly JSON.
+        $rendered = [];
 
         try {
             $message = PasswordPolicy::$plugin->getNotification()
-                ->composeFromTemplate($template, $admin, $vars);
+                ->composeFromTemplate($template, $renderUser, $vars, $rendered);
             $message->setTo($admin->email)->send();
         } catch (Throwable $e) {
             // Don't leak the underlying exception message to the client
@@ -439,8 +462,8 @@ class NotificationTemplateController extends Controller
             ]);
         }
 
-        $renderedSubject = Craft::$app->getView()->renderString($previewSubject, $vars);
-        $renderedBody = Craft::$app->getView()->renderString($previewBody, $vars);
+        $renderedSubject = $rendered['subject'] ?? $previewSubject;
+        $renderedBody = $rendered['body'] ?? $previewBody;
 
         return $this->asJson([
             'success' => true,
@@ -469,6 +492,55 @@ class NotificationTemplateController extends Controller
         return match ($key) {
             'expiry-reminder' => Craft::t('password-policy', 'Password expiry reminder'),
             default => StringHelper::titleize(str_replace('-', ' ', $key)),
+        };
+    }
+
+    /**
+     * Builds the sample Twig render context for a test-send of the given
+     * notification key.
+     *
+     * Each key references a distinct set of tokens, and Craft renders with
+     * `strict_variables` ON in devMode — a context that omits a referenced
+     * token throws "Variable does not exist". The map mirrors the real
+     * `NotificationService::_dispatch()` context per key: user-scoped keys
+     * include `{{ user }}`; the admin-security-alert key omits `{{ user }}`
+     * (the recipient is the operator, not an end-user) and instead provides
+     * `event` + an iterable `context`.
+     *
+     * @param string $key the notification key
+     * @param User $admin the current admin user (used as the sample recipient)
+     * @param string $siteName resolved site name for the `{{ siteName }}` token
+     * @return array<string, mixed>
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _sampleVarsForKey(string $key, User $admin, string $siteName): array
+    {
+        $base = ['siteName' => $siteName];
+
+        return match ($key) {
+            'breach-detected' => $base + [
+                'user' => $admin,
+                'detectedAt' => new DateTime('now'),
+            ],
+            'new-device-alert' => $base + [
+                'user' => $admin,
+                'deviceLabel' => 'Chrome on macOS',
+                'maskedIp' => '192.168.x.x',
+            ],
+            'admin-security-alert' => $base + [
+                // Admin-recipient template — no `{{ user }}` token. Provide
+                // a sample event + iterable context matching the default body.
+                'event' => 'breach_detected',
+                'context' => ['userId' => 7, 'email' => 'compromised@example.test'],
+            ],
+            // expiry-reminder (and any future user-scoped key) — `user` +
+            // `daysUntilExpiry` matching the seeded default template.
+            default => $base + [
+                'user' => $admin,
+                'daysUntilExpiry' => 7,
+            ],
         };
     }
 
