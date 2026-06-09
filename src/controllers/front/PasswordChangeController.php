@@ -15,6 +15,7 @@ use craft\elements\User;
 use craft\web\Controller;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use Throwable;
+use yii\base\InvalidArgumentException;
 use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
 use yii\web\Response;
@@ -54,8 +55,9 @@ class PasswordChangeController extends Controller
      * Saves a new password for the current logged-in user.
      *
      * Behavior:
-     *  - 401 if no user logged in.
-     *  - 400 if `currentPassword` doesn't match.
+     *  - 403 if no user logged in.
+     *  - Re-renders the form with a `currentPassword` error when the
+     *    submitted current password doesn't match the stored hash.
      *  - Re-renders form with errors when new password fails policy validation.
      *  - Redirects on success.
      *
@@ -86,15 +88,35 @@ class PasswordChangeController extends Controller
         // Confirm match — let the controller short-circuit before any
         // expensive validation runs.
         if ($new !== $confirm) {
-            return $this->_failure($user, ['newPasswordConfirm' => Craft::t('app', 'Passwords don’t match.')]);
+            $user->addError('newPasswordConfirm', Craft::t('app', 'Passwords don’t match.'));
+
+            return $this->_failure($user);
         }
 
-        // Validate the current password — we let User::authenticate() do
-        // the work because it already understands suspended/locked/etc.
-        // states and never leaks timing info between right-but-locked and
-        // wrong-password.
-        if (!$user->authenticate($current)) {
-            return $this->_failure($user, ['currentPassword' => Craft::t('app', 'Current password is incorrect.')]);
+        // Validate the current password with a side-effect-free hash
+        // compare instead of `User::authenticate()`. `authenticate()` would:
+        //  - return FALSE for a CORRECT password when `passwordResetRequired`
+        //    is set, locking out the very expired/reset-required users this
+        //    flow is meant to serve;
+        //  - fire `EVENT_BEFORE_AUTHENTICATE` (HIBP-on-login + breach
+        //    notification / audit against the discarded OLD password) and
+        //    `handleInvalidLogin()` (lockout penalties) as side effects of a
+        //    password CHANGE, which is the wrong surface for those hooks.
+        // `validatePassword()` throws `InvalidArgumentException` when the
+        // stored hash is null/blank — treat that as a failed check.
+        try {
+            $currentMatches = Craft::$app->getSecurity()->validatePassword(
+                $current,
+                (string)$user->password,
+            );
+        } catch (InvalidArgumentException) {
+            $currentMatches = false;
+        }
+
+        if (!$currentMatches) {
+            $user->addError('currentPassword', Craft::t('app', 'Current password is incorrect.'));
+
+            return $this->_failure($user);
         }
 
         // Set the new password — UserRules::defineRules() (registered via
@@ -103,7 +125,8 @@ class PasswordChangeController extends Controller
         $user->newPassword = $new;
 
         if (!Craft::$app->getElements()->saveElement($user)) {
-            return $this->_failure($user, $user->getErrors());
+            // `saveElement()` populated `$user->getErrors()` already.
+            return $this->_failure($user);
         }
 
         // Invalidate every other active session for this user. Craft's own
@@ -113,9 +136,17 @@ class PasswordChangeController extends Controller
         // session token is preserved — the user stays signed in here.
         PasswordPolicy::$plugin->getPasswords()->destroyOtherSessions($user);
 
-        Craft::$app->getSession()->setNotice(
-            Craft::t('password-policy', 'Your password has been updated.'),
-        );
+        $message = Craft::t('password-policy', 'Your password has been updated.');
+
+        // JSON callers get the message in the response body; only full-page
+        // submits need the session flash (and the session is the wrong place
+        // to write for an AJAX request — matches `asSuccess()`'s own JSON
+        // short-circuit and the sibling CP controller's `_success()`).
+        if ($this->request->getAcceptsJson()) {
+            return $this->asSuccess($message);
+        }
+
+        Craft::$app->getSession()->setNotice($message);
 
         return $this->redirectToPostedUrl($user);
     }
@@ -124,25 +155,38 @@ class PasswordChangeController extends Controller
     // =========================================================================
 
     /**
-     * Re-renders the form with errors and a session error flash. Lets the
-     * consumer template inspect `getFlash('error')` and the user's
-     * `getErrors()` map to render per-field error UI.
+     * Re-renders the form with errors. The per-field error map lives on a
+     * single channel — `$user->getErrors()` — surfaced two ways:
      *
-     * @param User $user the user being updated
-     * @param array<string, mixed> $errors the per-field error map
+     *  - For AJAX / JSON submits, `asModelFailure()` serializes the user
+     *    model (errors included) into the response body.
+     *  - For full-page submits, the errors are flashed under `pp:errors`
+     *    so the redirected form render (and `PasswordChangeFormTag`'s
+     *    error region) can read them off the session on the next request.
+     *
+     * Standardizing on `$user->getErrors()` avoids the prior split where a
+     * controller-built `$errors` array and `saveElement()`'s own error map
+     * disagreed depending on the failure branch.
+     *
+     * @param User $user the user being updated; errors already populated via
+     *     `addError()` or `saveElement()`
      * @return Response|null
      *
      * @author CraftPulse
      * @since 5.2.0
      */
-    private function _failure(User $user, array $errors): ?Response
+    private function _failure(User $user): ?Response
     {
-        Craft::$app->getSession()->setError(
-            Craft::t('password-policy', 'Couldn’t update password.'),
-        );
-
-        // Flash the per-field errors so the consumer template can render them.
-        Craft::$app->getSession()->setFlash('errors', $errors);
+        // For full-page (non-AJAX) submits, flash the per-field error map so
+        // the redirected form render — and `PasswordChangeFormTag`'s
+        // `role="alert"` error region — can read it off the session on the
+        // next request. For JSON submits the errors ride in the response body
+        // (`asModelFailure()` serializes `$user->getErrors()`), so the flash
+        // would be dead weight; gating here also keeps the surface session-free
+        // for AJAX callers, matching `asFailure()`'s own JSON short-circuit.
+        if (!$this->request->getAcceptsJson()) {
+            Craft::$app->getSession()->setFlash('pp:errors', $user->getErrors());
+        }
 
         return $this->asModelFailure(
             $user,
