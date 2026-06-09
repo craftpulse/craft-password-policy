@@ -1,7 +1,9 @@
 // Type declaration for window.passwordpolicy
 declare global {
     interface Window {
-        passwordpolicy: {
+        // Optional: the flag now ships via a <meta> tag (CSP-safe); the
+        // global is only a legacy fallback and may be absent.
+        passwordpolicy?: {
             showStrengthIndicator: boolean;
         };
         Craft?: {
@@ -134,6 +136,34 @@ function renderBar(label: string | null, fill: number, barId: string): string {
 }
 
 /**
+ * Updates an EXISTING progressbar node in place — fill classes, the live
+ * `aria-valuenow`, and `aria-valuetext` — rather than tearing it down and
+ * re-inserting fresh markup on every keystroke.
+ *
+ * Re-creating the node breaks screen-reader value-change announcements: SR
+ * software tracks the live region by node identity, so a removed+re-inserted
+ * progressbar reads as a brand-new element each time instead of a value
+ * update, and `aria-valuetext` never announces as a change. Mutating the
+ * same node preserves that contract.
+ */
+function updateBar(node: HTMLElement, label: string | null, fill: number): void {
+    const activeClass = label !== null ? (labelColor[label] ?? defaultBarClass) : defaultBarClass;
+
+    const spans = node.querySelectorAll<HTMLSpanElement>(':scope > span');
+    spans.forEach((span, index) => {
+        const isActive = fill > 0 && index < fill;
+        span.className = isActive ? activeClass : defaultBarClass;
+    });
+
+    node.setAttribute('aria-valuenow', String(fill));
+    if (label !== null) {
+        node.setAttribute('aria-valuetext', label);
+    } else {
+        node.removeAttribute('aria-valuetext');
+    }
+}
+
+/**
  * Returns the wrapper element we should attach the bar after — the input's
  * closest `.field` ancestor (Craft's standard `forms.passwordField` markup).
  * Falls back to the immediate parent if no ancestor matches.
@@ -145,8 +175,12 @@ function attachAnchor(input: HTMLInputElement): HTMLElement {
 /**
  * POSTs the password to the validate endpoint. Failure is silent — `cb`
  * is only called on a successful 2xx with parseable JSON.
+ *
+ * `token` is echoed back to the callback so the caller can drop a stale
+ * response: a slow earlier request must not clobber the bar state painted
+ * by a newer one (request sequencing).
  */
-function postValidate(password: string, cb: (response: ValidateResponse) => void): void {
+function postValidate(password: string, token: number, cb: (response: ValidateResponse, token: number) => void): void {
     const formData = new FormData();
     formData.append('password', password);
 
@@ -174,7 +208,7 @@ function postValidate(password: string, cb: (response: ValidateResponse) => void
 
         try {
             const json = JSON.parse(xhr.responseText) as ValidateResponse;
-            cb(json);
+            cb(json, token);
         } catch {
             // Bad JSON — silent failure, keep last bar state.
         }
@@ -224,10 +258,14 @@ function bindIndicator(input: HTMLInputElement): void {
     counter += 1;
     const barId = `${BAR_ID_PREFIX}${counter}`;
 
-    // Initial empty bar
+    // Initial empty bar — the ONLY insert. Every subsequent update mutates
+    // this node in place (see updateBar) so SR value announcements survive.
     anchor.insertAdjacentHTML('afterend', renderBar(null, 0, barId));
 
     let timer: number | null = null;
+    // Monotonic request token — the callback drops responses that a newer
+    // keystroke has already superseded.
+    let requestToken = 0;
 
     input.addEventListener('input', function() {
         if (timer !== null) {
@@ -238,25 +276,32 @@ function bindIndicator(input: HTMLInputElement): void {
             const password = input.value;
             const existing = document.getElementById(barId);
 
-            // Empty input — clear the bar.
+            // Empty input — reset the bar to its neutral state in place.
             if (password.length === 0) {
+                requestToken += 1;
                 if (existing) {
-                    existing.remove();
+                    updateBar(existing, null, 0);
                 }
-                anchor.insertAdjacentHTML('afterend', renderBar(null, 0, barId));
                 return;
             }
 
-            postValidate(password, (response) => {
+            requestToken += 1;
+            const thisToken = requestToken;
+
+            postValidate(password, thisToken, (response, token) => {
+                // Stale response — a newer request superseded this one.
+                if (token !== requestToken) {
+                    return;
+                }
+
                 const strength = response.strength ?? {};
                 const fill = fillCount(strength);
                 const label = strength.label ?? null;
 
                 const current = document.getElementById(barId);
                 if (current) {
-                    current.remove();
+                    updateBar(current, label, fill);
                 }
-                anchor.insertAdjacentHTML('afterend', renderBar(label, fill, barId));
             });
         }, DEBOUNCE_MS);
     });
@@ -324,8 +369,26 @@ function startObserver(): void {
 // Boot
 // =========================================================================
 
+/**
+ * Reads the `showStrengthIndicator` flag.
+ *
+ * Primary source is the `<meta name="pp-show-strength-indicator">` tag
+ * emitted by `PasswordPolicyAsset` — a meta tag carries the flag without an
+ * inline <script>, so it survives a strict-nonce CSP that would otherwise
+ * block a bare bootstrap. Falls back to `window.passwordpolicy` for any
+ * legacy consumer that still sets the global directly.
+ */
+function shouldShow(): boolean {
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="pp-show-strength-indicator"]');
+    if (meta) {
+        return meta.content === '1';
+    }
+
+    return Boolean(window.passwordpolicy?.showStrengthIndicator);
+}
+
 function init(): void {
-    if (!window.passwordpolicy?.showStrengthIndicator) {
+    if (!shouldShow()) {
         return;
     }
 
