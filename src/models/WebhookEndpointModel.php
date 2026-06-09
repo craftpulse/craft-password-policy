@@ -349,14 +349,21 @@ class WebhookEndpointModel extends Model
             // accept literal env-var references too (e.g.
             // `$PP_WEBHOOK_URL`) — those start with `$` and skip URL
             // validation; resolution happens at dispatch time.
+            //
+            // `validSchemes => ['https']` rejects an explicit `http://`
+            // URL outright — a webhook carries an HMAC-signed payload and
+            // must not traverse plaintext. The dispatch path re-checks the
+            // resolved scheme for the env-var escape hatch (a `$VAR` that
+            // resolves to `http://…` would skip this rule).
             [
                 ['url'],
                 UrlValidator::class,
                 'defaultScheme' => 'https',
+                'validSchemes' => ['https'],
                 'when' => fn(WebhookEndpointModel $model): bool => !str_starts_with($model->url, '$'),
                 'message' => Craft::t(
                     'password-policy',
-                    'The webhook URL must be a valid http(s) URL or an env-var reference (e.g. $PP_WEBHOOK_URL).',
+                    'The webhook URL must be a valid https:// URL or an env-var reference (e.g. $PP_WEBHOOK_URL).',
                 ),
             ],
             [['name'], 'string', 'max' => 255],

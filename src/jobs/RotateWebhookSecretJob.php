@@ -172,8 +172,12 @@ class RotateWebhookSecretJob extends BaseJob
         $graceHours = PasswordPolicy::$plugin->getSettings()->webhookSecretGracePeriodHours;
         $graceSeconds = max(1, $graceHours) * 3600;
 
+        // `secretRotatedAt` is stored as a naive UTC datetime string. Parse
+        // it AS UTC — without the explicit tz, Carbon::parse() interprets
+        // the naive string in the app/site timezone, skewing the elapsed
+        // calculation by the UTC offset and mis-timing the grace window.
         $elapsed = Carbon::now('UTC')->getTimestamp()
-            - Carbon::parse($rotatedAt)->getTimestamp();
+            - Carbon::parse($rotatedAt, 'UTC')->getTimestamp();
 
         return $elapsed >= $graceSeconds;
     }
