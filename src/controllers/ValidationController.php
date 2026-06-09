@@ -32,6 +32,19 @@ use yii\web\Response;
  */
 class ValidationController extends Controller
 {
+    // Constants
+    // =========================================================================
+
+    /**
+     * Hard cap on the plaintext length this endpoint will analyse. zxcvbn-php
+     * and the SHA-1 prefix hash both run over the full string; an anonymous
+     * caller could otherwise POST a multi-megabyte `password` and burn CPU.
+     * 4096 is far beyond any legitimate password yet bounds the work.
+     *
+     * @since 5.2.0
+     */
+    private const MAX_PASSWORD_LENGTH = 4096;
+
     // Public Properties
     // =========================================================================
 
@@ -57,7 +70,18 @@ class ValidationController extends Controller
         $this->requireAcceptsJson();
 
         $request = Craft::$app->getRequest();
-        $password = $request->getRequiredBodyParam('password');
+
+        // Coerce to string — `password[]=x` would otherwise hand
+        // `getRequiredBodyParam` an array and 500 an anonymous endpoint (a
+        // raw `(string)` cast would emit an "Array to string conversion"
+        // warning). Non-scalar input collapses to an empty string. Clamp the
+        // length defensively before any rule, hash, or zxcvbn analysis.
+        $passwordParam = $request->getRequiredBodyParam('password');
+        $password = is_scalar($passwordParam) ? (string)$passwordParam : '';
+
+        if (mb_strlen($password) > self::MAX_PASSWORD_LENGTH) {
+            $password = mb_substr($password, 0, self::MAX_PASSWORD_LENGTH);
+        }
 
         $plugin = PasswordPolicy::$plugin;
         $isPro = $plugin->getIsPro();
@@ -76,10 +100,11 @@ class ValidationController extends Controller
 
         $rules = [];
 
-        // Min length
+        // Min length — `mb_strlen` so multibyte passwords count code points,
+        // not bytes (consistent with Yii's `string` validator on the save path).
         $rules[] = [
             'key' => 'minLength',
-            'pass' => strlen($password) >= $settings->minLength,
+            'pass' => mb_strlen($password) >= $settings->minLength,
             'message' => Craft::t('password-policy', 'At least {min} characters', ['min' => $settings->minLength]),
         ];
 
@@ -87,14 +112,18 @@ class ValidationController extends Controller
         if ($settings->maxLength > 0) {
             $rules[] = [
                 'key' => 'maxLength',
-                'pass' => strlen($password) <= $settings->maxLength,
+                'pass' => mb_strlen($password) <= $settings->maxLength,
                 'message' => Craft::t('password-policy', 'No more than {max} characters', ['max' => $settings->maxLength]),
             ];
         }
 
         // Complexity: individual or minimum
         if ($isPro && $settings->complexityMode === 'minimum' && $settings->minimumCharacterTypes > 0) {
-            $validator = new MinimumCharacterTypesValidator();
+            // Thread the resolved per-user requirement into the validator so a
+            // per-group override drives the live checklist, not the global value.
+            $validator = new MinimumCharacterTypesValidator([
+                'minimumCharacterTypes' => $settings->minimumCharacterTypes,
+            ]);
             $rules[] = [
                 'key' => 'characterTypes',
                 'pass' => $validator->validateValue($password) === null,
@@ -175,11 +204,18 @@ class ValidationController extends Controller
 
         $isValid = true;
         $errorsByKey = [];
+        $pendingKeys = [];
 
         foreach ($rules as $rule) {
             if ($rule['pass'] === false) {
                 $isValid = false;
                 $errorsByKey[$rule['key']] = $rule['message'];
+            } elseif ($rule['pass'] === null) {
+                // Indeterminate (HIBP fail-open / still checking). Never count
+                // a null as passed — surface it so the client can render an
+                // "in progress / unverified" state instead of a green check,
+                // and so `isValid` doesn't claim success on an unconfirmed rule.
+                $pendingKeys[] = $rule['key'];
             }
         }
 
@@ -192,6 +228,10 @@ class ValidationController extends Controller
         foreach ($errorsByKey as $key => $message) {
             $clientErrorsByKey[$this->_clientKey($key)] = $message;
         }
+
+        $clientPendingKeys = array_values(array_unique(
+            array_map(fn(string $key) => $this->_clientKey($key), $pendingKeys),
+        ));
 
         // Strength block — zxcvbn-php on every edition. Blocklist hits
         // force the meter to "weak" so the indicator stays consistent
@@ -209,6 +249,7 @@ class ValidationController extends Controller
             'passed' => $isValid,
             'errorsByKey' => $clientErrorsByKey,
             'errors' => array_values($clientErrorsByKey),
+            'pendingKeys' => $clientPendingKeys,
             'rules' => $rules,
             'strength' => $strength,
         ]);

@@ -37,6 +37,19 @@ use yii\validators\Validator;
  */
 class MinimumCharacterTypesValidator extends Validator
 {
+    // Public Properties
+    // =========================================================================
+
+    /**
+     * Resolved per-user minimum-character-types requirement. Set by
+     * `UserRules::defineRules()` / `ValidationController` from the user's
+     * effective policy so a per-group override is enforced. Null falls back
+     * to the global `SettingsModel` value (AJAX/preview without a target user).
+     *
+     * @var int|null
+     */
+    public ?int $minimumCharacterTypes = null;
+
     // Public Methods
     // =========================================================================
 
@@ -46,10 +59,10 @@ class MinimumCharacterTypesValidator extends Validator
      * @author CraftPulse
      * @since 5.2.0
      */
-    public function validateValue($value): ?array
+    public function validateValue(#[\SensitiveParameter] $value): ?array
     {
-        $settings = PasswordPolicy::$plugin->getSettings();
-        $required = $settings->minimumCharacterTypes;
+        $required = $this->minimumCharacterTypes
+            ?? PasswordPolicy::$plugin->getSettings()->minimumCharacterTypes;
 
         if ($required <= 0) {
             return null;

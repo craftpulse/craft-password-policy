@@ -53,17 +53,27 @@ class PasswordService extends Component
     }
 
     /**
-     * Generates a regex pattern for password validation based on the current settings.
+     * Generates a regex pattern for password validation based on the supplied
+     * (or global) settings.
      *
+     * Pass the user's resolved policy (`PolicyResolverService::resolveForUser()`)
+     * to honor per-group complexity overrides — `UserRules::defineRules()` does
+     * exactly that. Defaults to the global `SettingsModel` cached in `init()`
+     * for AJAX/preview contexts without a target user.
+     *
+     * @param SettingsModel|null $settings the resolved policy; null for global
      * @return string
      *
      * @author CraftPulse
+     * @since 5.0.0
      */
-    public function generatePattern(): string
+    public function generatePattern(?SettingsModel $settings = null): string
     {
+        $settings ??= $this->_settings;
+
         $pattern = $this->_patterns()
-            ->reject(function(string $value, string $key) {
-                return $this->_settings->{$key} === false;
+            ->reject(function(string $value, string $key) use ($settings) {
+                return $settings->{$key} === false;
             })
             ->implode('');
 
@@ -71,17 +81,25 @@ class PasswordService extends Component
     }
 
     /**
-     * Generates a human-readable validation message based on the current settings.
+     * Generates a human-readable validation message based on the supplied
+     * (or global) settings.
      *
+     * Pass the user's resolved policy to honor per-group complexity overrides;
+     * defaults to the global `SettingsModel` cached in `init()`.
+     *
+     * @param SettingsModel|null $settings the resolved policy; null for global
      * @return string
      *
      * @author CraftPulse
+     * @since 5.0.0
      */
-    public function generateMessage(): string
+    public function generateMessage(?SettingsModel $settings = null): string
     {
+        $settings ??= $this->_settings;
+
         $message = $this->_messages()
-            ->reject(function(string $value, string $key) {
-                return $this->_settings->{$key} === false;
+            ->reject(function(string $value, string $key) use ($settings) {
+                return $settings->{$key} === false;
             })
             ->implode(', ');
 

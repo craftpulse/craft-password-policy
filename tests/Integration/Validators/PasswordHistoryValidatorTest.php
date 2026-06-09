@@ -230,6 +230,51 @@ it('accepts any password for a user with no history rows', function() {
     expect($user->getErrors('newPassword'))->toBeEmpty();
 });
 
+// =============================================================================
+// Resolved per-user depth — public property overrides the global count
+// =============================================================================
+
+it('enforces the resolved passwordHistoryCount property over the global count', function() {
+    // Global window is 1 (would only protect the newest entry), but the
+    // resolved per-group depth is 5. Re-using the 3rd-newest entry must be
+    // rejected because the validator honors the threaded property, widening
+    // the reuse window beyond the global value.
+    $this->settings->passwordHistoryCount = 1;
+
+    $validator = new PasswordHistoryValidator(['passwordHistoryCount' => 5]);
+
+    $user = UserFactory::admin();
+    PasswordHistoryFactory::seedFor($user, [
+        'Old1!Pass',
+        'Old2!Pass',
+        'Old3!Pass',
+        'Old4!Pass',
+        'Old5!Pass',
+    ], 5);
+
+    $user->newPassword = 'Old3!Pass';
+    $validator->validateAttribute($user, 'newPassword');
+
+    expect($user->getErrors('newPassword'))->not->toBeEmpty();
+});
+
+it('gates on the resolved property when global count is zero', function() {
+    // Global history is OFF (0) — but a per-group policy can still turn it on.
+    // The validator must run when the resolved property is positive even
+    // though the global gate would short-circuit.
+    $this->settings->passwordHistoryCount = 0;
+
+    $validator = new PasswordHistoryValidator(['passwordHistoryCount' => 3]);
+
+    $user = UserFactory::admin();
+    PasswordHistoryFactory::seedFor($user, ['ReusedPass1!'], 3);
+
+    $user->newPassword = 'ReusedPass1!';
+    $validator->validateAttribute($user, 'newPassword');
+
+    expect($user->getErrors('newPassword'))->not->toBeEmpty();
+});
+
 it('also checks the current users.password column when history is short', function() {
     // The service tops up the candidate hash list from the live
     // users.password column when history has fewer entries than the

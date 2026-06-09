@@ -135,7 +135,6 @@ class PasswordHistoryService extends Component
      */
     public function savePasswordHash(int $userId, string $passwordHash, ?AuditContext $context = null): void
     {
-        $settings = PasswordPolicy::$plugin->getSettings();
         $context ??= AuditContext::selfService();
 
         $record = new PasswordHistoryRecord();
@@ -150,8 +149,13 @@ class PasswordHistoryService extends Component
         $record->uid = StringHelper::UUID();
         $record->save(false);
 
-        // Prune entries beyond the count limit
-        $this->pruneHistory($userId, $settings->passwordHistoryCount);
+        // Prune entries beyond the count limit. Resolve the user's effective
+        // depth — a per-group override can raise the floor above the global
+        // count, and pruning to the global count would silently discard rows
+        // the reuse check still needs to consult. Falls back to global when
+        // the user can't be loaded (deleted/race) so the floor is never zero
+        // for an active history feature.
+        $this->pruneHistory($userId, $this->_resolveHistoryCount($userId));
     }
 
     /**
@@ -162,26 +166,30 @@ class PasswordHistoryService extends Component
      *
      * @param int $userId
      * @param string $plaintext
+     * @param int|null $historyCount the resolved per-user history depth; null
+     *     falls back to the global `SettingsModel` count
      * @return bool
      *
      * @author CraftPulse
      * @since 5.2.0
      */
-    public function isPasswordReused(int $userId, #[\SensitiveParameter] string $plaintext): bool
+    public function isPasswordReused(int $userId, #[\SensitiveParameter] string $plaintext, ?int $historyCount = null): bool
     {
-        $settings = PasswordPolicy::$plugin->getSettings();
-        $limit = $settings->passwordHistoryCount;
+        $limit = $historyCount ?? PasswordPolicy::$plugin->getSettings()->passwordHistoryCount;
 
         if ($limit <= 0) {
             return false;
         }
 
-        // Fetch historical hashes
+        // Fetch historical hashes. `dateCreated` is second-granularity, so add
+        // `id DESC` as a deterministic tiebreaker — without it two rows written
+        // in the same second could order arbitrarily and the limit window could
+        // drop the wrong row.
         $hashes = (new Query())
             ->select(['passwordHash'])
             ->from('{{%passwordpolicy_password_history}}')
             ->where(['userId' => $userId])
-            ->orderBy(['dateCreated' => SORT_DESC])
+            ->orderBy(['dateCreated' => SORT_DESC, 'id' => SORT_DESC])
             ->limit($limit)
             ->column();
 
@@ -218,11 +226,19 @@ class PasswordHistoryService extends Component
             $iterations++;
         }
 
-        // Pad iterations to configured limit for consistent timing
-        $dummyHash = '$2y$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012';
-        while ($iterations < $limit) {
-            $security->validatePassword($plaintext, $dummyHash);
-            $iterations++;
+        // Pad iterations to the configured limit for consistent timing. Build
+        // the dummy hash through the Security service so its cost factor
+        // matches the live hashes — a hard-coded `$2y$10$…` literal would run
+        // a cheaper KDF than a site configured at cost 12+, leaking a timing
+        // signal between "had history rows" and "padded only". Built once
+        // outside the loop so the (expensive) hash generation isn't repeated.
+        if ($iterations < $limit) {
+            $dummyHash = $security->generatePasswordHash($plaintext);
+
+            while ($iterations < $limit) {
+                $security->validatePassword($plaintext, $dummyHash);
+                $iterations++;
+            }
         }
 
         return $found;
@@ -254,12 +270,13 @@ class PasswordHistoryService extends Component
             return;
         }
 
-        // The latest N entries are always protected
+        // The latest N entries are always protected. `id DESC` is a
+        // deterministic tiebreaker on the second-granularity `dateCreated`.
         $protectedIds = (new Query())
             ->select(['id'])
             ->from('{{%passwordpolicy_password_history}}')
             ->where(['userId' => $userId])
-            ->orderBy(['dateCreated' => SORT_DESC])
+            ->orderBy(['dateCreated' => SORT_DESC, 'id' => SORT_DESC])
             ->limit($keepCount)
             ->column();
 
@@ -311,12 +328,13 @@ class PasswordHistoryService extends Component
         $totalPurged = 0;
 
         foreach ($userIds as $userId) {
-            // Protect the latest N entries per user
+            // Protect the latest N entries per user. `id DESC` is a
+            // deterministic tiebreaker on the second-granularity `dateCreated`.
             $protectedIds = (new Query())
                 ->select(['id'])
                 ->from('{{%passwordpolicy_password_history}}')
                 ->where(['userId' => $userId])
-                ->orderBy(['dateCreated' => SORT_DESC])
+                ->orderBy(['dateCreated' => SORT_DESC, 'id' => SORT_DESC])
                 ->limit(max($keepCount, 1))
                 ->column();
 
@@ -347,5 +365,33 @@ class PasswordHistoryService extends Component
         return [
             '_pendingCount' => count(self::$_pendingPasswords),
         ];
+    }
+
+    // Private Methods
+    // =========================================================================
+
+    /**
+     * Resolves the effective history depth for a user — the user's per-group
+     * override (if any) wins over the global count via `PolicyResolverService`.
+     * Falls back to the global count when the user can't be loaded so an active
+     * history feature never prunes against a zero floor.
+     *
+     * @param int $userId
+     * @return int
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _resolveHistoryCount(int $userId): int
+    {
+        $globalCount = PasswordPolicy::$plugin->getSettings()->passwordHistoryCount;
+
+        $user = Craft::$app->getUsers()->getUserById($userId);
+
+        if ($user === null) {
+            return $globalCount;
+        }
+
+        return PasswordPolicy::$plugin->getPolicyResolver()->resolveForUser($user)->passwordHistoryCount;
     }
 }
