@@ -285,12 +285,13 @@
         // Live region announce
         var live = liveRegion(input);
         if (live) {
+            var t = (window.Craft && window.Craft.t) ? window.Craft.t : function(_c, m) { return m; };
             if (hasPending) {
-                live.textContent = 'Checking password…';
+                live.textContent = t('password-policy', 'Checking password…');
             } else if (passed) {
-                live.textContent = 'Password meets all requirements.';
+                live.textContent = t('password-policy', 'Password meets all requirements.');
             } else {
-                var firstError = (response.errors && response.errors[0]) || 'Password does not meet requirements.';
+                var firstError = (response.errors && response.errors[0]) || t('password-policy', 'Password does not meet requirements.');
                 live.textContent = firstError;
             }
         }

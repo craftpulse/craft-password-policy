@@ -1738,6 +1738,7 @@ class PasswordPolicy extends Plugin
             Application::EVENT_AFTER_REQUEST,
             function() {
                 $this->getPasswordHistory()->clearAllCache();
+                $this->getUserState()->clearExplicitContexts();
             }
         );
     }

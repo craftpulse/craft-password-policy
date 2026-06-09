@@ -170,7 +170,7 @@ Order matches the site-builder's recommended click-through (cross-references the
 
 - **Bug 10 verification**: form's hidden input is `name="id"` (not `name="userUid"`). Inspect markup.
 
-**1.8 `/demo/password-policy/password-change`** — anonymous → 302 redirect to login demo. Logged in → form renders. Wrong current password → flash error. New password failing policy → flash error per failed rule. Valid → redirect to demo index.
+**1.8 `/demo/password-policy/password-change`** — anonymous → 302 redirect to login demo. Logged in → form renders. Wrong current password → error in the form's accessible error summary (`role="alert"`, fed from the `pp:errors` flash channel). New password failing policy → one error per failed rule in that same summary, with the offending field marked `aria-invalid`. Valid → redirect to demo index. (Confirm a wrong current password no longer locks out an expired/reset-required user — the check is now a side-effect-free hash compare, not `authenticate()`.)
 
 - **Bug 2 verification**: open second browser (or incognito), log in as same user before changing password from first browser. After change, refresh second browser → logged out.
 

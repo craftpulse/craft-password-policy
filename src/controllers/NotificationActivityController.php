@@ -163,10 +163,15 @@ class NotificationActivityController extends Controller
         try {
             $dispatched = PasswordPolicy::$plugin->getNotification()->resend($element);
         } catch (Throwable $e) {
+            // Log the detail, surface a static message — a raw exception
+            // string can leak internal paths/config to the operator UI.
+            Craft::error(
+                'Notification resend failed for log row ' . $id . ': ' . $e->getMessage(),
+                'password-policy',
+            );
+
             return $this->asFailure(
-                Craft::t('password-policy', 'Couldn’t resend notification: {error}', [
-                    'error' => $e->getMessage(),
-                ]),
+                Craft::t('password-policy', 'Couldn’t resend notification. Check the logs for details.'),
             );
         }
 

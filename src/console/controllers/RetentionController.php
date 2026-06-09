@@ -11,12 +11,12 @@
 namespace craftpulse\passwordpolicy\console\controllers;
 
 use Craft;
+use craft\console\Controller;
 use craftpulse\passwordpolicy\helpers\PasswordResetHelper;
-use craftpulse\passwordpolicy\PasswordPolicy;
 
+use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\services\RetentionService;
 use Throwable;
-use yii\console\Controller;
 use yii\console\ExitCode;
 use yii\helpers\BaseConsole;
 

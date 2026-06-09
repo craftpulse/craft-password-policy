@@ -28,7 +28,7 @@ use craftpulse\passwordpolicy\PasswordPolicy;
  */
 class SeedBlocklist extends BaseJob
 {
-    // Protected Methods
+    // Public Methods
     // =========================================================================
 
     /**
@@ -52,9 +52,6 @@ class SeedBlocklist extends BaseJob
             Craft::t('password-policy', '{count} common passwords seeded.', ['count' => $count]),
         );
     }
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc
