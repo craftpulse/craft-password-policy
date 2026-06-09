@@ -351,55 +351,6 @@ For one-shot integrations or testing, a closure works equally well. Listeners th
 
 ---
 
-## `SiemForwardAttemptEvent`
-
-**FQ class:** `craftpulse\passwordpolicy\events\SiemForwardAttemptEvent`
-**Edition:** every (capture surface)
-**Triggered by:** `SiemService::EVENT_SIEM_FORWARD_ATTEMPT`
-**When:** After every forwarder attempt by `SiemForwardJob` — success or failure, per (forwarder × audit row). The SIEM forwarder itself is Enterprise-only (CP UI gated, queue job edition-checked), but the event class fires regardless of edition because a non-Enterprise install can still exercise the service in tests or via custom code.
-
-### Payload
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `$forwarderId` | `int` | The SIEM forwarder id the dispatch targeted. |
-| `$auditRowId` | `int` | The audit-log row id this dispatch attempted to deliver. Stable correlation key. |
-| `$protocol` | `string` | Either `syslog-tls` or `http`. |
-| `$endpointUrl` | `string` | The destination URL (HTTP) or `host:port` (syslog-tls). May appear in logs — don't store any credentials in the URL itself; use the headers field instead. |
-| `$duration` | `int` | Duration of the dispatch in milliseconds. Includes connect + TLS handshake + send + receive. |
-| `$success` | `bool` | Whether the dispatch was accepted by the endpoint. For HTTP: 2xx. For syslog-tls: socket write returned successfully + TLS session was clean. |
-| `$errorMessage` | `?string` | Human-readable error on failure. Null on success. |
-
-> The serialised audit-row payload itself is intentionally NOT in the event. Listeners that need it can join against the audit log row via `auditRowId`.
-
-### Example listener — feed forwarder outcomes into a metrics dashboard
-
-```php
-use yii\base\Event;
-use craftpulse\passwordpolicy\events\SiemForwardAttemptEvent;
-use craftpulse\passwordpolicy\services\SiemService;
-
-Event::on(
-    SiemService::class,
-    SiemService::EVENT_SIEM_FORWARD_ATTEMPT,
-    function(SiemForwardAttemptEvent $event) {
-        Craft::info(
-            sprintf(
-                'SIEM forwarder %d (%s) → audit row %d: %s (%dms)',
-                $event->forwarderId,
-                $event->protocol,
-                $event->auditRowId,
-                $event->success ? 'OK' : 'FAIL',
-                $event->duration,
-            ),
-            'siem-metrics',
-        );
-    },
-);
-```
-
----
-
 ## `WebhookDeliveryAttemptEvent`
 
 **FQ class:** `craftpulse\passwordpolicy\events\WebhookDeliveryAttemptEvent`

@@ -17,8 +17,13 @@ use yii\base\Event;
  * Class PasswordValidationEvent
  *
  * Fired after all built-in validators have run, allowing third-party
- * modules to add custom validation rules. The plaintext password is
- * intentionally NOT included in this event.
+ * modules to add custom validation rules.
+ *
+ * Privacy invariant: this event carries no dedicated plaintext property,
+ * but `$event->user->newPassword` is populated and live at the point the
+ * event fires (validation runs before the password is hashed). Listeners
+ * MUST NOT log, persist, or forward `$user->newPassword` — treat it as
+ * sensitive in-memory material that disappears once the save completes.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy

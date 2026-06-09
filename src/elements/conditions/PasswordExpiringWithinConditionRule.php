@@ -14,9 +14,12 @@ use Carbon\Carbon;
 use Craft;
 use craft\base\conditions\BaseNumberConditionRule;
 use craft\base\ElementInterface;
+use craft\db\Query;
+use craft\db\Table;
 use craft\elements\conditions\ElementConditionRuleInterface;
 use craft\elements\db\ElementQueryInterface;
 use craft\elements\User;
+use craft\helpers\DateTimeHelper;
 use craft\helpers\Db;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use DateInterval;
@@ -100,6 +103,12 @@ class PasswordExpiringWithinConditionRule extends BaseNumberConditionRule implem
     /**
      * Returns whether the given element matches the rule.
      *
+     * `craft\elements\db\UserQuery::beforePrepare()` does NOT addSelect
+     * `lastPasswordChangeDate`, so reading it off a freshly-loaded User
+     * returns null regardless of the underlying column value — every
+     * user would look never-changed and match. Hydrate directly from the
+     * users table, mirroring {@see PasswordExpiredConditionRule::matchElement()}.
+     *
      * @param ElementInterface $element
      * @return bool
      *
@@ -116,12 +125,14 @@ class PasswordExpiringWithinConditionRule extends BaseNumberConditionRule implem
             return false;
         }
 
-        if ($element->lastPasswordChangeDate === null) {
+        $lastChange = $this->_hydrateLastChange($element);
+
+        if ($lastChange === null) {
             // Never-changed users are due to expire under any window.
             return true;
         }
 
-        return $element->lastPasswordChangeDate->getTimestamp() < $threshold->getTimestamp();
+        return $lastChange->getTimestamp() < $threshold->getTimestamp();
     }
 
     // Private Methods
@@ -167,5 +178,36 @@ class PasswordExpiringWithinConditionRule extends BaseNumberConditionRule implem
         }
 
         return $cutoff;
+    }
+
+    /**
+     * Returns the user's `lastPasswordChangeDate`, preferring the
+     * in-memory value and falling back to a direct DB scalar query when
+     * the property is null (the correct path on a freshly-loaded User —
+     * `UserQuery::beforePrepare()` does not select the column).
+     *
+     * @param User $user
+     * @return \DateTime|null
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _hydrateLastChange(User $user): ?\DateTime
+    {
+        if ($user->lastPasswordChangeDate !== null) {
+            return $user->lastPasswordChangeDate;
+        }
+
+        $raw = (new Query())
+            ->select(['lastPasswordChangeDate'])
+            ->from(Table::USERS)
+            ->where(['id' => $user->id])
+            ->scalar();
+
+        if ($raw === false || $raw === null || $raw === '') {
+            return null;
+        }
+
+        return DateTimeHelper::toDateTime($raw) ?: null;
     }
 }

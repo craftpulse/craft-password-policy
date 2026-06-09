@@ -123,7 +123,7 @@ class PasswordPolicyVariable implements ViteVariableInterface
             return 'unknown';
         }
 
-        if ($user->passwordResetRequired) {
+        if ($this->_getPasswordResetRequired($user)) {
             return 'reset_required';
         }
 
@@ -657,6 +657,31 @@ class PasswordPolicyVariable implements ViteVariableInterface
         }
 
         return DateTimeHelper::toDateTime($date) ?: null;
+    }
+
+    /**
+     * Returns whether the user is flagged as requiring a password reset,
+     * read directly from the users table.
+     *
+     * Craft's UserQuery::beforePrepare() does not include passwordResetRequired
+     * in its default column selection, so User elements loaded via getIdentity()
+     * always have this property as its typed default (false). This method queries
+     * the column directly to get the actual value — without it the
+     * `reset_required` branch of `passwordStatus()` is dead.
+     *
+     * @param User $user
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _getPasswordResetRequired(User $user): bool
+    {
+        return (bool)(new Query())
+            ->select(['passwordResetRequired'])
+            ->from(Table::USERS)
+            ->where(['id' => $user->id])
+            ->scalar();
     }
 
     /**
