@@ -11,10 +11,8 @@
 namespace craftpulse\passwordpolicy\assetbundles\passwordpolicy;
 
 use Craft;
-use craft\helpers\Json;
 use craft\web\AssetBundle;
 use craft\web\assets\cp\CpAsset;
-use craft\web\View;
 
 use craftpulse\passwordpolicy\PasswordPolicy;
 
@@ -42,13 +40,18 @@ class PasswordPolicyAsset extends AssetBundle
             CpAsset::class,
         ];
 
-        // Register Javascript variable with nonce support
-        Craft::$app->getView()->registerJs(
-            'window.passwordpolicy = ' . Json::encode([
-                'showStrengthIndicator' => PasswordPolicy::$plugin->getSettings()->showStrengthIndicator,
-            ]) . ';',
-            View::POS_HEAD
-        );
+        // Surface the `showStrengthIndicator` flag as a <meta> tag rather
+        // than an inline `registerJs` bootstrap. A bare inline <script> has
+        // no CSP nonce, so under a strict-nonce policy (which the indicator
+        // script DOES carry, via `cspNonce`) the browser blocks the bootstrap
+        // and the meter never boots. A <meta> tag is not script-src governed,
+        // so it survives any CSP. The nonced indicator script reads the flag
+        // from this tag (with a `window.passwordpolicy` fallback for legacy
+        // consumers).
+        Craft::$app->getView()->registerMetaTag([
+            'name' => 'pp-show-strength-indicator',
+            'content' => PasswordPolicy::$plugin->getSettings()->showStrengthIndicator ? '1' : '0',
+        ], 'pp-show-strength-indicator');
 
         parent::init();
     }

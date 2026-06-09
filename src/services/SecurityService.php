@@ -17,6 +17,12 @@ use yii\base\Exception;
 /**
  * Class SecurityService
  *
+ * Owns CSP-nonce generation for the plugin's own scripts. The plugin only
+ * nonce-tags scripts it registers itself (the CP strength indicator); it does
+ * NOT emit a site-wide Content-Security-Policy header. Operators own their CSP
+ * — the plugin's job is to be nonce-compatible with a strict policy, supplying
+ * `getNonce()` to the asset registration path when `cspNonce` is enabled.
+ *
  * @author      CraftPulse
  * @package     PasswordPolicy
  * @since       5.1.0
@@ -50,22 +56,5 @@ class SecurityService extends Component
         }
 
         return $this->_nonce;
-    }
-
-    /**
-     * Applies a Content Security Policy header with nonce for the indicator script.
-     *
-     * @return void
-     *
-     * @throws Exception
-     *
-     * @author CraftPulse
-     */
-    public function applyCsp(): void
-    {
-        $nonce = $this->getNonce();
-        $csp = "script-src 'self' 'unsafe-inline' 'nonce-{$nonce}'";
-
-        Craft::$app->getResponse()->getHeaders()->add('Content-Security-Policy', $csp);
     }
 }

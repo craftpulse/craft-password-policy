@@ -60,6 +60,26 @@ class RequirementListTag extends BaseTag
     }
 
     /**
+     * Associates this requirement list with a specific password field by its
+     * DOM id.
+     *
+     * Emits `data-pp-for="<id>"` on each `<li>` so the client JS scopes its
+     * pass/fail/pending repaint to this list when the field changes, rather
+     * than touching every requirement list on the page.
+     *
+     * @param string $id
+     * @return $this
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function forField(string $id): self
+    {
+        $this->config['forField'] = $id;
+        return $this;
+    }
+
+    /**
      * Sets the user group handles for anonymous group-preview resolution.
      * Forwarded to `requirementRules()` so the rendered list reflects the
      * per-group merged policy when applicable.
@@ -87,6 +107,7 @@ class RequirementListTag extends BaseTag
         $listAttrs = (array)($this->config['listAttrs'] ?? []);
         $itemAttrs = (array)($this->config['itemAttrs'] ?? []);
         $groups = (array)($this->config['groups'] ?? []);
+        $forField = (string)($this->config['forField'] ?? '');
 
         $resolvedListAttrs = array_merge([
             'class' => 'pp-requirements',
@@ -102,10 +123,16 @@ class RequirementListTag extends BaseTag
             $resolvedItemAttrs = array_merge([
                 'class' => 'pp-requirement',
                 'data-pp-requirement' => $rule['key'],
+                'data-pp-for' => $forField !== '' ? $forField : null,
             ], $itemAttrs);
 
+            // Visually-hidden status span carries the met/not-met state for
+            // assistive tech — the CSS `::before` glyph is decorative only.
+            // The client JS keeps the text in sync; it renders empty here so
+            // the no-JS baseline conveys no misleading state.
             $items .= '<li' . $this->_renderAttrs($resolvedItemAttrs) . '>'
                 . Html::encode($rule['label'])
+                . '<span class="pp-visually-hidden" data-pp-requirement-status></span>'
                 . '</li>';
         }
 

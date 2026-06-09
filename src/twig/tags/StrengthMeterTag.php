@@ -59,6 +59,25 @@ class StrengthMeterTag extends BaseTag
     }
 
     /**
+     * Associates this meter with a specific password field by its DOM id.
+     *
+     * Emits `data-pp-for="<id>"` on the wrapper so the client JS scopes its
+     * repaint to this meter when the field changes, rather than touching
+     * every meter on the page.
+     *
+     * @param string $id
+     * @return $this
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function forField(string $id): self
+    {
+        $this->config['forField'] = $id;
+        return $this;
+    }
+
+    /**
      * @inheritdoc
      *
      * @author CraftPulse
@@ -69,9 +88,12 @@ class StrengthMeterTag extends BaseTag
         $wrapperAttrs = (array)($this->config['wrapperAttrs'] ?? []);
         $barAttrs = (array)($this->config['barAttrs'] ?? []);
 
+        $forField = (string)($this->config['forField'] ?? '');
+
         $resolvedWrapperAttrs = array_merge([
             'class' => 'pp-strength',
             'data-pp-strength' => '1',
+            'data-pp-for' => $forField !== '' ? $forField : null,
             'role' => 'progressbar',
             'aria-valuemin' => '0',
             'aria-valuemax' => '4',
