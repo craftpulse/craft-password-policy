@@ -10,6 +10,7 @@
 
 namespace craftpulse\passwordpolicy\elements\db;
 
+use craft\db\Query;
 use craft\elements\db\ElementQuery;
 use craft\helpers\Db;
 use craftpulse\passwordpolicy\elements\PolicyElement;
@@ -157,17 +158,24 @@ class PolicyQuery extends ElementQuery
         }
 
         if ($this->groupId !== null) {
-            $this->subQuery->innerJoin(
-                ['passwordpolicy_policy_groups' => '{{%passwordpolicy_policy_groups}}'],
-                '[[passwordpolicy_policy_groups.policyId]] = [[passwordpolicy_policies.id]]',
-            );
-            $this->subQuery->andWhere(Db::parseParam(
-                'passwordpolicy_policy_groups.groupId',
-                $this->groupId,
-            ));
-            // De-duplicate when a policy is assigned to multiple groups
-            // matching the filter — single policy, single row.
-            $this->subQuery->groupBy('passwordpolicy_policies.id');
+            // Restrict to policies assigned to the given group(s) via an
+            // `IN (subquery)` against the junction table — deliberately NOT
+            // an `INNER JOIN` + `GROUP BY`. The join emits one row per
+            // matching group (a policy assigned to several of the filtered
+            // groups would duplicate), and the previous `GROUP BY
+            // passwordpolicy_policies.id` dedup left `elements_sites.id`
+            // (auto-selected by the element query) nonaggregated — which
+            // MySQL's `ONLY_FULL_GROUP_BY` mode rejects with SQLSTATE 1055.
+            // The subquery dedups at the source and is strict-mode safe.
+            $this->subQuery->andWhere([
+                'passwordpolicy_policies.id' => (new Query())
+                    ->select(['passwordpolicy_policy_groups.policyId'])
+                    ->from(['passwordpolicy_policy_groups' => '{{%passwordpolicy_policy_groups}}'])
+                    ->where(Db::parseParam(
+                        'passwordpolicy_policy_groups.groupId',
+                        $this->groupId,
+                    )),
+            ]);
         }
 
         return parent::beforePrepare();
