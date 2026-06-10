@@ -142,7 +142,34 @@ abstract class BaseTag
         }
 
         try {
-            Craft::$app->getView()->registerAssetBundle(PasswordPolicyClientAsset::class);
+            $view = Craft::$app->getView();
+            $view->registerAssetBundle(PasswordPolicyClientAsset::class);
+
+            // Expose the CSRF token + param name as CSP-safe <meta> tags so
+            // the front-end client (password-policy.js) can authenticate its
+            // live-validation XHR. The script's other token source —
+            // `window.Craft.csrfTokenValue` — is a CP-only global that is
+            // absent on the front-end, so without these tags every validate
+            // request is rejected with a 400 CSRF failure and the requirement
+            // list / strength meter never update. A <meta> tag is not
+            // `script-src` governed, so it survives a strict-nonce CSP — same
+            // rationale as the `pp-show-strength-indicator` bootstrap meta.
+            $generalConfig = Craft::$app->getConfig()->getGeneral();
+
+            if ($generalConfig->enableCsrfProtection) {
+                /** @var \craft\web\Request $request */
+                $request = Craft::$app->getRequest();
+
+                $view->registerMetaTag([
+                    'name' => 'pp-csrf-param',
+                    'content' => $generalConfig->csrfTokenName,
+                ], 'pp-csrf-param');
+
+                $view->registerMetaTag([
+                    'name' => 'pp-csrf-token',
+                    'content' => $request->getCsrfToken(),
+                ], 'pp-csrf-token');
+            }
         } catch (\Throwable) {
             // Defensive — never let asset registration break Twig rendering.
         }

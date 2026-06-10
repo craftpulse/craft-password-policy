@@ -187,11 +187,27 @@
         xhr.setRequestHeader('Accept', 'application/json');
         xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
 
-        // CSRF token — Craft exposes it via the head <meta> tag or
-        // window.Craft.csrfTokenValue.
+        // CSRF token — the CP exposes it via `window.Craft.csrfTokenValue`;
+        // on the front-end `window.Craft` is absent, so fall back to the
+        // CSP-safe <meta> tags emitted by the render builders
+        // (BaseTag::_registerClientAsset). Without a token the validate
+        // endpoint rejects every request with a 400 CSRF failure.
         var csrf = (window.Craft && window.Craft.csrfTokenValue) || null;
+        var csrfName = (window.Craft && window.Craft.csrfTokenName) || 'CRAFT_CSRF_TOKEN';
+
+        if (!csrf) {
+            var tokenMeta = document.querySelector('meta[name="pp-csrf-token"]');
+            if (tokenMeta) {
+                csrf = tokenMeta.getAttribute('content');
+
+                var paramMeta = document.querySelector('meta[name="pp-csrf-param"]');
+                if (paramMeta && paramMeta.getAttribute('content')) {
+                    csrfName = paramMeta.getAttribute('content');
+                }
+            }
+        }
+
         if (csrf) {
-            var csrfName = (window.Craft && window.Craft.csrfTokenName) || 'CRAFT_CSRF_TOKEN';
             formData.append(csrfName, csrf);
         }
 
