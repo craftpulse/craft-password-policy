@@ -82,12 +82,12 @@ it('leaves notification template rows in place when a site is soft-deleted', fun
         ->where(['siteId' => $siteId])
         ->count();
 
-    // Four seeded keys: expiry-reminder + breach-detected (5.2.0
+    // Five seeded keys: expiry-reminder + breach-detected (5.2.0
     // baseline) + new-device-alert + admin-security-alert (G12 — moved
     // both keys from `composeFromKey()` to the editable-templates
-    // surface). Bump this assertion alongside any future EmailDefaults
-    // addition.
-    expect($countBefore)->toBe('4');
+    // surface) + inactive-account (Feature 5). Bump this assertion
+    // alongside any future EmailDefaults addition.
+    expect($countBefore)->toBe('5');
 
     expect(Craft::$app->getSites()->deleteSiteById($siteId))->toBeTrue();
 
@@ -143,14 +143,14 @@ it('drops every notification template row when the sites row is hard-deleted', f
     $site = createSiteForCascade();
     $siteId = $site->id;
 
-    // Four seeded keys per site — see the corresponding comment in the
+    // Five seeded keys per site — see the corresponding comment in the
     // soft-delete test above.
     expect(
         (new Query())
             ->from('{{%passwordpolicy_notification_templates}}')
             ->where(['siteId' => $siteId])
             ->count()
-    )->toBe('4');
+    )->toBe('5');
 
     Craft::$app->getDb()->createCommand()
         ->delete(Table::SITES, ['id' => $siteId])

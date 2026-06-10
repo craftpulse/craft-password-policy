@@ -164,6 +164,46 @@ class NotificationService extends Component
     }
 
     /**
+     * Sends the `inactive-account` notification to a dormant user flagged
+     * by the Feature 5 scan in `notify` mode.
+     *
+     * Pro-gated (service-layer convention → `EditionRequiredException`).
+     * The driving scan job already gates on `getIsPro()`, but the guard
+     * duplicates here as defense-in-depth — matches the
+     * `sendBreachDetected()` shape.
+     *
+     * No dedup gate: the scan is operator-scheduled and idempotent at the
+     * action level (a suspended user drops out of the next scan; a
+     * notified-but-still-dormant user SHOULD be re-reminded on the next
+     * run until they log in). Operators control cadence via their cron
+     * interval.
+     *
+     * @param User $user the dormant user to notify
+     * @return void
+     *
+     * @throws EditionRequiredException when the plugin is running the Lite edition
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function sendInactiveAccount(User $user): void
+    {
+        if (!PasswordPolicy::$plugin->getIsPro()) {
+            throw new EditionRequiredException('Inactive-account notifications require the Pro edition.');
+        }
+
+        if ($user->email === null) {
+            return;
+        }
+
+        $this->_dispatch(
+            user: $user,
+            type: 'inactive_account',
+            templateKey: 'inactive-account',
+        );
+    }
+
+    /**
      * Sends a new device login alert to a user.
      *
      * Routes through the editable-templates surface since G12 — the

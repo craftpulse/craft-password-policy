@@ -13,6 +13,7 @@ namespace craftpulse\passwordpolicy\models;
 use Craft;
 use craft\base\Model;
 use craft\behaviors\EnvAttributeParserBehavior;
+use craftpulse\passwordpolicy\enums\InactiveAction;
 
 /**
  * Class SettingsModel
@@ -235,6 +236,49 @@ class SettingsModel extends Model
      * @since 5.2.0
      */
     public bool $enableHibpOnLogin = true;
+
+    /**
+     * @var bool whether the inactive-account scan (Feature 5) is enabled.
+     *     Off by default. When on, `password-policy/inactive/scan`
+     *     (operator-scheduled cron, NOT automatic) flags / notifies /
+     *     suspends accounts past `inactiveThresholdDays` according to
+     *     `inactiveAction`. Pro feature; Enterprise additionally captures
+     *     an `account_inactive` audit row per actioned user.
+     *
+     * @since 5.2.0
+     */
+    public bool $inactiveAccountsEnabled = false;
+
+    /**
+     * @var int the number of days of inactivity (no login since
+     *     `lastLoginDate`, falling back to `dateCreated` for never-logged-in
+     *     accounts) after which an account is considered inactive. Default
+     *     90 — PCI-DSS v4.0 §8.2.6 mandates disabling inactive accounts
+     *     within 90 days.
+     *
+     * @since 5.2.0
+     */
+    public int $inactiveThresholdDays = 90;
+
+    /**
+     * @var string the action the scan takes against an inactive account:
+     *     `report` | `notify` | `suspend`. Backed by
+     *     {@see \craftpulse\passwordpolicy\enums\InactiveAction}. Default
+     *     `report` (non-destructive — no surprise lockouts). The PCI-DSS
+     *     and Strict Enterprise presets opt into `suspend`.
+     *
+     * @since 5.2.0
+     */
+    public string $inactiveAction = 'report';
+
+    /**
+     * @var bool whether to also send the admin an alert when the scan
+     *     actions an inactive account. Routes through the configured
+     *     `adminAlertEmail` (Enterprise) — off by default.
+     *
+     * @since 5.2.0
+     */
+    public bool $inactiveNotifyAdmin = false;
 
     // Public Properties — Enterprise
     // =========================================================================
@@ -802,6 +846,8 @@ class SettingsModel extends Model
                     'checkCommonPasswords',
                     'enablePerGroupPolicies',
                     'enableHibpOnLogin',
+                    'inactiveAccountsEnabled',
+                    'inactiveNotifyAdmin',
                     'enableAuditLog',
                     'enableNewDeviceAlerts',
                     'geoIpEnabled',
@@ -849,6 +895,12 @@ class SettingsModel extends Model
                 'range' => ['label', 'excluded'],
                 'message' => Craft::t('password-policy', 'The SIEM device handling mode is invalid.'),
             ],
+            [
+                ['inactiveAction'],
+                'in',
+                'range' => InactiveAction::values(),
+                'message' => Craft::t('password-policy', 'The inactive-account action must be "report", "notify", or "suspend".'),
+            ],
 
             // Integer rules
             [
@@ -883,6 +935,13 @@ class SettingsModel extends Model
                 'integerOnly' => true,
                 'min' => 0,
                 'message' => Craft::t('password-policy', 'Minimum change interval must be 0 or more hours.'),
+            ],
+            [
+                ['inactiveThresholdDays'],
+                'number',
+                'integerOnly' => true,
+                'min' => 1,
+                'message' => Craft::t('password-policy', 'The inactive-account threshold must be at least 1 day.'),
             ],
             [
                 ['passwordHistoryExpiryDays'],

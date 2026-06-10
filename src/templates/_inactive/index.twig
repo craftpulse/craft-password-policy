@@ -1,0 +1,74 @@
+{# ============================================================================
+ # Inactive-account report (Feature 5, Pro) — read-only list of dormant
+ # accounts the scan would flag at the configured threshold.
+ #
+ # The suspend / notify ACTIONS run via the operator-scheduled scan cron
+ # (`password-policy/inactive/scan`), NOT from this page — it is a pure
+ # read surface gated behind `pp:inactive-view`.
+ #
+ # @var enabled        bool
+ # @var thresholdDays  int
+ # @var action         craftpulse\passwordpolicy\enums\InactiveAction
+ # @var report         array<int, {user, lastActivity, daysInactive}>
+ #
+ # @author    CraftPulse
+ # @since     5.2.0
+ # =========================================================================== #}
+
+{% extends "_layouts/cp" %}
+
+{% set title = 'Inactive accounts'|t('password-policy') %}
+{% set fullPageForm = false %}
+
+{% block content %}
+    {% if not enabled %}
+        <blockquote class="note">
+            <p>
+                {{ 'Inactive-account handling is disabled.'|t('password-policy') }}
+                {{ 'Enable it in the plugin settings and choose an action mode to start flagging dormant accounts.'|t('password-policy') }}
+            </p>
+        </blockquote>
+    {% else %}
+        <p class="light">
+            {{ 'Accounts with no login since {days} days ago (never-logged-in accounts fall back to their creation date), most-stale first. The configured scan action is {action}.'|t('password-policy', {
+                days: thresholdDays,
+                action: action.label(),
+            }) }}
+        </p>
+
+        {% if report|length %}
+            <table class="data fullwidth">
+                <thead>
+                    <tr>
+                        <th scope="col">{{ 'User'|t('password-policy') }}</th>
+                        <th scope="col">{{ 'Email'|t('password-policy') }}</th>
+                        <th scope="col">{{ 'Last activity'|t('password-policy') }}</th>
+                        <th scope="col">{{ 'Days inactive'|t('password-policy') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in report %}
+                        <tr>
+                            <th scope="row">
+                                <a href="{{ row.user.cpEditUrl }}">{{ row.user.username }}</a>
+                            </th>
+                            <td>{{ row.user.email }}</td>
+                            <td>
+                                {% if row.lastActivity %}
+                                    {{ row.lastActivity|datetime('short') }}
+                                {% else %}
+                                    {{ 'Never'|t('password-policy') }}
+                                {% endif %}
+                            </td>
+                            <td>{{ row.daysInactive }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <blockquote class="note tip">
+                <p>{{ 'No accounts are currently inactive past the threshold.'|t('password-policy') }}</p>
+            </blockquote>
+        {% endif %}
+    {% endif %}
+{% endblock %}

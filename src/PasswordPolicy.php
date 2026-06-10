@@ -189,6 +189,22 @@ class PasswordPolicy extends Plugin
     public const EVENT_GROUP_ALERT_DISPATCHED = 'groupAlertDispatched';
 
     /**
+     * Fired by the Feature 5 inactive-account scan (Pro) after it actions a
+     * dormant user — once per actioned user, regardless of action mode.
+     * Fires AFTER the action takes effect (email dispatched / user
+     * suspended), so listeners observe a settled state. Fires only on Pro
+     * (or higher) — the scan is a Pro surface.
+     *
+     * The payload carries the affected user + the action string — never
+     * password material. See {@see AccountInactiveEvent} class docblock.
+     *
+     * @event AccountInactiveEvent
+     *
+     * @since 5.2.0
+     */
+    public const EVENT_ACCOUNT_INACTIVE = 'accountInactive';
+
+    /**
      * Fired after the plugin's password rules have run on a User during
      * `Model::validate()` and the aggregated outcome is known. Listeners
      * receive the validating User, the password-specific errors collected
@@ -566,6 +582,17 @@ class PasswordPolicy extends Plugin
             ];
         }
 
+        // Inactive accounts subnav (Pro) — Feature 5 read-only report.
+        // Sits after Blocklist. Edition + permission gated. The
+        // suspend/notify ACTIONS run via the operator-scheduled scan
+        // cron; this page is the read surface listing flagged accounts.
+        if ($this->getIsPro() && $currentUser->can('pp:inactive-view')) {
+            $subNavs['inactive-accounts'] = [
+                'label' => Craft::t('password-policy', 'Inactive accounts'),
+                'url' => 'password-policy/inactive-accounts',
+            ];
+        }
+
         // Notifications subnav (Pro) — sits between Blocklist and Settings.
         // Activity is a sibling entry (matches Formie's "Email Templates" /
         // "Sent Notifications" split) — separate page for delivery /
@@ -833,6 +860,7 @@ class PasswordPolicy extends Plugin
                         'password-policy/policies/new' => 'password-policy/policy/edit',
                         'password-policy/policies/<policyId:\d+>' => 'password-policy/policy/edit',
                         'password-policy/blocklist' => 'password-policy/blocklist/index',
+                        'password-policy/inactive-accounts' => 'password-policy/inactive-account/index',
                         'password-policy/notifications' => 'password-policy/notification-template/index',
                         'password-policy/notifications/activity' => 'password-policy/notification-activity/index',
                         'password-policy/notifications/activity/<id:\d+>' => 'password-policy/notification-activity/view',
@@ -926,6 +954,23 @@ class PasswordPolicy extends Plugin
                         ),
                     ],
                 ];
+
+                // Inactive-account report (Feature 5) is a Pro-only
+                // read surface. Flat (not nested) — it's single-purpose
+                // (view the flagged-accounts report); there is no
+                // view-vs-manage split (the suspend/notify ACTIONS run
+                // via the operator-scheduled scan cron, not a CP write
+                // button). Edition-gate registration so a Lite admin's
+                // permissions screen never lists a permission they can't
+                // usefully grant.
+                if ($this->getIsPro()) {
+                    $permissions['pp:inactive-view'] = [
+                        'label' => Craft::t(
+                            'password-policy',
+                            'View the inactive-account report (dormant accounts flagged by the scan).',
+                        ),
+                    ];
+                }
 
                 // SIEM forwarder management is an Enterprise-only write
                 // surface. Edition-gate at registration so a Pro or

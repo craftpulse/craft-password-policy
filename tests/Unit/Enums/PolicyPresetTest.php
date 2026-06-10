@@ -100,6 +100,32 @@ it('does not set Pro-only validators in the CIS Controls v8 preset', function() 
         ->and($policy->checkContextual)->toBeNull();
 });
 
+it('opts the PCI-DSS preset into suspend @ 90 days for inactive accounts', function() {
+    // PCI-DSS v4.0 §8.2.6 mandates disabling inactive accounts within
+    // 90 days — the preset flips the otherwise-safe default to suspend.
+    $overlay = PolicyPreset::PCI_DSS_V4->inactiveAccountOverlay();
+
+    expect($overlay['inactiveAccountsEnabled'])->toBeTrue()
+        ->and($overlay['inactiveAction'])->toBe('suspend')
+        ->and($overlay['inactiveThresholdDays'])->toBe(90);
+});
+
+it('opts the Strict Enterprise preset into suspend @ 90 days for inactive accounts', function() {
+    $overlay = PolicyPreset::STRICT_ENTERPRISE->inactiveAccountOverlay();
+
+    expect($overlay['inactiveAccountsEnabled'])->toBeTrue()
+        ->and($overlay['inactiveAction'])->toBe('suspend')
+        ->and($overlay['inactiveThresholdDays'])->toBe(90);
+});
+
+it('leaves the safe inactive-account default for NIST, OWASP, and CIS presets', function() {
+    // These presets do not opt into suspension — they return an empty
+    // overlay so the global setting keeps its non-destructive default.
+    expect(PolicyPreset::NIST_800_63B->inactiveAccountOverlay())->toBe([])
+        ->and(PolicyPreset::OWASP_ASVS->inactiveAccountOverlay())->toBe([])
+        ->and(PolicyPreset::CIS_CONTROLS_V8->inactiveAccountOverlay())->toBe([]);
+});
+
 it('gives all presets labels', function() {
     foreach (PolicyPreset::cases() as $preset) {
         expect($preset->label())->not->toBeEmpty();

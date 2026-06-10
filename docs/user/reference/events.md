@@ -222,6 +222,46 @@ Event::on(
 
 ---
 
+## `AccountInactiveEvent`
+
+**FQ class:** `craftpulse\passwordpolicy\events\AccountInactiveEvent`
+**Edition:** Pro (the inactive-account scan is a Pro surface)
+**Triggered by:** `PasswordPolicy::EVENT_ACCOUNT_INACTIVE`
+**When:** After the Feature 5 inactive-account scan actions a dormant account — once per actioned user, regardless of action mode. Fires AFTER the action takes effect (the `inactive-account` email was dispatched, or the user was suspended), so listeners observe a settled state. "Inactive" is measured against `users.lastLoginDate`, falling back to `users.dateCreated` for never-logged-in accounts.
+
+### Payload
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `$user` | `craft\elements\User` | The dormant user the scan actioned |
+| `$action` | `string` | The action taken: `report`, `notify`, or `suspend` |
+
+> The payload carries no password material. On Enterprise installs, the scan additionally writes an `account_inactive` audit row carrying only the action + a constant source string (`inactive_scan`) — never PII.
+
+### Example listener
+
+```php
+use yii\base\Event;
+use craftpulse\passwordpolicy\events\AccountInactiveEvent;
+use craftpulse\passwordpolicy\PasswordPolicy;
+
+Event::on(
+    PasswordPolicy::class,
+    PasswordPolicy::EVENT_ACCOUNT_INACTIVE,
+    function(AccountInactiveEvent $event) {
+        // E.g. open a deprovisioning ticket when an account is suspended.
+        if ($event->action === 'suspend') {
+            Craft::info(
+                sprintf('Inactive account suspended: user %d', $event->user->id),
+                'my-integration',
+            );
+        }
+    },
+);
+```
+
+---
+
 ## `PasswordValidationEvent`
 
 **FQ class:** `craftpulse\passwordpolicy\events\PasswordValidationEvent`

@@ -28,6 +28,7 @@ use yii\base\InvalidConfigException;
  * @property GeoIpService $geoIp
  * @property GroupAlertService $groupAlerts
  * @property HibpClientInterface $hibpClient
+ * @property InactiveAccountService $inactiveAccounts
  * @property PasswordHistoryService $passwordHistory
  * @property NotificationService $notification
  * @property NotificationActivityService $notificationActivity
@@ -70,6 +71,7 @@ trait ServicesTrait
                 'geoIp' => GeoIpService::class,
                 'groupAlerts' => GroupAlertService::class,
                 'hibpClient' => GuzzleHibpClient::class,
+                'inactiveAccounts' => InactiveAccountService::class,
                 'passwordHistory' => PasswordHistoryService::class,
                 'notification' => NotificationService::class,
                 'notificationActivity' => NotificationActivityService::class,
@@ -265,6 +267,26 @@ trait ServicesTrait
     public function getHibpClient(): HibpClientInterface
     {
         return $this->get('hibpClient');
+    }
+
+    /**
+     * Returns the inactive-account service.
+     *
+     * Owns the Feature 5 (Pro) detection query + the three action modes
+     * (`report` | `notify` | `suspend`). Detection + actions run on Pro;
+     * the `account_inactive` audit row is Enterprise-gated inside
+     * `applyAction()`.
+     *
+     * @return InactiveAccountService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getInactiveAccounts(): InactiveAccountService
+    {
+        return $this->get('inactiveAccounts');
     }
 
     /**

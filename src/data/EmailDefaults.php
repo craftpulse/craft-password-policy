@@ -132,6 +132,39 @@ class EmailDefaults
     }
 
     /**
+     * Returns the default content shape for the `inactive-account` notification.
+     *
+     * Sent by the Feature 5 scan (Pro) in `notify` mode to a user whose
+     * account has been dormant past the configured inactivity threshold.
+     * Awareness-only — the email asks the user to sign in to keep their
+     * account active; it does NOT itself suspend anything (that is the
+     * separate `suspend` action mode).
+     *
+     * @return array<string, string|null>
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public static function inactiveAccount(): array
+    {
+        return [
+            'subject' => 'Your {{ siteName }} account has been inactive',
+            'body' => "Hi {{ user.friendlyName ?? user.username }},\n\n"
+                . "We noticed you have not signed in to your {{ siteName }} account for a while. "
+                . "For security, accounts that stay inactive may be suspended.\n\n"
+                . "To keep your account active, simply sign in:\n\n"
+                . "  - Visit {{ siteName }} and log in as usual.\n\n"
+                . "If you no longer need this account, you can ignore this email and it may be "
+                . "suspended in line with our security policy.\n\n"
+                . "Thanks,\n"
+                . "The {{ siteName }} team",
+            'senderName' => null,
+            'senderEmail' => null,
+            'replyTo' => null,
+        ];
+    }
+
+    /**
      * Returns the default content shape for the `admin-security-alert` notification.
      *
      * Sent to the configured `adminAlertEmail` recipient on security
@@ -189,6 +222,7 @@ class EmailDefaults
             'expiry-reminder' => [self::class, 'expiryReminder'],
             'breach-detected' => [self::class, 'breachDetected'],
             'new-device-alert' => [self::class, 'newDeviceAlert'],
+            'inactive-account' => [self::class, 'inactiveAccount'],
             'admin-security-alert' => [self::class, 'adminSecurityAlert'],
         ];
     }

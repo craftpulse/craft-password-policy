@@ -74,6 +74,38 @@ enum PolicyPreset: string
     }
 
     /**
+     * Returns the inactive-account settings overlay this preset applies to
+     * the GLOBAL plugin settings (Feature 5).
+     *
+     * Inactive-account handling is a global setting, not a per-group policy
+     * field, so it lives here rather than on {@see GroupPolicyModel}. The
+     * PCI-DSS and Strict Enterprise presets opt INTO `suspend` at a 90-day
+     * threshold — PCI-DSS v4.0 §8.2.6 mandates disabling inactive accounts
+     * within 90 days, and NIST 800-53 AC-2(3) / ISO 27002 A.5.18 require the
+     * capability. The NIST 800-63B, OWASP, and CIS presets leave the safe
+     * non-destructive default (`report`, disabled) untouched — they return
+     * an empty overlay so `SettingsController::actionApplyPreset()` doesn't
+     * write the inactive keys at all.
+     *
+     * @return array<string, bool|int|string> a sparse map of inactive-key
+     *     overrides; empty when the preset doesn't opt into suspension
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function inactiveAccountOverlay(): array
+    {
+        return match ($this) {
+            self::PCI_DSS_V4, self::STRICT_ENTERPRISE => [
+                'inactiveAccountsEnabled' => true,
+                'inactiveAction' => 'suspend',
+                'inactiveThresholdDays' => 90,
+            ],
+            default => [],
+        };
+    }
+
+    /**
      * Converts the preset to a GroupPolicyModel with pre-configured values.
      *
      * @return GroupPolicyModel

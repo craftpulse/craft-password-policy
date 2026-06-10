@@ -271,6 +271,14 @@ class SettingsController extends Controller
             }
         }
 
+        // Inactive-account handling (Feature 5) is a GLOBAL setting, not a
+        // per-group policy field, so it overlays separately. The PCI-DSS +
+        // Strict Enterprise presets flip it to suspend @ 90 days; the others
+        // return an empty overlay and leave the safe default untouched.
+        foreach ($preset->inactiveAccountOverlay() as $key => $value) {
+            $settings[$key] = $value;
+        }
+
         // Re-strip edition-gated keys before persisting. `$existingSettings`
         // is the full attribute set, so a stale Enterprise/Pro key already
         // sitting in project config (e.g. left over from a downgrade) would
@@ -340,6 +348,10 @@ class SettingsController extends Controller
                 $settings['notificationLogRetentionDays'],
                 $settings['enableHibpOnLogin'],
                 $settings['minChangeIntervalHours'],
+                $settings['inactiveAccountsEnabled'],
+                $settings['inactiveThresholdDays'],
+                $settings['inactiveAction'],
+                $settings['inactiveNotifyAdmin'],
                 $settings['alertCooldowns'],
             );
         }

@@ -139,6 +139,12 @@ class AuditLogService extends Component
      * @var array<string, string[]>
      */
     public const ALLOWED_DETAILS_BY_EVENT = [
+        // Feature 5 inactive-account scan (Enterprise capture). `action`
+        // is the closed enum string (report|notify|suspend); `source` is
+        // the constant `inactive_scan`. Neither carries PII — the user is
+        // correlated by the row's HMAC'd `userIdentifier`, never by an
+        // identifier in the details payload.
+        'account_inactive' => ['action', 'source'],
         'account_locked' => ['source'],
         'account_unlocked' => ['source'],
         'breach_detected' => ['source'],
