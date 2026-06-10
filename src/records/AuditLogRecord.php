@@ -44,6 +44,8 @@ use yii\db\ActiveQueryInterface;
  * @property ?array $details
  * @property ?string $ipHash
  * @property ?string $userIdentifier
+ * @property ?string $geoCountry ISO 3166-1 alpha-2 country code — excluded from the canonical hash payload
+ * @property ?string $geoRegion subdivision/region name — excluded from the canonical hash payload
  * @property string $rowHash sha256(canonicalize(payload) . previousHash)
  * @property string $previousHash sha256 of prior row's rowHash (or genesis sentinel)
  * @property ?string $forwardedAt SIEM forwarder writeback — NULL = unforwarded

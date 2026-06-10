@@ -259,6 +259,20 @@ class SettingsModel extends Model
     public ?array $adminAlertEvents = null;
 
     /**
+     * @var bool whether IP geolocation enrichment is enabled. Opt-in
+     *     (default false) for GDPR data-minimisation. When on (and the
+     *     edition is Enterprise), `AuditLogService::logEvent()` resolves
+     *     the request IP to a country via the bundled DB-IP Lite
+     *     database and stores ONLY the country code + region in the
+     *     audit log — never the raw IP. The geo columns exist on every
+     *     edition (capture is universal); this flag plus the Enterprise
+     *     gate decide whether the enrichment actually runs.
+     *
+     * @since 5.2.0
+     */
+    public bool $geoIpEnabled = false;
+
+    /**
      * @var bool whether SIEM forwarding is enabled
      *
      * @since 5.2.0
@@ -776,6 +790,7 @@ class SettingsModel extends Model
                     'enableHibpOnLogin',
                     'enableAuditLog',
                     'enableNewDeviceAlerts',
+                    'geoIpEnabled',
                     'siemEnabled',
                     'webhooksEnabled',
                     'apiEnabled',

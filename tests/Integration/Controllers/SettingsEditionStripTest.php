@@ -71,6 +71,7 @@ function tieredSettings(): array
         'enableAuditLog' => true,
         'auditLogRetentionDays' => 365,
         // Enterprise exposure
+        'geoIpEnabled' => true,
         'siemEnabled' => true,
         'webhooksEnabled' => true,
         'apiEnabled' => true,
@@ -94,6 +95,7 @@ it('strips Pro and Enterprise keys on Lite', function() {
         // Audit CAPTURE is universal — survives even on Lite.
         ->and($result)->toHaveKey('enableAuditLog')
         ->and($result)->toHaveKey('auditLogRetentionDays')
+        ->and($result)->not->toHaveKey('geoIpEnabled')
         ->and($result)->not->toHaveKey('siemEnabled')
         ->and($result)->not->toHaveKey('webhooksEnabled')
         ->and($result)->not->toHaveKey('apiEnabled');
@@ -117,6 +119,7 @@ it('keeps Pro new-device-alert keys but strips Enterprise keys on Pro', function
         ->and($result)->toHaveKey('enableAuditLog')
         ->and($result)->toHaveKey('auditLogRetentionDays')
         // Enterprise EXPOSURE keys stripped.
+        ->and($result)->not->toHaveKey('geoIpEnabled')
         ->and($result)->not->toHaveKey('siemEnabled')
         ->and($result)->not->toHaveKey('webhooksEnabled')
         ->and($result)->not->toHaveKey('apiEnabled');

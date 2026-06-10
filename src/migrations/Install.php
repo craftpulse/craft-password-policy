@@ -176,6 +176,16 @@ class Install extends Migration
             'details' => $this->json(),
             'ipHash' => $this->string(),
             'userIdentifier' => $this->string(),
+            // Geolocation enrichment (Feature 4). Country code + region
+            // resolved from the request IP via the bundled DB-IP Lite
+            // database; the raw IP is NEVER stored. Both EXCLUDED from the
+            // canonical hash-chain payload — geo is post-insert metadata,
+            // same exclusion class as `forwardedAt`/`forwardAttempts`.
+            // Columns exist on every edition (capture is universal);
+            // population is gated on Enterprise + `geoIpEnabled` at the
+            // service call site.
+            'geoCountry' => $this->char(2)->null(),
+            'geoRegion' => $this->string()->null(),
             // Hash-chain columns. No DB-level default on fresh installs —
             // the chain-aware `AuditLogService::logEvent()` populates both
             // on insert from the genesis row onwards. The default `'0'`

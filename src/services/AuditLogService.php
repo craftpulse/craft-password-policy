@@ -382,12 +382,31 @@ class AuditLogService extends Component
             // IPv4's 32-bit space is rainbow-tableable, and rotating
             // the `auditPiiKey` should destroy correlation against
             // both columns symmetrically.
+            //
+            // The raw IP is also fed to the geolocation lookup (Feature
+            // 4) for country/region enrichment — but ONLY the resolved
+            // country code + region are stored, never the raw IP. Geo
+            // enrichment is gated on Enterprise + `geoIpEnabled`; the
+            // edition check lives here at the call site, while the
+            // `geoIpEnabled` flag is enforced inside `GeoIpService`
+            // (gate exposure, not capture — the columns exist on every
+            // edition regardless).
             $ipHash = null;
+            $geoCountry = null;
+            $geoRegion = null;
             $request = Craft::$app->getRequest();
             if (!$request->getIsConsoleRequest()) {
                 $ip = $request->getUserIP();
                 if ($ip !== null) {
                     $ipHash = hash_hmac('sha256', $ip, $this->_resolveAuditPiiKey());
+
+                    if (PasswordPolicy::$plugin->getIsEnterprise()) {
+                        $geo = PasswordPolicy::$plugin->getGeoIp()->lookup($ip);
+                        if ($geo !== null) {
+                            $geoCountry = $geo->countryCode;
+                            $geoRegion = $geo->region;
+                        }
+                    }
                 }
             }
 
@@ -433,6 +452,8 @@ class AuditLogService extends Component
                 $source,
                 $filteredDetails,
                 $ipHash,
+                $geoCountry,
+                $geoRegion,
                 $userIdentifier,
                 $dateCreated,
                 $uid,
@@ -485,6 +506,14 @@ class AuditLogService extends Component
                 $element->source = $source;
                 $element->details = $filteredDetails;
                 $element->ipHash = $ipHash;
+                // Geo enrichment — set on the element so afterSave()
+                // persists it, but DELIBERATELY absent from the
+                // canonicalize() payload above. Geo is post-insert
+                // metadata; including it in the hash would break every
+                // existing chain row (the verifier recomputes from the
+                // fixed key set only).
+                $element->geoCountry = $geoCountry;
+                $element->geoRegion = $geoRegion;
                 $element->userIdentifier = $userIdentifier;
                 $element->previousHash = $previousHash;
                 $element->rowHash = $rowHash;

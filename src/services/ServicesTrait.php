@@ -23,6 +23,7 @@ use yii\base\InvalidConfigException;
  * @property AuditLogService $auditLog
  * @property BlocklistService $blocklist
  * @property ComplianceAggregateService $complianceAggregates
+ * @property GeoIpService $geoIp
  * @property HibpClientInterface $hibpClient
  * @property PasswordHistoryService $passwordHistory
  * @property NotificationService $notification
@@ -61,6 +62,7 @@ trait ServicesTrait
                 'auditLog' => AuditLogService::class,
                 'blocklist' => BlocklistService::class,
                 'complianceAggregates' => ComplianceAggregateService::class,
+                'geoIp' => GeoIpService::class,
                 'hibpClient' => GuzzleHibpClient::class,
                 'passwordHistory' => PasswordHistoryService::class,
                 'notification' => NotificationService::class,
@@ -158,6 +160,25 @@ trait ServicesTrait
     public function getComplianceAggregates(): ComplianceAggregateService
     {
         return $this->get('complianceAggregates');
+    }
+
+    /**
+     * Returns the IP geolocation service.
+     *
+     * Resolves IPs to country/region via the bundled DB-IP Lite
+     * database. Returns `null` results when `geoIpEnabled` is off. The
+     * single entry point for audit enrichment + the new-device label.
+     *
+     * @return GeoIpService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getGeoIp(): GeoIpService
+    {
+        return $this->get('geoIp');
     }
 
     /**

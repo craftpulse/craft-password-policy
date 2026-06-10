@@ -122,6 +122,24 @@ class AuditLogElement extends Element
     public DateTime|string|null $forwardedAt = null;
 
     /**
+     * @var ?string ISO 3166-1 alpha-2 country code (e.g. `US`) resolved
+     *     from the request IP via the bundled DB-IP Lite database
+     *     (Feature 4). NULL when geolocation is disabled, the edition is
+     *     not Enterprise, or the IP could not be resolved. EXCLUDED from
+     *     the canonical hash-chain payload — post-insert enrichment, not
+     *     a hashed field.
+     */
+    public ?string $geoCountry = null;
+
+    /**
+     * @var ?string subdivision / region name resolved from the request
+     *     IP (Feature 4). Almost always NULL — the bundled DB-IP Lite
+     *     database is country-level. EXCLUDED from the canonical hash-
+     *     chain payload.
+     */
+    public ?string $geoRegion = null;
+
+    /**
      * @var ?string HMAC-SHA-256 of the client IP for post-deletion
      *     correlation without storing the raw IP. Keyed via
      *     `AuditLogService::_resolveAuditPiiKey()` — rotating the
@@ -513,6 +531,8 @@ class AuditLogElement extends Element
             : $this->details;
         $record->ipHash = $this->ipHash;
         $record->userIdentifier = $this->userIdentifier;
+        $record->geoCountry = $this->geoCountry;
+        $record->geoRegion = $this->geoRegion;
         $record->rowHash = $this->rowHash ?? '';
         $record->previousHash = $this->previousHash ?? '';
         $record->forwardedAt = $this->forwardedAt instanceof DateTime

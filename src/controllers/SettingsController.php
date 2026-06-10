@@ -350,6 +350,7 @@ class SettingsController extends Controller
             unset(
                 $settings['adminAlertEmail'],
                 $settings['adminAlertEvents'],
+                $settings['geoIpEnabled'],
                 $settings['siemEnabled'],
                 $settings['siemDestinationType'],
                 $settings['siemEndpointUrl'],
