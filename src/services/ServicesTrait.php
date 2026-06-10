@@ -20,6 +20,7 @@ use yii\base\InvalidConfigException;
  * @since     5.0.3
  *
  * @property AlertCooldownService $alertCooldown
+ * @property ApiTokenService $apiTokens
  * @property AuditLogService $auditLog
  * @property BlocklistService $blocklist
  * @property ComplianceAggregateService $complianceAggregates
@@ -63,6 +64,7 @@ trait ServicesTrait
         return [
             'components' => [
                 'alertCooldown' => AlertCooldownService::class,
+                'apiTokens' => ApiTokenService::class,
                 'auditLog' => AuditLogService::class,
                 'blocklist' => BlocklistService::class,
                 'complianceAggregates' => ComplianceAggregateService::class,
@@ -118,6 +120,27 @@ trait ServicesTrait
     public function getAlertCooldown(): AlertCooldownService
     {
         return $this->get('alertCooldown');
+    }
+
+    /**
+     * Returns the API token service.
+     *
+     * Owns the `passwordpolicy_api_tokens` read + write path for Feature 2
+     * (the read-only REST surface, Enterprise). Tokens are stored hashed
+     * (SHA-256) with a short display prefix; the plaintext is shown once at
+     * issue. No edition gate in the service — the gate lives on the CP
+     * token manager + the `ApiController` one layer up.
+     *
+     * @return ApiTokenService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getApiTokens(): ApiTokenService
+    {
+        return $this->get('apiTokens');
     }
 
     /**

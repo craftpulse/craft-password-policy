@@ -1,0 +1,177 @@
+{# REST API tokens — Enterprise CP index. Lists every issued token by
+   prefix + name + last-used + expiry, with an issue form and a per-row
+   revoke control. The freshly-minted plaintext (if any) rides in via the
+   `newToken` flash and is rendered ONCE in a copy panel. Edition-gated
+   upstream — by the time the route resolves the controller has already
+   enforced Enterprise + the `pp:api-manage` permission. #}
+{# @var tokens \craftpulse\passwordpolicy\models\ApiTokenModel[] #}
+{# @var newToken string|null #}
+{# @var readOnly bool #}
+
+{% requirePermission "pp:api-manage" %}
+
+{% extends "password-policy/_layouts/password-policy-cp.twig" %}
+{% import '_includes/forms.twig' as forms %}
+
+{% set selectedSubnavItem = 'api-tokens' %}
+{% set title = 'API tokens'|t('password-policy') %}
+{% set pluginName = 'Password Policy' %}
+{% set docTitle = "#{pluginName} - #{title}" %}
+{% set crumbs = [
+    { label: pluginName, url: cpUrl('password-policy') },
+] %}
+
+{% block content %}
+    {% if readOnly %}
+        {{ readOnlyNotice() }}
+    {% endif %}
+
+    <div class="readable">
+        <p>
+            {{ "Tokens authenticate the read-only REST API via an Authorization: Bearer header. Tokens are stored hashed — the plaintext is shown ONCE at issue and is never recoverable. Revoke a token to disable it immediately."|t('password-policy') }}
+        </p>
+    </div>
+
+    {# Once-and-only-once new-token panel — rendered immediately after issue,
+       gone on the next render. The token is high-entropy and non-identifying;
+       still rendered via |e for defence in depth. #}
+    {% if newToken is not null %}
+        <blockquote class="note warning" id="pp-api-new-token">
+            <p>
+                <strong>{{ 'Save this token now.'|t('password-policy') }}</strong>
+                {{ "It is shown ONCE. The plugin stores only a hash and cannot recover the plaintext later."|t('password-policy') }}
+            </p>
+            <p>
+                <code class="pp-api-token-value">{{ newToken }}</code>
+            </p>
+            <button type="button" class="btn small" id="pp-api-copy-token">
+                {{ 'Copy to clipboard'|t('password-policy') }}
+            </button>
+        </blockquote>
+    {% endif %}
+
+    {% if not readOnly %}
+        <div class="pane">
+            <h2>{{ 'Issue a token'|t('password-policy') }}</h2>
+            <form method="post" accept-charset="UTF-8">
+                {{ csrfInput() }}
+                {{ actionInput('password-policy/api-token/issue') }}
+                {{ redirectInput('password-policy/api-tokens') }}
+
+                {{ forms.textField({
+                    label: 'Name'|t('password-policy'),
+                    instructions: 'A label to identify this token (e.g. the consuming system).'|t('password-policy'),
+                    id: 'name',
+                    name: 'name',
+                    required: true,
+                }) }}
+
+                {{ forms.textField({
+                    label: 'Expires in (days)'|t('password-policy'),
+                    instructions: 'Leave blank or 0 for a token that never expires.'|t('password-policy'),
+                    id: 'expiresInDays',
+                    name: 'expiresInDays',
+                    type: 'number',
+                    size: 6,
+                    min: 0,
+                }) }}
+
+                <div class="buttons">
+                    <button type="submit" class="btn submit">{{ 'Issue token'|t('password-policy') }}</button>
+                </div>
+            </form>
+        </div>
+    {% endif %}
+
+    {% if tokens|length == 0 %}
+        <blockquote class="note tip">
+            <p>
+                <strong>{{ 'No tokens yet.'|t('password-policy') }}</strong>
+                {{ 'Issue a token above to start using the REST API.'|t('password-policy') }}
+            </p>
+        </blockquote>
+    {% else %}
+        <div class="tableview">
+            <table class="data fullwidth collapsible" id="pp-api-token-table">
+                <thead>
+                    <tr>
+                        <th scope="col">{{ 'Name'|t('app') }}</th>
+                        <th scope="col">{{ 'Prefix'|t('password-policy') }}</th>
+                        <th scope="col">{{ 'Last used'|t('password-policy') }}</th>
+                        <th scope="col">{{ 'Expires'|t('password-policy') }}</th>
+                        <th scope="col" class="thin"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for token in tokens %}
+                        <tr data-id="{{ token.id }}">
+                            <td>{{ token.name }}</td>
+                            <td class="code">{{ token.tokenPrefix }}…</td>
+                            <td>
+                                {{ token.lastUsedAt ? token.lastUsedAt|datetime : 'Never'|t('password-policy') }}
+                            </td>
+                            <td>
+                                {{ token.expiresAt ? token.expiresAt|datetime : 'No expiry'|t('password-policy') }}
+                            </td>
+                            <td class="thin">
+                                {% if not readOnly %}
+                                    <button type="button" class="btn small pp-api-revoke" data-icon="remove">
+                                        {{ 'Revoke'|t('password-policy') }}
+                                    </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+
+    {% js %}
+        (function() {
+            var copyBtn = document.getElementById('pp-api-copy-token');
+            if (copyBtn) {
+                copyBtn.addEventListener('click', function() {
+                    var el = document.querySelector('#pp-api-new-token .pp-api-token-value');
+                    if (el && navigator.clipboard) {
+                        navigator.clipboard.writeText(el.textContent).then(function() {
+                            Craft.cp.displayNotice({{ 'Token copied to clipboard.'|t('password-policy')|json_encode|raw }});
+                        });
+                    }
+                });
+            }
+
+            var confirmText = {{ 'Revoke this token? Any system using it will immediately lose access.'|t('password-policy')|json_encode|raw }};
+            var table = document.getElementById('pp-api-token-table');
+            if (table) {
+                table.addEventListener('click', function(e) {
+                    var btn = e.target.closest('.pp-api-revoke');
+                    if (!btn) { return; }
+                    if (!confirm(confirmText)) { return; }
+
+                    var row = btn.closest('tr');
+                    var id = row.getAttribute('data-id');
+
+                    var formData = new FormData();
+                    formData.append('id', id);
+                    formData.append(Craft.csrfTokenName, Craft.csrfTokenValue);
+
+                    fetch(Craft.getActionUrl('password-policy/api-token/revoke'), {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body: formData,
+                    }).then(function(r) { return r.json(); })
+                      .then(function(payload) {
+                          if (payload && payload.message) {
+                              Craft.cp.displayNotice(payload.message);
+                          }
+                          row.parentNode.removeChild(row);
+                      })
+                      .catch(function() {
+                          Craft.cp.displayError({{ 'Couldn’t revoke token.'|t('password-policy')|json_encode|raw }});
+                      });
+                });
+            }
+        })();
+    {% endjs %}
+{% endblock %}

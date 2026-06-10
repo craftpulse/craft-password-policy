@@ -38,7 +38,8 @@ class GcController extends Controller
      *
      * Purges expired data from: password history (respecting count
      * floor), audit log, notification log, alert cooldowns, known
-     * devices. Each table respects its configured retention period.
+     * devices, expired API tokens. Each table respects its configured
+     * retention period.
      *
      * @return int
      *
@@ -68,6 +69,9 @@ class GcController extends Controller
         }
         if (isset($results['knownDevices'])) {
             $this->stdout("Known devices: {$results['knownDevices']} entries purged (TTL: {$settings->deviceRetentionDays} days)\n");
+        }
+        if (isset($results['apiTokens'])) {
+            $this->stdout("API tokens: {$results['apiTokens']} expired tokens purged\n");
         }
 
         $this->stdout(str_repeat('-', 40) . "\n");

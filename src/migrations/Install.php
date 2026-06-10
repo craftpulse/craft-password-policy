@@ -55,6 +55,7 @@ class Install extends Migration
         $this->_createWebhookEndpointsTable();
         $this->_createKnownDevicesTable();
         $this->_createGroupAlertSubscriptionsTable();
+        $this->_createApiTokensTable();
         $this->_seedNotificationTemplateDefaults();
 
         return true;
@@ -85,6 +86,7 @@ class Install extends Migration
             ])
             ->execute();
 
+        $this->dropTableIfExists('{{%passwordpolicy_api_tokens}}');
         $this->dropTableIfExists('{{%passwordpolicy_group_alert_subscriptions}}');
         $this->dropTableIfExists('{{%passwordpolicy_known_devices}}');
         $this->dropTableIfExists('{{%passwordpolicy_webhook_endpoints}}');
@@ -728,6 +730,66 @@ class Install extends Migration
 
         $this->createIndex(null, $table, ['groupId', 'eventType'], false);
         $this->addForeignKey(null, $table, ['groupId'], '{{%usergroups}}', ['id'], 'CASCADE', null);
+    }
+
+    /**
+     * Creates the API tokens table — the registry of hashed Bearer tokens
+     * the Feature 2 read-only REST surface (`ApiController`) authenticates
+     * against. Mirror of {@see m260610_180223_AddApiTokensTable}; that
+     * migration runs on upgrade-from-2.15 sites, this private method runs
+     * on fresh installs.
+     *
+     * Security: the plaintext token is NEVER persisted. Only its SHA-256
+     * `tokenHash` (unique — the lookup key on `findByToken()`) and a short
+     * `tokenPrefix` (the first 8 chars, for CP display/identification) land
+     * on the row. The plaintext is returned exactly once at issue time and
+     * never recoverable thereafter — see
+     * {@see \craftpulse\passwordpolicy\services\ApiTokenService::issue()}.
+     *
+     * The REST surface is an Enterprise-only exposure (matches the existing
+     * `apiEnabled` setting). The table exists empty on Lite / Pro and that's
+     * the correct state per `project_audit_capture_principle.md` — but
+     * unlike the audit tables, NOTHING writes here on sub-editions because
+     * the only writer (the CP token manager) is Enterprise-gated.
+     *
+     * `createdByUserId` FK SET NULL + nullable — a token outlives the admin
+     * who issued it (revocation is an explicit operator action, not a
+     * cascade off the issuer's deletion). `expiresAt` nullable — null means
+     * "no expiry"; `findByToken()` rejects rows whose `expiresAt` is in the
+     * past.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _createApiTokensTable(): void
+    {
+        $table = '{{%passwordpolicy_api_tokens}}';
+
+        if ($this->db->tableExists($table)) {
+            return;
+        }
+
+        $this->createTable($table, [
+            'id' => $this->primaryKey(),
+            'name' => $this->string()->notNull(),
+            'tokenHash' => $this->char(64)->notNull(),
+            'tokenPrefix' => $this->string(16)->notNull(),
+            'scopes' => $this->json()->null(),
+            'lastUsedAt' => $this->dateTime()->null(),
+            'expiresAt' => $this->dateTime()->null(),
+            'createdByUserId' => $this->integer()->null(),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid' => $this->uid(),
+        ]);
+
+        // Unique on the hash — the `findByToken()` lookup key and the
+        // guarantee that two tokens can't collide on the same digest.
+        $this->createIndex(null, $table, ['tokenHash'], true);
+        $this->createIndex(null, $table, ['expiresAt'], false);
+        $this->addForeignKey(null, $table, ['createdByUserId'], Table::USERS, ['id'], 'SET NULL', null);
     }
 
     /**

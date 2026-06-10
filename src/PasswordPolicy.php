@@ -280,7 +280,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '2.15.0';
+    public string $schemaVersion = '2.16.0';
 
     /**
      * @var bool
@@ -445,6 +445,15 @@ class PasswordPolicy extends Plugin
         $results['knownDevices'] = $this->getDeviceTracking()->pruneOldDevices(
             $settings->deviceRetentionDays,
         );
+
+        // Expired API-token pruning (Feature 2) — deletes tokens whose
+        // `expiresAt` is in the past. No-expiry tokens (null `expiresAt`)
+        // are never touched. Runs on every edition: even though only
+        // Enterprise can ISSUE tokens, a downgrade-then-re-upgrade install
+        // could carry stale expired rows, and pruning a table that's empty
+        // on sub-editions is a no-op DELETE. Same architectural invariant
+        // as the prunes above — capture/cleanup everywhere, gate exposure.
+        $results['apiTokens'] = $this->getApiTokens()->pruneExpired();
 
         return $results;
     }
@@ -663,6 +672,17 @@ class PasswordPolicy extends Plugin
             ];
         }
 
+        // API tokens subnav (Enterprise) — Feature 2 REST surface. Sits
+        // after Webhooks, before Settings. Edition + permission gated; both
+        // must clear before the entry registers. The screen issues + revokes
+        // the Bearer tokens the read-only API authenticates against.
+        if ($this->getIsEnterprise() && $currentUser->can('pp:api-manage')) {
+            $subNavs['api-tokens'] = [
+                'label' => Craft::t('password-policy', 'API tokens'),
+                'url' => 'password-policy/api-tokens',
+            ];
+        }
+
         // Settings visible in read-only mode too (admins can view active policy)
         if ($currentUser->can('pp:settings')) {
             $subNavs['settings'] = [
@@ -800,6 +820,13 @@ class PasswordPolicy extends Plugin
         // Safety net: clear any remaining cached passwords at end of request
         $this->_registerRequestCleanup();
 
+        // Feature 2 REST API (Enterprise) — token-authed GET routes under
+        // the front-end (site) URL space. Registered unconditionally; the
+        // ApiController's beforeAction() enforces the Enterprise + apiEnabled
+        // gate, so a sub-edition install resolves the route then 403/404s
+        // rather than 404-ing on an unknown route (clearer to integrators).
+        $this->_registerSiteUrlRules();
+
         $this->_registerElementTypes();
         $this->_registerUserPermissions();
         $this->_registerUtilities();
@@ -889,6 +916,9 @@ class PasswordPolicy extends Plugin
                         // `kebab-case` → `actionCamelCase`).
                         'password-policy/reports/<report:[\w\-]+>/html' => 'password-policy/report/html',
                         'password-policy/reports/<report:[\w\-]+>/csv' => 'password-policy/report/csv',
+                        'password-policy/api-tokens' => 'password-policy/api-token/index',
+                        'password-policy/api-tokens/issue' => 'password-policy/api-token/issue',
+                        'password-policy/api-tokens/revoke' => 'password-policy/api-token/revoke',
                         'password-policy/user-password/change' => 'password-policy/user-password/change',
                         'password-policy/user-password/send-reset-email' => 'password-policy/user-password/send-reset-email',
                         'password-policy/users/<userId:\d+>/security' => 'password-policy/user-security/index',
@@ -897,6 +927,40 @@ class PasswordPolicy extends Plugin
                     $event->rules
                 );
             }
+        );
+    }
+
+    /**
+     * Registers front-end (site) URL rules for the Feature 2 read-only REST
+     * API (Enterprise). All routes are versioned under `/v1/` and map to
+     * {@see \craftpulse\passwordpolicy\controllers\ApiController}. Auth is
+     * Bearer-token, not session — the controller's `beforeAction()` owns
+     * the edition + `apiEnabled` + token + rate-limit gates.
+     *
+     * Routes are site routes (not CP) because the consumers are external
+     * machine clients presenting a token, not CP-session admins. The `uid`
+     * path segment matches Craft's element-UID shape (`{uid}` token).
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerSiteUrlRules(): void
+    {
+        Event::on(
+            UrlManager::class,
+            UrlManager::EVENT_REGISTER_SITE_URL_RULES,
+            function(RegisterUrlRulesEvent $event) {
+                $event->rules = array_merge(
+                    [
+                        'password-policy/api/v1/users/<uid:{uid}>/password-status' => 'password-policy/api/password-status',
+                        'password-policy/api/v1/policy/resolve' => 'password-policy/api/resolve-policy',
+                        'password-policy/api/v1/audit' => 'password-policy/api/audit',
+                    ],
+                    $event->rules,
+                );
+            },
         );
     }
 
@@ -1012,6 +1076,20 @@ class PasswordPolicy extends Plugin
                         'label' => Craft::t(
                             'password-policy',
                             'Trigger audit-log exports (CP utility + CLI). Produces a downloadable file capable of leaving the host — separate from view access.',
+                        ),
+                    ];
+
+                    // REST API token management (Feature 2) is an
+                    // Enterprise-only write surface — issuing a token mints
+                    // a long-lived read credential for the whole audit /
+                    // user-status surface, so it's a privileged operation.
+                    // Flat (not nested) — single-purpose (manage tokens);
+                    // there is no view-vs-manage split (the token list is
+                    // part of the same management screen).
+                    $permissions['pp:api-manage'] = [
+                        'label' => Craft::t(
+                            'password-policy',
+                            'Manage REST API tokens (issue + revoke read-only Bearer credentials).',
                         ),
                     ];
                 }

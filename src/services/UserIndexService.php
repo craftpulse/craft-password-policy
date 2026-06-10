@@ -269,6 +269,82 @@ class UserIndexService extends Component
     }
 
     /**
+     * Returns the discrete password-status flags for a user as a structured
+     * array — the read model behind the Feature 2 REST `password-status`
+     * endpoint. Derives each flag from the same preloaded cache + expiry
+     * window the composite badge uses, so the API and the Users-index badge
+     * never disagree.
+     *
+     * Self-preloads for the single user (one query burst), so callers don't
+     * need to invoke {@see self::preloadForUsers()} first.
+     *
+     * The shape is deliberately boolean-and-scalar only — no raw history
+     * rows, no policy snapshots, no breach hashes. `lastChange` is an ISO-8601
+     * string (or null); `status` is one of the {@see self::STATUS_*}
+     * constants.
+     *
+     * @param User $user
+     * @return array{
+     *     status: string,
+     *     expired: bool,
+     *     expiringSoon: bool,
+     *     breached: bool,
+     *     resetRequired: bool,
+     *     neverChanged: bool,
+     *     lastChange: ?string,
+     *     daysUntilExpiry: ?int,
+     * }
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getStatusFlagsForUser(User $user): array
+    {
+        $this->preloadForUsers([(int)$user->id]);
+
+        $cached = $this->_getCachedForUser((int)$user->id);
+        $status = $this->getStatusForUser($user);
+
+        $expiryThreshold = $this->_getExpiryThreshold();
+        $lastChange = $cached['lastChange'];
+
+        $expired = $expiryThreshold !== null
+            && $lastChange instanceof DateTime
+            && $lastChange < $expiryThreshold;
+
+        $breached = false;
+        if ($cached['lastBreachAt'] instanceof DateTime) {
+            $cutoff = (new DateTime('now'))->modify('-' . self::BREACHED_RECENT_DAYS . ' days');
+            $breached = $cached['lastBreachAt'] >= $cutoff;
+        }
+
+        $daysUntilExpiry = null;
+        if ($expiryThreshold !== null && $lastChange instanceof DateTime) {
+            $interval = $this->_getExpiryInterval();
+            if ($interval !== null) {
+                $expiresAt = (clone $lastChange)->add($interval);
+                $secondsLeft = $expiresAt->getTimestamp() - (new DateTime('now'))->getTimestamp();
+                $daysUntilExpiry = (int)floor($secondsLeft / 86400);
+            }
+        }
+
+        $expiringSoon = $status === self::STATUS_EXPIRING;
+
+        return [
+            'status' => $status,
+            'expired' => $expired,
+            'expiringSoon' => $expiringSoon,
+            'breached' => $breached,
+            'resetRequired' => (bool)$cached['passwordResetRequired'],
+            'neverChanged' => $lastChange === null,
+            'lastChange' => $lastChange instanceof DateTime
+                ? $lastChange->format(DateTimeInterface::ATOM)
+                : null,
+            'daysUntilExpiry' => $daysUntilExpiry,
+        ];
+    }
+
+    /**
      * Returns the table-attribute registration array for
      * `Element::EVENT_REGISTER_TABLE_ATTRIBUTES`. Three independent
      * gates apply:

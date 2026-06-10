@@ -43,6 +43,27 @@ class WebRequestStub extends Request
     public array $stubBodyParams = [];
 
     /**
+     * Stubbed query-string params, keyed by name. Lets token-authed GET
+     * endpoints (`ApiController`) read `from` / `to` / `limit` / `offset` /
+     * `userUid` without a real query string.
+     *
+     * @var array<string, mixed>
+     *
+     * @since 5.2.0
+     */
+    public array $stubQueryParams = [];
+
+    /**
+     * Stubbed request headers, keyed by (case-insensitive) name. Lets
+     * Bearer-token tests set `Authorization` without a real HTTP layer.
+     *
+     * @var array<string, string>
+     *
+     * @since 5.2.0
+     */
+    public array $stubHeaders = [];
+
+    /**
      * @var bool
      */
     public bool $stubIsPost = true;
@@ -234,6 +255,38 @@ class WebRequestStub extends Request
     public function getIsOptions(): bool
     {
         return false;
+    }
+
+    /**
+     * @inheritdoc
+     *
+     * Builds a fresh `HeaderCollection` from `$stubHeaders` on each call so
+     * mid-test header changes are reflected. Yii's collection is
+     * case-insensitive on `get()`, matching real HTTP behaviour.
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getHeaders(): \yii\web\HeaderCollection
+    {
+        $collection = new \yii\web\HeaderCollection();
+
+        foreach ($this->stubHeaders as $name => $value) {
+            $collection->set($name, $value);
+        }
+
+        return $collection;
+    }
+
+    /**
+     * @inheritdoc
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getQueryParam($name, $defaultValue = null): mixed
+    {
+        return $this->stubQueryParams[$name] ?? $defaultValue;
     }
 
     /**

@@ -193,6 +193,16 @@ class AuditLogService extends Component
      */
     public const CANONICAL_DATE_FORMAT = 'Y-m-d\TH:i:s\Z';
 
+    /**
+     * Upper bound on the per-page row count the Feature 2 REST `audit`
+     * endpoint will return, regardless of the caller's `limit` param. Caps
+     * the cost of an unauthenticated-to-the-DB pagination loop and keeps a
+     * single response bounded.
+     *
+     * @var int
+     */
+    public const MAX_API_QUERY_LIMIT = 200;
+
     // Static Methods
     // =========================================================================
 
@@ -288,6 +298,92 @@ class AuditLogService extends Component
         }
 
         return $query->all();
+    }
+
+    /**
+     * Returns a redacted, paginated slice of the audit log for the Feature 2
+     * REST `audit` endpoint. Read-only — no chain internals, no identifying
+     * hashes leak.
+     *
+     * The exposed column set is deliberately narrow: `id`, `userId`,
+     * `event`, `outcome`, `source`, the already-allowlisted privacy-safe
+     * `details` payload, the country/region geo enrichment, `dateCreated`,
+     * and `uid`. The `ipHash`, `userIdentifier`, `rowHash`, and
+     * `previousHash` columns are NEVER serialised — `ipHash` /
+     * `userIdentifier` can be identifying, and the chain hashes are
+     * tamper-evidence internals that a read consumer has no use for.
+     *
+     * `$from` / `$to` filter on `dateCreated` (inclusive lower / upper).
+     * `$limit` is clamped to {@see self::MAX_API_QUERY_LIMIT}; `$offset`
+     * floors at 0. Rows come back newest-first.
+     *
+     * @param string|null $from inclusive lower bound (any strtotime-parseable
+     *     string, treated as UTC), or null for no lower bound
+     * @param string|null $to inclusive upper bound, or null for no upper bound
+     * @param int $limit max rows (clamped)
+     * @param int $offset skip count (floored at 0)
+     * @return array{total: int, limit: int, offset: int, rows: array<int, array<string, mixed>>}
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function queryEvents(?string $from = null, ?string $to = null, int $limit = 50, int $offset = 0): array
+    {
+        $limit = max(1, min($limit, self::MAX_API_QUERY_LIMIT));
+        $offset = max(0, $offset);
+
+        $columns = [
+            'id',
+            'userId',
+            'event',
+            'outcome',
+            'source',
+            'details',
+            'geoCountry',
+            'geoRegion',
+            'dateCreated',
+            'uid',
+        ];
+
+        $conditions = ['and'];
+
+        if ($from !== null && $from !== '') {
+            $conditions[] = ['>=', 'dateCreated', Carbon::parse($from, 'UTC')->format('Y-m-d H:i:s')];
+        }
+
+        if ($to !== null && $to !== '') {
+            $conditions[] = ['<=', 'dateCreated', Carbon::parse($to, 'UTC')->format('Y-m-d H:i:s')];
+        }
+
+        $baseQuery = (new Query())
+            ->from('{{%passwordpolicy_audit_log}}')
+            ->where($conditions);
+
+        $total = (int)(clone $baseQuery)->count();
+
+        $rows = (clone $baseQuery)
+            ->select($columns)
+            ->orderBy(['dateCreated' => SORT_DESC, 'id' => SORT_DESC])
+            ->limit($limit)
+            ->offset($offset)
+            ->all();
+
+        // Normalise the JSON `details` column to a decoded array (or null)
+        // so the endpoint emits structured JSON, not a JSON-string-in-JSON.
+        foreach ($rows as &$row) {
+            if (isset($row['details']) && is_string($row['details'])) {
+                $decoded = Json::decodeIfJson($row['details']);
+                $row['details'] = is_array($decoded) ? $decoded : null;
+            }
+        }
+        unset($row);
+
+        return [
+            'total' => $total,
+            'limit' => $limit,
+            'offset' => $offset,
+            'rows' => $rows,
+        ];
     }
 
     /**
