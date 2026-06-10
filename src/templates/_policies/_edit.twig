@@ -164,6 +164,20 @@
         disabled: readOnly,
     }) }}
 
+    {{ forms.textField({
+        label: 'Minimum change interval (hours)'|t('password-policy'),
+        instructions: 'Block re-changing the password again within this many hours (0 = disabled). Leave empty to inherit global.'|t('password-policy'),
+        warning: (policy.minChangeIntervalHours is not null and policy.minChangeIntervalHours != (globalSettings.minChangeIntervalHours ?? 0)) ? overrideWarning(globalSettings.minChangeIntervalHours ?? 0),
+        fieldClass: 'minChangeIntervalHours' in divergentFields ? 'pp-divergent',
+        id: 'settings-minChangeIntervalHours',
+        name: 'settings[minChangeIntervalHours]',
+        value: policy.minChangeIntervalHours ?? '',
+        type: 'number',
+        inputAttributes: { style: 'width: 6rem', min: 0 },
+        errors: policy.getErrors('minChangeIntervalHours'),
+        disabled: readOnly,
+    }) }}
+
     <hr>
 
     {# ----- HIBP fail mode ----- #}
@@ -402,15 +416,15 @@
     // Use '' (inherit) where the PHP enum leaves a field unset so that
     // applying a preset produces a policy with 0 divergence.
     var presets = {{ {
-        nist_800_63b: { minLength: 15, maxLength: '', cases: '0', numbers: '0', symbols: '0', hibp: '1', hibpFailMode: '', passwordHistoryCount: '', checkSequentialChars: '', checkRepeatedChars: '', checkContextual: '', checkCommonPasswords: '', expiryAmount: '', expiryPeriod: 'day' },
-        owasp_asvs: { minLength: 12, maxLength: 128, cases: '0', numbers: '0', symbols: '0', hibp: '1', hibpFailMode: '', passwordHistoryCount: '', checkSequentialChars: '', checkRepeatedChars: '', checkContextual: '', checkCommonPasswords: '', expiryAmount: '', expiryPeriod: 'day' },
-        pci_dss_v4: { minLength: 12, maxLength: '', cases: '1', numbers: '1', symbols: '', hibp: '1', hibpFailMode: '', passwordHistoryCount: 4, checkSequentialChars: '', checkRepeatedChars: '', checkContextual: '', checkCommonPasswords: '1', expiryAmount: 90, expiryPeriod: 'day' },
-        strict_enterprise: { minLength: 12, maxLength: '', cases: '1', numbers: '1', symbols: '1', hibp: '1', hibpFailMode: 'closed', passwordHistoryCount: 5, checkSequentialChars: '1', checkRepeatedChars: '1', checkContextual: '1', checkCommonPasswords: '1', expiryAmount: 90, expiryPeriod: 'day' },
+        nist_800_63b: { minLength: 15, maxLength: '', cases: '0', numbers: '0', symbols: '0', hibp: '1', hibpFailMode: '', passwordHistoryCount: '', minChangeIntervalHours: '', checkSequentialChars: '', checkRepeatedChars: '', checkContextual: '', checkCommonPasswords: '', expiryAmount: '', expiryPeriod: 'day' },
+        owasp_asvs: { minLength: 12, maxLength: 128, cases: '0', numbers: '0', symbols: '0', hibp: '1', hibpFailMode: '', passwordHistoryCount: '', minChangeIntervalHours: '', checkSequentialChars: '', checkRepeatedChars: '', checkContextual: '', checkCommonPasswords: '', expiryAmount: '', expiryPeriod: 'day' },
+        pci_dss_v4: { minLength: 12, maxLength: '', cases: '1', numbers: '1', symbols: '', hibp: '1', hibpFailMode: '', passwordHistoryCount: 4, minChangeIntervalHours: '', checkSequentialChars: '', checkRepeatedChars: '', checkContextual: '', checkCommonPasswords: '1', expiryAmount: 90, expiryPeriod: 'day' },
+        strict_enterprise: { minLength: 12, maxLength: '', cases: '1', numbers: '1', symbols: '1', hibp: '1', hibpFailMode: 'closed', passwordHistoryCount: 5, minChangeIntervalHours: '', checkSequentialChars: '1', checkRepeatedChars: '1', checkContextual: '1', checkCommonPasswords: '1', expiryAmount: 90, expiryPeriod: 'day' },
     }|json_encode|raw }};
 
     var defaults = {
         minLength: '', maxLength: '', cases: '', numbers: '', symbols: '',
-        hibp: '', hibpFailMode: '', passwordHistoryCount: '',
+        hibp: '', hibpFailMode: '', passwordHistoryCount: '', minChangeIntervalHours: '',
         checkSequentialChars: '', checkRepeatedChars: '',
         checkContextual: '', checkCommonPasswords: '',
         expiryAmount: '', expiryPeriod: 'day'
@@ -493,7 +507,7 @@
     function applyPreset(presetKey) {
         var p = presets[presetKey] || defaults;
 
-        ['minLength', 'maxLength', 'passwordHistoryCount', 'expiryAmount'].forEach(function(field) {
+        ['minLength', 'maxLength', 'passwordHistoryCount', 'minChangeIntervalHours', 'expiryAmount'].forEach(function(field) {
             var el = document.getElementById('settings-' + field);
             if (el) {
                 el.value = p[field] !== undefined ? p[field] : '';
@@ -535,7 +549,7 @@
     var resetBtn = document.getElementById('pp-reset-rules');
     if (resetBtn) {
         resetBtn.addEventListener('click', function() {
-            ['settings-minLength', 'settings-maxLength', 'settings-passwordHistoryCount'].forEach(function(id) {
+            ['settings-minLength', 'settings-maxLength', 'settings-passwordHistoryCount', 'settings-minChangeIntervalHours'].forEach(function(id) {
                 var el = document.getElementById(id);
                 if (el) {
                     el.value = '';

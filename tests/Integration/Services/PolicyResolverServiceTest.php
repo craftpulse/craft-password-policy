@@ -45,6 +45,7 @@ beforeEach(function() {
     $this->originalNumbers = $this->settings->numbers;
     $this->originalSymbols = $this->settings->symbols;
     $this->originalHibp = $this->settings->hibp;
+    $this->originalMinChangeInterval = $this->settings->minChangeIntervalHours;
 
     // Resolver tests run against Pro by default (the gate blocks Lite).
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
@@ -60,6 +61,7 @@ afterEach(function() {
     $this->settings->numbers = $this->originalNumbers;
     $this->settings->symbols = $this->originalSymbols;
     $this->settings->hibp = $this->originalHibp;
+    $this->settings->minChangeIntervalHours = $this->originalMinChangeInterval;
 });
 
 // =============================================================================
@@ -239,6 +241,72 @@ it('merges expiration across mixed periods (shortest wins)', function() {
     // 90 days < 6 months (≈180 days) — managers' policy wins.
     expect($resolved->expiryAmount)->toBe(90)
         ->and($resolved->expiryPeriod)->toBe('day');
+});
+
+// =============================================================================
+// Minimum change interval — global resolve, override, max-wins, hazard
+// =============================================================================
+
+it('resolves the global minChangeIntervalHours when no policy overrides it', function() {
+    $this->settings->minChangeIntervalHours = 24;
+
+    $group = GroupFactory::create();
+    PolicyFactory::custom(['minLength' => 12], [$group]);
+
+    $user = UserFactory::admin();
+    $user->setGroups([$group]);
+
+    $resolved = $this->resolver->resolveForUser($user);
+
+    expect($resolved->minChangeIntervalHours)->toBe(24);
+});
+
+it('lets a group override the global minChangeIntervalHours', function() {
+    $this->settings->minChangeIntervalHours = 12;
+
+    $group = GroupFactory::create();
+    PolicyFactory::custom(['minChangeIntervalHours' => 48], [$group]);
+
+    $user = UserFactory::admin();
+    $user->setGroups([$group]);
+
+    $resolved = $this->resolver->resolveForUser($user);
+
+    expect($resolved->minChangeIntervalHours)->toBe(48);
+});
+
+it('merges minChangeIntervalHours across multiple groups (longest interval wins)', function() {
+    $this->settings->minChangeIntervalHours = 6;
+
+    $editors = GroupFactory::editors();
+    $managers = GroupFactory::managers();
+
+    PolicyFactory::custom(['minChangeIntervalHours' => 24], [$editors]);
+    PolicyFactory::custom(['minChangeIntervalHours' => 72], [$managers]);
+
+    $user = UserFactory::admin();
+    $user->setGroups([$editors, $managers]);
+
+    $resolved = $this->resolver->resolveForUser($user);
+
+    expect($resolved->minChangeIntervalHours)->toBe(72);
+});
+
+it('enforces a group minChangeIntervalHours override even when the global is 0', function() {
+    // The canonical per-group-resolution hazard regression: the global
+    // interval is disabled (0), but a group override of 24 must resolve.
+    // Re-reading the global would silently no-op the paid per-group rule.
+    $this->settings->minChangeIntervalHours = 0;
+
+    $group = GroupFactory::create();
+    PolicyFactory::custom(['minChangeIntervalHours' => 24], [$group]);
+
+    $user = UserFactory::admin();
+    $user->setGroups([$group]);
+
+    $resolved = $this->resolver->resolveForUser($user);
+
+    expect($resolved->minChangeIntervalHours)->toBe(24);
 });
 
 // =============================================================================

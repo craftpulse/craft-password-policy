@@ -75,6 +75,13 @@ class GroupPolicyModel extends Model
     public ?int $passwordHistoryCount = null;
 
     /**
+     * @var int|null minimum change interval in hours (null = inherit global)
+     *
+     * @since 5.2.0
+     */
+    public ?int $minChangeIntervalHours = null;
+
+    /**
      * @var bool|null check sequential chars (null = inherit global)
      */
     public ?bool $checkSequentialChars = null;
@@ -144,6 +151,9 @@ class GroupPolicyModel extends Model
         }
         if ($this->minimumCharacterTypes !== null) {
             $merged->minimumCharacterTypes = max($merged->minimumCharacterTypes, $this->minimumCharacterTypes);
+        }
+        if ($this->minChangeIntervalHours !== null) {
+            $merged->minChangeIntervalHours = max($merged->minChangeIntervalHours, $this->minChangeIntervalHours);
         }
 
         // Integer maximums: lowest non-zero wins

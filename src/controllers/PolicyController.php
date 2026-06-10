@@ -459,6 +459,7 @@ class PolicyController extends Controller
             'passwordHistoryCount',
             'expiryAmount',
             'minimumCharacterTypes',
+            'minChangeIntervalHours',
         ];
 
         // minLength and maxLength may hold env references (e.g. `$PP_MIN_LENGTH`) —

@@ -339,6 +339,7 @@ class SettingsController extends Controller
                 $settings['enablePerGroupPolicies'],
                 $settings['notificationLogRetentionDays'],
                 $settings['enableHibpOnLogin'],
+                $settings['minChangeIntervalHours'],
                 $settings['alertCooldowns'],
             );
         }

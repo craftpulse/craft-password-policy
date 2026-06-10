@@ -16,6 +16,7 @@ use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\validators\CommonPasswordValidator;
 use craftpulse\passwordpolicy\validators\ContextualValidator;
 use craftpulse\passwordpolicy\validators\HibpValidator;
+use craftpulse\passwordpolicy\validators\MinChangeIntervalValidator;
 use craftpulse\passwordpolicy\validators\MinimumCharacterTypesValidator;
 use craftpulse\passwordpolicy\validators\PasswordHistoryValidator;
 use craftpulse\passwordpolicy\validators\RepeatedCharsValidator;
@@ -178,6 +179,21 @@ class UserRules
                 ['password', 'newPassword'],
                 PasswordHistoryValidator::class,
                 'passwordHistoryCount' => $settings->passwordHistoryCount,
+                'skipOnError' => false,
+            ];
+        }
+
+        // Minimum change interval (Pro). Thread the resolved per-user
+        // interval through so a per-group override is enforced at save —
+        // the validator falls back to the global value only when null
+        // (AJAX/preview contexts without a target user). Re-reading the
+        // global inside the validator would silently no-op the per-group
+        // override (project_per_group_resolution_hazard.md).
+        if ($isPro && $settings->minChangeIntervalHours > 0) {
+            $rules[] = [
+                ['password', 'newPassword'],
+                MinChangeIntervalValidator::class,
+                'minChangeIntervalHours' => $settings->minChangeIntervalHours,
                 'skipOnError' => false,
             ];
         }

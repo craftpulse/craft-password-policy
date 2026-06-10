@@ -211,6 +211,20 @@ class SettingsModel extends Model
     public int $notificationLogRetentionDays = 30;
 
     /**
+     * @var int the minimum number of hours that must elapse between two
+     *     password changes for the same user (0 = disabled, default 24).
+     *     Blocks a user re-changing their password within the window —
+     *     closes the "cycle N+1 changes to flush the reuse history"
+     *     evasion. Pro feature, per-group overridable via
+     *     `PolicyResolverService` (most-restrictive / longest-interval
+     *     wins). Admin/HIBP/expiry/first-login forced resets bypass the
+     *     interval — see `MinChangeIntervalValidator`.
+     *
+     * @since 5.2.0
+     */
+    public int $minChangeIntervalHours = 0;
+
+    /**
      * @var bool whether to check the user's plaintext password against the HIBP
      *     breach database during login (Pro). Hashes the password to SHA-1 in
      *     memory and submits only the 5-char k-anonymity prefix; never logs
@@ -862,6 +876,13 @@ class SettingsModel extends Model
                 'min' => 0,
                 'max' => 4,
                 'message' => Craft::t('password-policy', 'Minimum character types must be between 0 and 4.'),
+            ],
+            [
+                ['minChangeIntervalHours'],
+                'number',
+                'integerOnly' => true,
+                'min' => 0,
+                'message' => Craft::t('password-policy', 'Minimum change interval must be 0 or more hours.'),
             ],
             [
                 ['passwordHistoryExpiryDays'],

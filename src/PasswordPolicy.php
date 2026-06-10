@@ -264,7 +264,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '2.14.0';
+    public string $schemaVersion = '2.15.0';
 
     /**
      * @var bool

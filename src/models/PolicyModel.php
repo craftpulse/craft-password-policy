@@ -111,6 +111,13 @@ class PolicyModel extends Model
     public ?int $passwordHistoryCount = null;
 
     /**
+     * @var int|null minimum change interval in hours (null = inherit global)
+     *
+     * @since 5.2.0
+     */
+    public ?int $minChangeIntervalHours = null;
+
+    /**
      * @var bool|null check sequential chars (null = inherit global)
      */
     public ?bool $checkSequentialChars = null;
@@ -222,6 +229,7 @@ class PolicyModel extends Model
             'hibp',
             'hibpFailMode',
             'passwordHistoryCount',
+            'minChangeIntervalHours',
             'checkSequentialChars',
             'checkRepeatedChars',
             'checkContextual',
