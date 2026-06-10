@@ -27,8 +27,12 @@ use RuntimeException;
  *    front-end render builders on the `craft.passwordPolicy.*` Twig
  *    variable. Twig surfaces the exception in dev mode and renders the
  *    friendly error template in production.
- *  - `NotificationService::sendBreachDetected()` / `sendNewDeviceAlert()`
- *    — Pro-gated notification dispatch surfaces.
+ *  - `NotificationService::sendBreachDetected()` — Pro-gated breach
+ *    notification dispatch.
+ *  - `NotificationService::sendNewDeviceAlert()` /
+ *    `sendAdminSecurityAlert()` — Enterprise-gated notification dispatch
+ *    surfaces. (Device-row capture stays universal; only the alert email
+ *    is gated.)
  *
  * HTTP controllers continue to use `yii\web\ForbiddenHttpException` for
  * edition gates because Craft's web layer expects an HttpException to

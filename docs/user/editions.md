@@ -37,7 +37,9 @@ PasswordPolicy::$plugin->isCraftTeamOrBetter();  // Team / Pro / Enterprise
 | Per-group named policies + history overrides | | ✓ | ✓ |
 | Compliance preset one-click apply (NIST / OWASP / PCI-DSS / CIS / Strict) | | ✓ | ✓ |
 | Expiry-reminder email (cron + queue) | ✓ stock template | ✓ editor + resend | ✓ |
-| Breach-detected email + new-device alert | | ✓ | ✓ |
+| Breach-detected email | | ✓ | ✓ |
+| New-device tracking (capture) | ✓ | ✓ | ✓ |
+| New-device alert email + audit | | | ✓ |
 | Notification activity log (CP screen) | | ✓ | ✓ |
 | Sequential / repeated / contextual validators | | ✓ | ✓ |
 | Common-password blocklist toggle | ✓ | ✓ | ✓ |

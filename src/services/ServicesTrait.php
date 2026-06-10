@@ -23,6 +23,8 @@ use yii\base\InvalidConfigException;
  * @property AuditLogService $auditLog
  * @property BlocklistService $blocklist
  * @property ComplianceAggregateService $complianceAggregates
+ * @property DeviceLabelService $deviceLabel
+ * @property DeviceTrackingService $deviceTracking
  * @property GeoIpService $geoIp
  * @property HibpClientInterface $hibpClient
  * @property PasswordHistoryService $passwordHistory
@@ -62,6 +64,8 @@ trait ServicesTrait
                 'auditLog' => AuditLogService::class,
                 'blocklist' => BlocklistService::class,
                 'complianceAggregates' => ComplianceAggregateService::class,
+                'deviceLabel' => DeviceLabelService::class,
+                'deviceTracking' => DeviceTrackingService::class,
                 'geoIp' => GeoIpService::class,
                 'hibpClient' => GuzzleHibpClient::class,
                 'passwordHistory' => PasswordHistoryService::class,
@@ -160,6 +164,46 @@ trait ServicesTrait
     public function getComplianceAggregates(): ComplianceAggregateService
     {
         return $this->get('complianceAggregates');
+    }
+
+    /**
+     * Returns the device-label service.
+     *
+     * Pure transforms — user-agent → human-readable label, raw IP →
+     * masked IP. Used by {@see getDeviceTracking()} and the new-device
+     * alert wiring. No edition gate (capture is universal).
+     *
+     * @return DeviceLabelService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getDeviceLabel(): DeviceLabelService
+    {
+        return $this->get('deviceLabel');
+    }
+
+    /**
+     * Returns the device-tracking service.
+     *
+     * Owns the `passwordpolicy_known_devices` write + read path for
+     * Feature 1. `recordLogin()` writes on every edition (capture is
+     * universal per `project_audit_capture_principle.md`); the
+     * new-device alert email + audit exposure are Enterprise-gated one
+     * layer up at the listener.
+     *
+     * @return DeviceTrackingService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getDeviceTracking(): DeviceTrackingService
+    {
+        return $this->get('deviceTracking');
     }
 
     /**

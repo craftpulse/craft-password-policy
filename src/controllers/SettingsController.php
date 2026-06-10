@@ -309,12 +309,16 @@ class SettingsController extends Controller
      *
      * Edition tiers follow `docs/user/editions.md`:
      *  - Pro keys (stripped below Pro): complexity/contextual validators,
-     *    per-group policies, HIBP-on-login, notification retention,
-     *    new-device alerts (`enableNewDeviceAlerts` / `deviceRetentionDays`)
-     *    and their cooldown map (`alertCooldowns`) — the new-device alert is
-     *    a documented Pro feature, not Enterprise.
+     *    per-group policies, HIBP-on-login, notification retention, and the
+     *    alert cooldown map (`alertCooldowns`).
      *  - Enterprise keys (stripped below Enterprise): audit log, SIEM,
-     *    webhooks, audit export, API tokens.
+     *    webhooks, audit export, API tokens, and new-device alerts
+     *    (`enableNewDeviceAlerts` / `deviceRetentionDays`) — the new-device
+     *    alert email is an Enterprise feature. Device-row CAPTURE itself is
+     *    universal (gate exposure, not capture — see
+     *    `project_audit_capture_principle.md`), so `deviceRetentionDays`
+     *    drives a prune that runs on every edition; it lives here only to
+     *    stop a sub-Enterprise install persisting the alert toggle.
      *
      * @param PasswordPolicy $plugin
      * @param array<string, mixed> $settings
@@ -335,8 +339,6 @@ class SettingsController extends Controller
                 $settings['enablePerGroupPolicies'],
                 $settings['notificationLogRetentionDays'],
                 $settings['enableHibpOnLogin'],
-                $settings['enableNewDeviceAlerts'],
-                $settings['deviceRetentionDays'],
                 $settings['alertCooldowns'],
             );
         }
@@ -350,6 +352,8 @@ class SettingsController extends Controller
             unset(
                 $settings['adminAlertEmail'],
                 $settings['adminAlertEvents'],
+                $settings['enableNewDeviceAlerts'],
+                $settings['deviceRetentionDays'],
                 $settings['geoIpEnabled'],
                 $settings['siemEnabled'],
                 $settings['siemDestinationType'],

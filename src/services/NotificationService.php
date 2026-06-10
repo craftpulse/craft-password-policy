@@ -180,25 +180,28 @@ class NotificationService extends Component
      * for this type. A future `templateVarsJson` column would unlock
      * resend (additive future work, not part of G12).
      *
-     * Pro-only. The HIBP-on-login listener that drives this method
-     * only registers on Pro, but the guard duplicates here as
-     * defense-in-depth — matches the `sendPasswordExpiryReminder()` /
-     * `sendBreachDetected()` shape (P1-NotifPro).
+     * Enterprise-only. The Feature 1 new-device listener that drives this
+     * method gates on Enterprise + `enableNewDeviceAlerts` before calling
+     * in, but the guard duplicates here as defense-in-depth — matches the
+     * `sendBreachDetected()` / `sendAdminSecurityAlert()` shape. Device-row
+     * CAPTURE remains universal (every edition writes a `known_device`
+     * row); only this alert email + the audit-log exposure are
+     * Enterprise-gated, per `project_audit_capture_principle.md`.
      *
      * @param User $user
      * @param string $deviceLabel
      * @param string $maskedIp
      * @return void
      *
-     * @throws EditionRequiredException when the plugin is running the Lite edition
+     * @throws EditionRequiredException when the plugin is not running the Enterprise edition
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function sendNewDeviceAlert(User $user, string $deviceLabel, string $maskedIp): void
     {
-        if (!PasswordPolicy::$plugin->getIsPro()) {
-            throw new EditionRequiredException('New-device alerts require the Pro edition.');
+        if (!PasswordPolicy::$plugin->getIsEnterprise()) {
+            throw new EditionRequiredException('New-device alerts require the Enterprise edition.');
         }
 
         if ($user->email === null) {

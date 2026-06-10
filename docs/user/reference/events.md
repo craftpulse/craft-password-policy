@@ -131,6 +131,51 @@ Event::on(
 
 ---
 
+## `NewDeviceDetectedEvent`
+
+**FQ class:** `craftpulse\passwordpolicy\events\NewDeviceDetectedEvent`
+**Edition:** all (free ecosystem hook — device capture is universal)
+**Triggered by:** `PasswordPolicy::EVENT_NEW_DEVICE_DETECTED`
+**When:** After a successful login (`yii\web\User::EVENT_AFTER_LOGIN`, which also covers passkey + remember-me) from a device fingerprint that has no prior row for the user. Fires after the `passwordpolicy_known_devices` row is written, on every edition — independent of whether the Enterprise-gated new-device alert email is sent. On Enterprise the audit row (if `enableAuditLog`) and the cooldown-throttled alert email (if `enableNewDeviceAlerts`) have already run when the event fires.
+
+### Payload
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `$user` | `craft\elements\User` | The user who logged in from the new device |
+| `$deviceLabel` | `string` | Human-readable label (e.g. "Chrome on macOS"). Never the raw user-agent. |
+| `$maskedIp` | `string` | Source IP with the last IPv4 octet zeroed / IPv6 truncated to /64. Never the raw IP. |
+| `$siteId` | `int\|null` | The site the login happened on, or null |
+
+> The raw user-agent, raw IP, and the SHA-256 device fingerprint are intentionally NOT in the payload. Persisting the fingerprint alongside the user recreates a linkable device ledger; the masked label is the safe display surface.
+
+### Example listener
+
+```php
+use yii\base\Event;
+use craftpulse\passwordpolicy\events\NewDeviceDetectedEvent;
+use craftpulse\passwordpolicy\PasswordPolicy;
+
+Event::on(
+    PasswordPolicy::class,
+    PasswordPolicy::EVENT_NEW_DEVICE_DETECTED,
+    function(NewDeviceDetectedEvent $event) {
+        // E.g. trigger an MFA step-up, or forward to your SIEM.
+        Craft::info(
+            sprintf(
+                'New device for user %d: %s (%s)',
+                $event->user->id,
+                $event->deviceLabel,
+                $event->maskedIp,
+            ),
+            'my-integration',
+        );
+    },
+);
+```
+
+---
+
 ## `PasswordValidationEvent`
 
 **FQ class:** `craftpulse\passwordpolicy\events\PasswordValidationEvent`

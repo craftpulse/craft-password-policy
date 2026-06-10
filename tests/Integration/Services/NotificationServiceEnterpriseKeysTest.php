@@ -68,6 +68,11 @@ afterEach(function() {
 // =============================================================================
 
 it('dispatches new-device-alert with rendered subject + body captured', function() {
+    // New-device alerts are an Enterprise surface — the service throws
+    // EditionRequiredException below the Enterprise tier (capture is
+    // universal; only the alert email + audit exposure are gated).
+    $this->plugin->edition = PasswordPolicy::EDITION_ENTERPRISE;
+
     $user = UserFactory::admin();
     $user->email = 'recipient@example.test';
 
@@ -206,6 +211,8 @@ it('writes a failed row when the template row is missing', function() {
 // =============================================================================
 
 it('captures a failed row for new-device-alert when template rendering throws', function() {
+    $this->plugin->edition = PasswordPolicy::EDITION_ENTERPRISE;
+
     $user = UserFactory::admin();
     $user->email = 'recipient@example.test';
 

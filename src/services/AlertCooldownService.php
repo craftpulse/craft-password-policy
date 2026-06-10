@@ -119,6 +119,19 @@ class AlertCooldownService extends Component
     public const DEFAULT_COOLDOWN_HIBP_LOGIN_BURST = 86400;
 
     /**
+     * Default cooldown for the `new_device` event class — 24 hours.
+     * Feature 1: a user signing in repeatedly from a freshly-recorded
+     * device within a day produces a single new-device alert email, not
+     * one per login. The cooldown key is per-user (`user:<id>`), so each
+     * user's first sighting of a new device alerts once per day at most.
+     *
+     * @var int seconds
+     *
+     * @since 5.2.0
+     */
+    public const DEFAULT_COOLDOWN_NEW_DEVICE = 86400;
+
+    /**
      * Fired after `recordFire()` writes a row to the cooldowns table.
      * Listeners observe the fire — they don't gate it. See
      * {@see AlertCooldownEvent} for the use cases (SIEM mirroring,
@@ -375,6 +388,7 @@ class AlertCooldownService extends Component
             self::DEFAULT_COOLDOWN_FORCE_RESET_BURST,
             self::DEFAULT_COOLDOWN_GROUP_DELETION_CASCADE,
             self::DEFAULT_COOLDOWN_HIBP_LOGIN_BURST,
+            self::DEFAULT_COOLDOWN_NEW_DEVICE,
         ];
 
         $configured = PasswordPolicy::$plugin->getSettings()->alertCooldowns;

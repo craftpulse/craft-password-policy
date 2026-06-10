@@ -144,6 +144,10 @@ class AuditLogService extends Component
         'breach_detected' => ['source'],
         'hibp_breach_detected' => ['source', 'failMode'],
         'hibp_check_failed' => ['source', 'failMode'],
+        // Feature 1 new-device detection. `deviceLabel` is the
+        // human-readable "Chrome on macOS" label — NEVER the raw
+        // user-agent or raw IP, which the device row never stores either.
+        'new_device' => ['source', 'deviceLabel'],
         'password_changed' => ['method', 'reason', 'source'],
         'password_reset_forced' => ['reason', 'source'],
         'policy_changed' => ['diff', 'policyId', 'policyName'],

@@ -71,11 +71,13 @@ use craftpulse\passwordpolicy\elements\NotificationLogElement;
 use craftpulse\passwordpolicy\elements\PolicyElement;
 use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\events\BreachDetectedEvent;
+use craftpulse\passwordpolicy\events\NewDeviceDetectedEvent;
 use craftpulse\passwordpolicy\events\PasswordChangedEvent;
 use craftpulse\passwordpolicy\events\PasswordValidationEvent;
 use craftpulse\passwordpolicy\models\AuditContext;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
+use craftpulse\passwordpolicy\services\AlertCooldownService;
 use craftpulse\passwordpolicy\services\ServicesTrait;
 use craftpulse\passwordpolicy\utilities\AuditExportUtility;
 use craftpulse\passwordpolicy\utilities\AuditSchemaUtility;
@@ -90,6 +92,8 @@ use yii\base\InvalidConfigException;
 use yii\base\InvalidRouteException;
 use yii\log\Dispatcher;
 use yii\log\Logger;
+use yii\web\User as WebUser;
+use yii\web\UserEvent as WebUserEvent;
 
 /**
  * Class PasswordPolicy
@@ -146,6 +150,24 @@ class PasswordPolicy extends Plugin
      * @since 5.2.0
      */
     public const EVENT_BREACH_DETECTED = 'breachDetected';
+
+    /**
+     * Fired by the Feature 1 login listener after a login from a device
+     * fingerprint with no prior row for the user — i.e. after the
+     * `passwordpolicy_known_devices` row is written. Fires on EVERY
+     * edition (free ecosystem hook; capture is universal per
+     * `project_audit_capture_principle.md`), independent of whether the
+     * Enterprise-gated new-device alert email is sent.
+     *
+     * The payload carries only the masked IP + human-readable device
+     * label — never the raw user-agent, raw IP, or the fingerprint. See
+     * {@see NewDeviceDetectedEvent} class docblock.
+     *
+     * @event NewDeviceDetectedEvent
+     *
+     * @since 5.2.0
+     */
+    public const EVENT_NEW_DEVICE_DETECTED = 'newDeviceDetected';
 
     /**
      * Fired after the plugin's password rules have run on a User during
@@ -223,7 +245,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '2.12.0';
+    public string $schemaVersion = '2.13.0';
 
     /**
      * @var bool
@@ -378,6 +400,16 @@ class PasswordPolicy extends Plugin
         // week's suppression record" query never comes up empty due
         // to over-aggressive prune.
         $results['alertCooldowns'] = $this->getAlertCooldown()->pruneOldEntries();
+
+        // Known-device pruning (Feature 1) — universal capture, same
+        // reasoning as the prunes above. Device rows are written on every
+        // edition; without a periodic prune the table grows unbounded.
+        // `pruneOldDevices()` treats a non-positive retention window as a
+        // no-op, so a misconfigured `deviceRetentionDays` never wipes the
+        // table.
+        $results['knownDevices'] = $this->getDeviceTracking()->pruneOldDevices(
+            $settings->deviceRetentionDays,
+        );
 
         return $results;
     }
@@ -701,6 +733,11 @@ class PasswordPolicy extends Plugin
         if ($this->getIsPro()) {
             $this->_registerHibpOnLoginListener();
         }
+
+        // Device tracking — records the device on every successful login,
+        // on EVERY edition (capture is universal). The new-device alert
+        // email + audit exposure are Enterprise-gated inside the listener.
+        $this->_registerNewDeviceListener();
 
         // Safety net: clear any remaining cached passwords at end of request
         $this->_registerRequestCleanup();
@@ -1718,6 +1755,200 @@ class PasswordPolicy extends Plugin
             'HIBP-on-login match: user {userId} notified, passwordResetRequired set',
             ['userId' => $user->id],
         );
+    }
+
+    /**
+     * Registers the Feature 1 new-device listener.
+     *
+     * Subscribes to `yii\web\User::EVENT_AFTER_LOGIN` — fired post-auth
+     * with the request user-agent + IP in scope. This is deliberately NOT
+     * `User::EVENT_BEFORE_AUTHENTICATE` (the HIBP hook): AFTER_LOGIN also
+     * covers passkey + remember-me logins, which BEFORE_AUTHENTICATE
+     * misses.
+     *
+     * The listener registers on EVERY edition. On each login it resolves
+     * the UA + IP from the request (skipping cleanly when there is no web
+     * request, e.g. console / impersonation paths with no request scope)
+     * and calls `DeviceTrackingService::recordLogin()`, which writes the
+     * `passwordpolicy_known_devices` row on every edition (capture is
+     * universal per `project_audit_capture_principle.md`).
+     *
+     * When the device is NEW (no prior row for the fingerprint):
+     *  1. The `NewDeviceDetectedEvent` fires on every edition — a free
+     *     ecosystem hook.
+     *  2. On Enterprise + `enableAuditLog`, a `new_device` audit row is
+     *     written (geo-excluded from the hash chain, raw UA/IP never in
+     *     the details allowlist).
+     *  3. On Enterprise + `enableNewDeviceAlerts`, the new-device alert
+     *     email is sent — gated through `AlertCooldownService` (one alert
+     *     per user per `DEFAULT_COOLDOWN_NEW_DEVICE` window) and enriched
+     *     with a geo hint when `GeoIpService` resolves the IP.
+     *
+     * Privacy: the raw UA + IP stay in request scope. Only the derived
+     * fingerprint (never logged), the masked IP, and the human-readable
+     * label are persisted or surfaced. A device-tracking failure must
+     * never break the login, so the body is wrapped in a defensive
+     * try/catch.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerNewDeviceListener(): void
+    {
+        Event::on(
+            WebUser::class,
+            WebUser::EVENT_AFTER_LOGIN,
+            function(WebUserEvent $event): void {
+                /** @var User $user */
+                $user = $event->identity;
+
+                if (!$user->id) {
+                    return;
+                }
+
+                $request = Craft::$app->getRequest();
+
+                if ($request->getIsConsoleRequest()) {
+                    return;
+                }
+
+                $userAgent = $request->getUserAgent();
+                $rawIp = $request->getUserIP();
+
+                if ($userAgent === null || $rawIp === null) {
+                    return;
+                }
+
+                try {
+                    $this->_recordLoginDevice($user, $userAgent, $rawIp);
+                } catch (Throwable $e) {
+                    // Login must never break because of a device-tracking
+                    // issue. Log an opaque summary only — never the raw
+                    // UA / IP / fingerprint.
+                    Craft::warning(
+                        'New-device tracking failed for user ' . $user->id . ': ' . $e->getMessage(),
+                        'password-policy',
+                    );
+                }
+            },
+        );
+    }
+
+    /**
+     * Records a login for device-tracking and runs the new-device side
+     * effects when the device is new.
+     *
+     * Separated from the listener so the defensive try/catch wraps one
+     * call site. The capture (`recordLogin`) runs on every edition; the
+     * audit row + alert email are Enterprise-gated, the cooldown throttles
+     * the email, and the `NewDeviceDetectedEvent` fires on every edition.
+     *
+     * @param User $user the authenticated user
+     * @param string $userAgent the raw request user-agent
+     * @param string $rawIp the raw request IP
+     * @return void
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _recordLoginDevice(User $user, string $userAgent, string $rawIp): void
+    {
+        $siteId = Craft::$app->getRequest()->getIsCpRequest()
+            ? null
+            : (Craft::$app->getSites()->getCurrentSite()->id ?? null);
+
+        $isNew = $this->getDeviceTracking()->recordLogin($user, $userAgent, $rawIp, $siteId);
+
+        if (!$isNew) {
+            return;
+        }
+
+        $label = $this->getDeviceLabel()->label($userAgent);
+        $maskedIp = $this->getDeviceLabel()->maskIp($rawIp);
+
+        // Enterprise audit row — gated here because Lite/Pro installs
+        // don't expose the audit log. The details allowlist (`source`,
+        // `deviceLabel`) carries the masked label only — never the raw
+        // UA/IP, which `logEvent()` would strip anyway.
+        if ($this->getIsEnterprise() && $this->getSettings()->enableAuditLog) {
+            $this->getAuditLog()->logEvent(
+                userId: (int)$user->id,
+                event: 'new_device',
+                details: [
+                    'source' => 'login',
+                    'deviceLabel' => $label,
+                ],
+            );
+        }
+
+        // Enterprise new-device alert email — cooldown-throttled to one
+        // alert per user per window. The geo-enriched label is built only
+        // when we are actually going to send (after the cooldown clears).
+        if ($this->getIsEnterprise() && $this->getSettings()->enableNewDeviceAlerts) {
+            $cleared = $this->getAlertCooldown()->shouldFire(
+                'new_device',
+                "user:{$user->id}",
+                AlertCooldownService::DEFAULT_COOLDOWN_NEW_DEVICE,
+            );
+
+            if ($cleared) {
+                $this->getNotification()->sendNewDeviceAlert(
+                    $user,
+                    $this->_enrichLabelWithGeo($label, $rawIp),
+                    $maskedIp,
+                );
+            }
+        }
+
+        // Public ecosystem hook — fires on every edition after capture.
+        if ($this->hasEventHandlers(self::EVENT_NEW_DEVICE_DETECTED)) {
+            $this->trigger(self::EVENT_NEW_DEVICE_DETECTED, new NewDeviceDetectedEvent([
+                'user' => $user,
+                'deviceLabel' => $label,
+                'maskedIp' => $maskedIp,
+                'siteId' => $siteId,
+            ]));
+        }
+    }
+
+    /**
+     * Appends a geo hint to a device label when `GeoIpService` resolves
+     * the IP, e.g. "Chrome on macOS — US". Returns the bare label
+     * unchanged when geolocation is disabled or the IP is unresolvable.
+     *
+     * Gated by `geoIpEnabled` inside `GeoIpService::lookup()`; the raw IP
+     * is used for the lookup only and never persisted.
+     *
+     * @param string $label the base device label
+     * @param string $rawIp the raw request IP
+     * @return string
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _enrichLabelWithGeo(string $label, string $rawIp): string
+    {
+        $geo = $this->getGeoIp()->lookup($rawIp);
+
+        if ($geo === null) {
+            return $label;
+        }
+
+        $location = $geo->region !== null && $geo->countryCode !== null
+            ? "{$geo->region}, {$geo->countryCode}"
+            : ($geo->countryCode ?? $geo->region);
+
+        if ($location === null) {
+            return $label;
+        }
+
+        return "{$label} — {$location}";
     }
 
     /**

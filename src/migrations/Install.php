@@ -53,6 +53,7 @@ class Install extends Migration
         $this->_createAlertCooldownsTable();
         $this->_createSiemForwardersTable();
         $this->_createWebhookEndpointsTable();
+        $this->_createKnownDevicesTable();
         $this->_seedNotificationTemplateDefaults();
 
         return true;
@@ -83,6 +84,7 @@ class Install extends Migration
             ])
             ->execute();
 
+        $this->dropTableIfExists('{{%passwordpolicy_known_devices}}');
         $this->dropTableIfExists('{{%passwordpolicy_webhook_endpoints}}');
         $this->dropTableIfExists('{{%passwordpolicy_siem_forwarders}}');
         $this->dropTableIfExists('{{%passwordpolicy_alert_cooldowns}}');
@@ -618,6 +620,69 @@ class Install extends Migration
         $this->createIndex(null, $table, ['enabled'], false);
         $this->createIndex(null, $table, ['circuitOpenAt'], false);
         $this->createIndex(null, $table, ['lastDeliveredRowId'], false);
+    }
+
+    /**
+     * Creates the known-devices table — one row per (user, device
+     * fingerprint) that the Feature 1 login listener records on
+     * `yii\web\User::EVENT_AFTER_LOGIN`. The fingerprint is a SHA-256 of
+     * the request user-agent + masked IP; a login from a fingerprint with
+     * no existing row is a "new device", which (on Enterprise +
+     * `enableNewDeviceAlerts`) drives the new-device alert email.
+     *
+     * Capture is universal across editions per memory rule
+     * `project_audit_capture_principle.md` — the row is written on Lite /
+     * Pro / Enterprise alike; only the alert email and the audit-log
+     * exposure are Enterprise-gated. An Enterprise upgrade therefore
+     * inherits a populated device history rather than starting blank.
+     *
+     * Privacy: the raw user-agent and raw IP are NEVER stored. Only the
+     * derived fingerprint, the human-readable `deviceLabel` (e.g.
+     * "Chrome on macOS"), and the masked IP (last IPv4 octet zeroed /
+     * IPv6 truncated to /64) land on the row.
+     *
+     * `userId` FK CASCADE — device history dies with the user (it is
+     * user-scoped device state, not an audit event that must outlive the
+     * entity). `siteId` FK SET NULL + nullable — records which site the
+     * login happened on for multi-site installs; a deleted site nulls the
+     * column rather than cascading the row away.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _createKnownDevicesTable(): void
+    {
+        $table = '{{%passwordpolicy_known_devices}}';
+
+        if ($this->db->tableExists($table)) {
+            return;
+        }
+
+        $this->createTable($table, [
+            'id' => $this->primaryKey(),
+            'userId' => $this->integer()->notNull(),
+            'fingerprint' => $this->char(64)->notNull(),
+            'deviceLabel' => $this->string()->null(),
+            'maskedIp' => $this->string(45)->null(),
+            'siteId' => $this->integer()->null(),
+            'firstSeenAt' => $this->dateTime()->notNull(),
+            'lastSeenAt' => $this->dateTime()->notNull(),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid' => $this->uid(),
+        ]);
+
+        $this->createIndex(null, $table, ['fingerprint'], false);
+        $this->createIndex(null, $table, ['lastSeenAt'], false);
+        // Unique on (userId, fingerprint) — the upsert key. A device is
+        // "new" iff no row matches this pair; the listener inserts on
+        // miss and bumps `lastSeenAt` on hit.
+        $this->createIndex(null, $table, ['userId', 'fingerprint'], true);
+
+        $this->addForeignKey(null, $table, ['userId'], Table::USERS, ['id'], 'CASCADE', null);
+        $this->addForeignKey(null, $table, ['siteId'], Table::SITES, ['id'], 'SET NULL', null);
     }
 
     /**

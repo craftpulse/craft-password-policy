@@ -11,10 +11,14 @@
  * project-config write, so the assertions stay deterministic under the
  * per-test transaction wrap:
  *
+ *  - `alertCooldowns` and `enablePerGroupPolicies` are PRO keys per
+ *    `docs/user/editions.md`. They survive on Pro and are stripped on Lite.
  *  - New-device alert keys (`enableNewDeviceAlerts`, `deviceRetentionDays`)
- *    and `alertCooldowns` are PRO keys per `docs/user/editions.md` (the
- *    feature matrix lists new-device alerts as Pro+). They survive on
- *    Pro and are stripped on Lite.
+ *    are ENTERPRISE keys — the new-device alert EMAIL is an Enterprise
+ *    feature. Device-row CAPTURE is universal (gate exposure, not capture),
+ *    so the prune driven by `deviceRetentionDays` runs on every edition;
+ *    the strip only stops a sub-Enterprise install persisting the toggle.
+ *    Stripped on Lite + Pro, survive on Enterprise.
  *  - Audit-log CAPTURE keys (`enableAuditLog`, `auditLogRetentionDays`) are
  *    UNIVERSAL — capture runs on every edition, so they survive on Lite and
  *    Pro (project_audit_capture_principle.md: gate exposure, not capture).
@@ -64,13 +68,13 @@ function tieredSettings(): array
         'minLength' => 12,
         // Pro
         'enablePerGroupPolicies' => true,
-        'enableNewDeviceAlerts' => true,
-        'deviceRetentionDays' => 90,
         'alertCooldowns' => ['breach' => 3600],
         // Universal capture (survives on every edition)
         'enableAuditLog' => true,
         'auditLogRetentionDays' => 365,
         // Enterprise exposure
+        'enableNewDeviceAlerts' => true,
+        'deviceRetentionDays' => 90,
         'geoIpEnabled' => true,
         'siemEnabled' => true,
         'webhooksEnabled' => true,
@@ -102,23 +106,24 @@ it('strips Pro and Enterprise keys on Lite', function() {
 });
 
 // =============================================================================
-// Pro — keeps Pro keys (incl. new-device alerts), strips Enterprise keys
+// Pro — keeps Pro keys, strips Enterprise keys (incl. new-device alerts)
 // =============================================================================
 
-it('keeps Pro new-device-alert keys but strips Enterprise keys on Pro', function() {
+it('keeps Pro keys but strips Enterprise keys (incl. new-device alerts) on Pro', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
 
     $result = $this->method->invoke($this->controller, $this->plugin, tieredSettings());
 
-    // Pro keys survive — new-device alerts are a documented Pro feature.
+    // Pro keys survive.
     expect($result)->toHaveKey('enablePerGroupPolicies')
-        ->and($result)->toHaveKey('enableNewDeviceAlerts')
-        ->and($result)->toHaveKey('deviceRetentionDays')
         ->and($result)->toHaveKey('alertCooldowns')
         // Audit CAPTURE is universal — survives on Pro too.
         ->and($result)->toHaveKey('enableAuditLog')
         ->and($result)->toHaveKey('auditLogRetentionDays')
-        // Enterprise EXPOSURE keys stripped.
+        // Enterprise EXPOSURE keys stripped — new-device alerts are an
+        // Enterprise feature.
+        ->and($result)->not->toHaveKey('enableNewDeviceAlerts')
+        ->and($result)->not->toHaveKey('deviceRetentionDays')
         ->and($result)->not->toHaveKey('geoIpEnabled')
         ->and($result)->not->toHaveKey('siemEnabled')
         ->and($result)->not->toHaveKey('webhooksEnabled')
