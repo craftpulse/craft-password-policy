@@ -54,6 +54,7 @@ class Install extends Migration
         $this->_createSiemForwardersTable();
         $this->_createWebhookEndpointsTable();
         $this->_createKnownDevicesTable();
+        $this->_createGroupAlertSubscriptionsTable();
         $this->_seedNotificationTemplateDefaults();
 
         return true;
@@ -84,6 +85,7 @@ class Install extends Migration
             ])
             ->execute();
 
+        $this->dropTableIfExists('{{%passwordpolicy_group_alert_subscriptions}}');
         $this->dropTableIfExists('{{%passwordpolicy_known_devices}}');
         $this->dropTableIfExists('{{%passwordpolicy_webhook_endpoints}}');
         $this->dropTableIfExists('{{%passwordpolicy_siem_forwarders}}');
@@ -683,6 +685,49 @@ class Install extends Migration
 
         $this->addForeignKey(null, $table, ['userId'], Table::USERS, ['id'], 'CASCADE', null);
         $this->addForeignKey(null, $table, ['siteId'], Table::SITES, ['id'], 'SET NULL', null);
+    }
+
+    /**
+     * Creates the group alert subscriptions table.
+     *
+     * Backs Feature 3 (per-group alerts, Pro) — one row per (group, event,
+     * recipient) routing rule. When a user triggers a `breach_detected` or
+     * `new_device` alert, a copy is routed to each enabled subscription
+     * whose `groupId` is in the user's RESOLVED group set (per memory rule
+     * `project_per_group_resolution_hazard.md` — resolved, never global).
+     *
+     * `groupId` FKs to `usergroups.id` with `ON DELETE CASCADE` — when an
+     * admin deletes a user group, its alert subscriptions are removed
+     * automatically (no orphan recipients). Capture/storage is
+     * edition-independent; the dispatch that reads these rows is Pro-gated
+     * one layer up.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _createGroupAlertSubscriptionsTable(): void
+    {
+        $table = '{{%passwordpolicy_group_alert_subscriptions}}';
+
+        if ($this->db->tableExists($table)) {
+            return;
+        }
+
+        $this->createTable($table, [
+            'id' => $this->primaryKey(),
+            'groupId' => $this->integer()->notNull(),
+            'eventType' => $this->string()->notNull(),
+            'recipientEmail' => $this->string()->notNull(),
+            'enabled' => $this->boolean()->notNull()->defaultValue(true),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid' => $this->uid(),
+        ]);
+
+        $this->createIndex(null, $table, ['groupId', 'eventType'], false);
+        $this->addForeignKey(null, $table, ['groupId'], '{{%usergroups}}', ['id'], 'CASCADE', null);
     }
 
     /**

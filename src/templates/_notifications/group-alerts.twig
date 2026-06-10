@@ -1,0 +1,87 @@
+{# Group alerts — Feature 3 per-group alert routing (Pro). One editable-table
+   row per (group, event, recipient, enabled) subscription. A copy of the
+   matched alert is routed to the recipient based on the affected user's
+   RESOLVED group membership. #}
+{# @var subscriptions array #}
+{# @var groupOptions array #}
+{# @var eventOptions array #}
+
+{% requirePermission "pp:notification-templates-manage" %}
+
+{% extends "password-policy/_layouts/password-policy-cp.twig" %}
+{% import '_includes/forms.twig' as forms %}
+
+{% set selectedSubnavItem = 'group-alerts' %}
+{% set fullPageForm = true %}
+
+{% set crumbs = [
+    { label: 'Password Policy'|t('password-policy'), url: cpUrl('password-policy') },
+    { label: 'Notifications'|t('password-policy'), url: cpUrl('password-policy/notifications') },
+] %}
+
+{% block content %}
+    <input type="hidden" name="action" value="password-policy/group-alert/save">
+    {{ redirectInput('password-policy/notifications/group-alerts') }}
+
+    <div class="readable">
+        <p>
+            {{ "Route a copy of breach-detected and new-device alerts to a group-designated security contact, in addition to the affected user's own alert. Recipients are resolved from the user's actual group membership at alert time."|t('password-policy') }}
+        </p>
+
+        {% if groupOptions is empty %}
+            <blockquote class="note warning">
+                <p>
+                    {{ "No user groups exist yet. Create at least one user group before configuring group alerts."|t('password-policy') }}
+                </p>
+            </blockquote>
+        {% endif %}
+    </div>
+
+    {% if groupOptions is not empty %}
+        {% set tableRows = {} %}
+        {% for sub in subscriptions %}
+            {% set tableRows = tableRows|merge({
+                (sub.id): {
+                    groupId: sub.groupId,
+                    eventType: sub.eventType,
+                    recipientEmail: sub.recipientEmail,
+                    enabled: sub.enabled,
+                },
+            }) %}
+        {% endfor %}
+
+        {{ forms.editableTableField({
+            label: 'Subscriptions'|t('password-policy'),
+            instructions: 'Each row routes a copy of the chosen alert to the recipient whenever a member of the chosen group triggers it. Disable a row to keep it without routing.'|t('password-policy'),
+            name: 'subscriptions',
+            cols: {
+                groupId: {
+                    heading: 'User group'|t('password-policy'),
+                    type: 'select',
+                    options: groupOptions,
+                },
+                eventType: {
+                    heading: 'Alert'|t('password-policy'),
+                    type: 'select',
+                    options: eventOptions,
+                },
+                recipientEmail: {
+                    heading: 'Security contact'|t('password-policy'),
+                    type: 'email',
+                },
+                enabled: {
+                    heading: 'Enabled'|t('password-policy'),
+                    type: 'lightswitch',
+                },
+            },
+            rows: tableRows,
+            defaultValues: {
+                enabled: true,
+            },
+            addRowLabel: 'Add a subscription'|t('password-policy'),
+            allowAdd: true,
+            allowDelete: true,
+            allowReorder: false,
+        }) }}
+    {% endif %}
+{% endblock %}

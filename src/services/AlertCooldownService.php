@@ -106,6 +106,22 @@ class AlertCooldownService extends Component
     public const DEFAULT_COOLDOWN_GROUP_DELETION_CASCADE = 300;
 
     /**
+     * Default cooldown for Feature 3 per-group alert routing — one hour.
+     * The cooldown key is per resolving group + event
+     * (`group:{groupId}:{eventType}`), so a burst (e.g. a mass HIBP
+     * detection against many members of one group) routes a single copy to
+     * the group security contact per hour, not one per affected user. An
+     * hour (rather than the 24h HIBP-login-burst window) keeps the contact
+     * reasonably current on a genuinely distinct second incident while still
+     * collapsing a stuffing burst.
+     *
+     * @var int seconds
+     *
+     * @since 5.2.0
+     */
+    public const DEFAULT_COOLDOWN_GROUP_ALERT = 3600;
+
+    /**
      * Default cooldown for the `hibp_login_burst` event class — 24
      * hours. Per § 5 of the Phase G plan: catches mass detection of one
      * breached password against many users (credential stuffing
@@ -386,6 +402,7 @@ class AlertCooldownService extends Component
         $defaults = [
             self::DEFAULT_COOLDOWN_ADMIN_SECURITY_ALERT,
             self::DEFAULT_COOLDOWN_FORCE_RESET_BURST,
+            self::DEFAULT_COOLDOWN_GROUP_ALERT,
             self::DEFAULT_COOLDOWN_GROUP_DELETION_CASCADE,
             self::DEFAULT_COOLDOWN_HIBP_LOGIN_BURST,
             self::DEFAULT_COOLDOWN_NEW_DEVICE,

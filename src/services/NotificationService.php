@@ -304,6 +304,63 @@ class NotificationService extends Component
     }
 
     /**
+     * Routes a COPY of a user-facing alert to a group-designated security
+     * contact (Feature 3 per-group alerts, Pro).
+     *
+     * Sent admin-scoped (`user: null`, `recipientOverride: $recipientEmail`)
+     * through the existing `admin-security-alert` editable template — the
+     * contact is an operator, NOT the affected end-user, so the render
+     * context omits `{{ user }}` and the template never references the
+     * user element. Minimal PII: the contact receives the event type and a
+     * single user IDENTIFIER string (the same username-or-email convention
+     * the admin-security-alert surface uses), consistent with what the
+     * user's own alert would expose — never password material, never the
+     * user's full profile.
+     *
+     * Cooldown is the CALLER's responsibility: the listener throttles via
+     * `AlertCooldownService::shouldFire("group:{groupId}:{eventType}", …)`
+     * before invoking this method, because the listener holds the resolving
+     * group id. This mirrors how the breach / new-device listeners gate
+     * their own user-facing sends — the `NotificationService` method stays a
+     * thin dispatch.
+     *
+     * Pro-gated (service-layer convention → `EditionRequiredException`).
+     * The driving listener already gates on `getIsPro()`, but the guard
+     * duplicates here as defense-in-depth — matches the
+     * `sendBreachDetected()` / `sendNewDeviceAlert()` shape.
+     *
+     * @param string $recipientEmail the group security-contact address
+     * @param string $eventType `breach_detected` or `new_device`
+     * @param string $userIdentifier a minimal, non-sensitive identifier for
+     *     the affected user (username or email)
+     * @return void
+     *
+     * @throws EditionRequiredException when the plugin is running the Lite edition
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function sendGroupAlert(string $recipientEmail, string $eventType, string $userIdentifier): void
+    {
+        if (!PasswordPolicy::$plugin->getIsPro()) {
+            throw new EditionRequiredException('Per-group alerts require the Pro edition.');
+        }
+
+        $this->_dispatch(
+            user: null,
+            type: 'group_alert_' . $eventType,
+            templateKey: 'admin-security-alert',
+            extraVars: [
+                'event' => $eventType,
+                'context' => [
+                    'user' => $userIdentifier,
+                ],
+            ],
+            recipientOverride: $recipientEmail,
+        );
+    }
+
+    /**
      * Re-sends a previously logged notification.
      *
      * Re-renders the template **fresh** from current state (admin may

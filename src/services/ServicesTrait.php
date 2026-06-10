@@ -26,6 +26,7 @@ use yii\base\InvalidConfigException;
  * @property DeviceLabelService $deviceLabel
  * @property DeviceTrackingService $deviceTracking
  * @property GeoIpService $geoIp
+ * @property GroupAlertService $groupAlerts
  * @property HibpClientInterface $hibpClient
  * @property PasswordHistoryService $passwordHistory
  * @property NotificationService $notification
@@ -67,6 +68,7 @@ trait ServicesTrait
                 'deviceLabel' => DeviceLabelService::class,
                 'deviceTracking' => DeviceTrackingService::class,
                 'geoIp' => GeoIpService::class,
+                'groupAlerts' => GroupAlertService::class,
                 'hibpClient' => GuzzleHibpClient::class,
                 'passwordHistory' => PasswordHistoryService::class,
                 'notification' => NotificationService::class,
@@ -223,6 +225,28 @@ trait ServicesTrait
     public function getGeoIp(): GeoIpService
     {
         return $this->get('geoIp');
+    }
+
+    /**
+     * Returns the group-alert subscription service.
+     *
+     * Owns the `passwordpolicy_group_alert_subscriptions` read + write path
+     * for Feature 3 (per-group alerts, Pro). `recipientsForUser()` resolves
+     * security-contact recipients from the affected user's RESOLVED group
+     * set — see `project_per_group_resolution_hazard.md`. Storage is
+     * edition-independent; the dispatch that consumes it is Pro-gated one
+     * layer up.
+     *
+     * @return GroupAlertService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getGroupAlerts(): GroupAlertService
+    {
+        return $this->get('groupAlerts');
     }
 
     /**

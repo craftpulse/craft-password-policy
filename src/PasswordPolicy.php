@@ -71,6 +71,7 @@ use craftpulse\passwordpolicy\elements\NotificationLogElement;
 use craftpulse\passwordpolicy\elements\PolicyElement;
 use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\events\BreachDetectedEvent;
+use craftpulse\passwordpolicy\events\GroupAlertDispatchedEvent;
 use craftpulse\passwordpolicy\events\NewDeviceDetectedEvent;
 use craftpulse\passwordpolicy\events\PasswordChangedEvent;
 use craftpulse\passwordpolicy\events\PasswordValidationEvent;
@@ -170,6 +171,24 @@ class PasswordPolicy extends Plugin
     public const EVENT_NEW_DEVICE_DETECTED = 'newDeviceDetected';
 
     /**
+     * Fired by the Feature 3 per-group alert routing (Pro) after a COPY of
+     * a `breach_detected` / `new_device` alert is dispatched to a
+     * group-designated security contact — once per recipient that cleared
+     * the per-group cooldown. Does NOT fire for the end-user's own alert,
+     * nor for recipients suppressed by the cooldown.
+     *
+     * Fires only on Pro (or higher) — per-group alerts are a Pro surface.
+     * The payload carries the affected user, the resolving `groupId`, the
+     * `eventType`, and the `recipientEmail` — never password material. See
+     * {@see GroupAlertDispatchedEvent} class docblock.
+     *
+     * @event GroupAlertDispatchedEvent
+     *
+     * @since 5.2.0
+     */
+    public const EVENT_GROUP_ALERT_DISPATCHED = 'groupAlertDispatched';
+
+    /**
      * Fired after the plugin's password rules have run on a User during
      * `Model::validate()` and the aggregated outcome is known. Listeners
      * receive the validating User, the password-specific errors collected
@@ -245,7 +264,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '2.13.0';
+    public string $schemaVersion = '2.14.0';
 
     /**
      * @var bool
@@ -582,6 +601,18 @@ class PasswordPolicy extends Plugin
             ];
         }
 
+        // Group alerts subnav (Pro) — Feature 3 per-group alert routing.
+        // Reuses `pp:notification-templates-manage`: configuring which
+        // security contact gets a copy of which alert is a
+        // notification-management concern, so it sits behind the same
+        // permission that gates the template editor in this neighborhood.
+        if ($this->getIsPro() && $currentUser->can('pp:notification-templates-manage')) {
+            $subNavs['group-alerts'] = [
+                'label' => Craft::t('password-policy', 'Group alerts'),
+                'url' => 'password-policy/notifications/group-alerts',
+            ];
+        }
+
         // SIEM forwarders subnav (Enterprise) — sits between Notifications
         // and Settings. Forwarders are a delivery channel for the audit
         // log; placing them under the Notifications neighborhood matches
@@ -806,6 +837,12 @@ class PasswordPolicy extends Plugin
                         'password-policy/notifications/activity' => 'password-policy/notification-activity/index',
                         'password-policy/notifications/activity/<id:\d+>' => 'password-policy/notification-activity/view',
                         'password-policy/notifications/activity/resend' => 'password-policy/notification-activity/resend',
+                        // Group-alert editor — registered BEFORE the
+                        // `<key:[\w\-]+>` catch-all below, which would
+                        // otherwise route `group-alerts` to the template
+                        // editor.
+                        'password-policy/notifications/group-alerts' => 'password-policy/group-alert/index',
+                        'password-policy/notifications/group-alerts/save' => 'password-policy/group-alert/save',
                         'password-policy/notifications/<key:[\w\-]+>' => 'password-policy/notification-template/edit',
                         'password-policy/notifications/<key:[\w\-]+>/save' => 'password-policy/notification-template/save',
                         'password-policy/notifications/<key:[\w\-]+>/test-send' => 'password-policy/notification-template/test-send',
@@ -1730,6 +1767,22 @@ class PasswordPolicy extends Plugin
             );
         }
 
+        // 2b. Feature 3 — route a COPY of the breach alert to each
+        //     group-designated security contact resolved from the user's
+        //     group set. Pro-gated + throttled per group inside the helper;
+        //     the HIBP-on-login listener already only registers on Pro, but
+        //     the helper's own `getIsPro()` guard is the defense-in-depth.
+        //     Wrapped so a routing failure can't unwind the breach side
+        //     effects below (passwordResetRequired, audit row, event).
+        try {
+            $this->_dispatchGroupAlerts($user, 'breach_detected');
+        } catch (Throwable $e) {
+            Craft::warning(
+                'Per-group breach alert routing failed for user ' . $user->id . ': ' . $e->getMessage(),
+                'password-policy',
+            );
+        }
+
         // 3. Audit-log entry. Capture is universal (G1) — the service's
         //    own `enableAuditLog` feature-flag check is the only gate;
         //    edition gates apply to read surfaces (verifier CLI, dashboard,
@@ -1904,6 +1957,15 @@ class PasswordPolicy extends Plugin
             }
         }
 
+        // Feature 3 — route a COPY of the new-device alert to each
+        // group-designated security contact resolved from the user's group
+        // set. Pro-gated (NOT Enterprise) and independent of
+        // `enableNewDeviceAlerts`: a Pro operator who wired group alerts
+        // wants the contact notified of new-device events for their group's
+        // members even on a Pro install that doesn't expose the end-user
+        // new-device email. Throttled per group + event inside the helper.
+        $this->_dispatchGroupAlerts($user, 'new_device');
+
         // Public ecosystem hook — fires on every edition after capture.
         if ($this->hasEventHandlers(self::EVENT_NEW_DEVICE_DETECTED)) {
             $this->trigger(self::EVENT_NEW_DEVICE_DETECTED, new NewDeviceDetectedEvent([
@@ -1949,6 +2011,89 @@ class PasswordPolicy extends Plugin
         }
 
         return "{$label} — {$location}";
+    }
+
+    /**
+     * Feature 3 — routes a COPY of a user-facing alert to each
+     * group-designated security contact resolved from the affected user's
+     * group set.
+     *
+     * Shared by both alert seams (the HIBP-on-login `breach_detected` path
+     * and the new-device `new_device` path). Pro-gated: Lite installs never
+     * route group copies. Resolution heeds the per-group hazard — recipients
+     * come from `GroupAlertService::recipientsForUser()`, which reads the
+     * user's RESOLVED group membership, NOT a global setting
+     * (`project_per_group_resolution_hazard.md`).
+     *
+     * Each recipient is throttled independently via
+     * `AlertCooldownService::shouldFire("group:{groupId}:{eventType}", …)` so
+     * a burst (mass HIBP detection against one group's members) routes a
+     * single copy to the contact per window rather than one per affected
+     * user. A send / cooldown failure for one recipient must never break the
+     * login or the originating alert, so each iteration is wrapped
+     * defensively.
+     *
+     * Minimal PII: the contact receives the event type and a single user
+     * identifier (username falling back to email) — the same convention the
+     * admin-security-alert surface uses, never more than the user's own
+     * alert would expose.
+     *
+     * @param User $user the user who triggered the originating alert
+     * @param string $eventType `breach_detected` or `new_device`
+     * @return void
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _dispatchGroupAlerts(User $user, string $eventType): void
+    {
+        if (!$this->getIsPro()) {
+            return;
+        }
+
+        $recipients = $this->getGroupAlerts()->recipientsForUser($user, $eventType);
+
+        if ($recipients === []) {
+            return;
+        }
+
+        $userIdentifier = $user->username ?? $user->email ?? (string)$user->id;
+
+        foreach ($recipients as $recipientEmail => $groupId) {
+            try {
+                $cleared = $this->getAlertCooldown()->shouldFire(
+                    'group_alert:' . $eventType,
+                    "group:{$groupId}:{$eventType}",
+                    AlertCooldownService::DEFAULT_COOLDOWN_GROUP_ALERT,
+                );
+
+                if (!$cleared) {
+                    continue;
+                }
+
+                $this->getNotification()->sendGroupAlert($recipientEmail, $eventType, $userIdentifier);
+
+                if ($this->hasEventHandlers(self::EVENT_GROUP_ALERT_DISPATCHED)) {
+                    $this->trigger(self::EVENT_GROUP_ALERT_DISPATCHED, new GroupAlertDispatchedEvent([
+                        'user' => $user,
+                        'groupId' => $groupId,
+                        'eventType' => $eventType,
+                        'recipientEmail' => $recipientEmail,
+                    ]));
+                }
+            } catch (Throwable $e) {
+                // A single contact's send failure must not break the login,
+                // the originating alert, or the other recipients. Log an
+                // opaque summary — never the user identifier or recipient.
+                Craft::warning(
+                    'Per-group alert routing failed for a contact on event ' . $eventType
+                        . ' (user ' . $user->id . '): ' . $e->getMessage(),
+                    'password-policy',
+                );
+            }
+        }
     }
 
     /**

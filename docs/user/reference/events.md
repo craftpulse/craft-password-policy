@@ -176,6 +176,52 @@ Event::on(
 
 ---
 
+## `GroupAlertDispatchedEvent`
+
+**FQ class:** `craftpulse\passwordpolicy\events\GroupAlertDispatchedEvent`
+**Edition:** Pro (per-group alerts are a Pro surface)
+**Triggered by:** `PasswordPolicy::EVENT_GROUP_ALERT_DISPATCHED`
+**When:** After a COPY of a `breach_detected` / `new_device` alert is routed to a group-designated security contact — once per recipient that cleared the per-group cooldown (`group:{groupId}:{eventType}`). Recipients are resolved from the affected user's RESOLVED group membership (`User::getGroups()`), never a global setting. Does NOT fire for the end-user's own alert, nor for recipients suppressed by the cooldown.
+
+### Payload
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `$user` | `craft\elements\User` | The user who triggered the originating alert |
+| `$groupId` | `int` | The user group whose subscription resolved this recipient |
+| `$eventType` | `string` | `breach_detected` or `new_device` |
+| `$recipientEmail` | `string` | The security-contact email the copy was routed to |
+
+> The payload carries no password material. The contact's email itself carries only the event type and a minimal user identifier (username or email) — the same convention the admin-security-alert surface uses.
+
+### Example listener
+
+```php
+use yii\base\Event;
+use craftpulse\passwordpolicy\events\GroupAlertDispatchedEvent;
+use craftpulse\passwordpolicy\PasswordPolicy;
+
+Event::on(
+    PasswordPolicy::class,
+    PasswordPolicy::EVENT_GROUP_ALERT_DISPATCHED,
+    function(GroupAlertDispatchedEvent $event) {
+        // E.g. mirror the routed alert into an incident-queue integration.
+        Craft::info(
+            sprintf(
+                'Group %d security contact %s notified of %s for user %d',
+                $event->groupId,
+                $event->recipientEmail,
+                $event->eventType,
+                $event->user->id,
+            ),
+            'my-integration',
+        );
+    },
+);
+```
+
+---
+
 ## `PasswordValidationEvent`
 
 **FQ class:** `craftpulse\passwordpolicy\events\PasswordValidationEvent`
