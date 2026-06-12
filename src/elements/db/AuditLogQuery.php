@@ -268,6 +268,7 @@ class AuditLogQuery extends ElementQuery
             'passwordpolicy_audit_log.details',
             'passwordpolicy_audit_log.ipHash',
             'passwordpolicy_audit_log.userIdentifier',
+            'passwordpolicy_audit_log.changedByIdentifier',
             'passwordpolicy_audit_log.rowHash',
             'passwordpolicy_audit_log.previousHash',
             'passwordpolicy_audit_log.forwardedAt',

@@ -37,6 +37,7 @@ use craft\db\Query;
 use craft\helpers\Json;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\tests\Support\CapturingAuditController;
+use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 
 // =============================================================================
 // Setup — flip enableAuditLog on for every test, wipe rows, restore after
@@ -252,9 +253,7 @@ it('accepts non-genesis previousHash on a row older than retention + 24h', funct
         ->one();
 
     $payload = \craftpulse\passwordpolicy\services\AuditLogService::canonicalize([
-        'changedByUserId' => $row['changedByUserId'] !== null
-            ? (int)$row['changedByUserId']
-            : null,
+        'changedByIdentifier' => $row['changedByIdentifier'],
         'dateCreated' => (new \DateTime($row['dateCreated'], new \DateTimeZone('UTC')))
             ->format('Y-m-d\TH:i:s\Z'),
         'details' => null,
@@ -263,7 +262,6 @@ it('accepts non-genesis previousHash on a row older than retention + 24h', funct
         'outcome' => $row['outcome'],
         'source' => $row['source'],
         'uid' => $row['uid'],
-        'userId' => $row['userId'] !== null ? (int)$row['userId'] : null,
         'userIdentifier' => $row['userIdentifier'],
     ]);
     $newRowHash = hash('sha256', $payload . $row['previousHash']);
@@ -334,9 +332,7 @@ it('accepts a pruned head whose dateCreated is within the retention safety margi
         ->one();
 
     $payload = \craftpulse\passwordpolicy\services\AuditLogService::canonicalize([
-        'changedByUserId' => $row['changedByUserId'] !== null
-            ? (int)$row['changedByUserId']
-            : null,
+        'changedByIdentifier' => $row['changedByIdentifier'],
         'dateCreated' => (new \DateTime($row['dateCreated'], new \DateTimeZone('UTC')))
             ->format('Y-m-d\TH:i:s\Z'),
         'details' => null,
@@ -345,7 +341,6 @@ it('accepts a pruned head whose dateCreated is within the retention safety margi
         'outcome' => $row['outcome'],
         'source' => $row['source'],
         'uid' => $row['uid'],
-        'userId' => $row['userId'] !== null ? (int)$row['userId'] : null,
         'userIdentifier' => $row['userIdentifier'],
     ]);
     $newRowHash = hash('sha256', $payload . $row['previousHash']);
@@ -469,4 +464,66 @@ it('suppresses per-row OK lines under --quiet', function() {
     $output = implode('', $verifier->stdoutBuffer);
     expect($output)->not->toContain('OK: row');
     expect($output)->toContain('OK: 2 rows verified');
+});
+
+// =============================================================================
+// GDPR-erasure regression: nulling userId + changedByUserId (the SET NULL FK
+// behaviour Craft applies on user delete) MUST NOT break the chain. The hash
+// payload depends on the immutable HMAC identities (userIdentifier /
+// changedByIdentifier), never the mutable FK ints. Before the fix, the writer
+// hashed userId + changedByUserId, so a user deletion recomputed a different
+// rowHash and the verifier reported tampering — making GDPR right-to-erasure
+// indistinguishable from log tampering.
+// =============================================================================
+
+it('keeps the chain valid after userId + changedByUserId are nulled (GDPR erasure)', function() {
+    // Real saved users so logEvent() can resolve their email into an
+    // HMAC for userIdentifier + changedByIdentifier. Both are set once
+    // at write and survive the deletion that nulls the FK ints.
+    $subject = UserFactory::admin();
+    $actor = UserFactory::admin();
+
+    $service = $this->plugin->getAuditLog();
+    $service->logEvent(
+        userId: $subject->id,
+        event: 'password_changed',
+        outcome: 'success',
+        source: 'admin',
+        changedByUserId: $actor->id,
+    );
+    $service->logEvent(userId: null, event: 'account_locked');
+
+    $rows = fetchAllRows();
+    expect($rows)->toHaveCount(2);
+
+    // Confirm the row was written with both FK ints AND both HMAC
+    // identities populated — the precondition the fix protects.
+    expect((int)$rows[0]['userId'])->toBe((int)$subject->id);
+    expect((int)$rows[0]['changedByUserId'])->toBe((int)$actor->id);
+    expect($rows[0]['userIdentifier'])->toMatch('/^[0-9a-f]{64}$/');
+    expect($rows[0]['changedByIdentifier'])->toMatch('/^[0-9a-f]{64}$/');
+
+    // Chain is valid before the simulated deletion.
+    $before = newVerifier();
+    expect($before->runAction('verify'))->toBe(0);
+
+    // Simulate Craft's `ON DELETE SET NULL` FK behaviour on user hard-
+    // delete: null the FK ints on the historical row. The HMAC
+    // identities are deliberately left untouched (they survive
+    // deletion) — that is the immutable identity the hash anchors to.
+    tamperRow((int)$rows[0]['id'], [
+        'userId' => null,
+        'changedByUserId' => null,
+    ]);
+
+    $confirm = fetchAllRows();
+    expect($confirm[0]['userId'])->toBeNull();
+    expect($confirm[0]['changedByUserId'])->toBeNull();
+    expect($confirm[0]['userIdentifier'])->toMatch('/^[0-9a-f]{64}$/');
+
+    // The chain MUST still verify — the rowHash never depended on the
+    // nulled FK ints. Pre-fix this returned exit 1 (rowHash mismatch).
+    $after = newVerifier();
+    expect($after->runAction('verify'))->toBe(0);
+    expect(implode('', $after->stdoutBuffer))->toContain('OK: 2 rows verified');
 });

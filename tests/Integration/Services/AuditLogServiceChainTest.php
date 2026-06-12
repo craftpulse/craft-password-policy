@@ -97,7 +97,7 @@ it('writes a rowHash that matches the canonicalize+sha256 reference', function()
     expect($row)->not->toBeNull();
 
     $expectedPayload = AuditLogService::canonicalize([
-        'changedByUserId' => $row['changedByUserId'],
+        'changedByIdentifier' => $row['changedByIdentifier'],
         'dateCreated' => (new \DateTime($row['dateCreated'], new \DateTimeZone('UTC')))
             ->format('Y-m-d\TH:i:s\Z'),
         'details' => null,
@@ -106,7 +106,6 @@ it('writes a rowHash that matches the canonicalize+sha256 reference', function()
         'outcome' => 'success',
         'source' => 'cli',
         'uid' => $row['uid'],
-        'userId' => null,
         'userIdentifier' => null,
     ]);
 

@@ -169,7 +169,7 @@ it('keeps the rowHash reproducible with geo populated (geo excluded from the cha
     // absent. The recomputed hash must match the stored rowHash; if geo
     // leaked into canonicalize(), this would diverge.
     $expectedPayload = AuditLogService::canonicalize([
-        'changedByUserId' => $row['changedByUserId'],
+        'changedByIdentifier' => $row['changedByIdentifier'],
         'dateCreated' => (new DateTime($row['dateCreated'], new DateTimeZone('UTC')))
             ->format(AuditLogService::CANONICAL_DATE_FORMAT),
         'details' => null,
@@ -178,7 +178,6 @@ it('keeps the rowHash reproducible with geo populated (geo excluded from the cha
         'outcome' => 'success',
         'source' => $row['source'],
         'uid' => $row['uid'],
-        'userId' => null,
         'userIdentifier' => null,
     ]);
 

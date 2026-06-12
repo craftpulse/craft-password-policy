@@ -117,9 +117,7 @@ it('preserves chain bytes across the element round-trip', function() {
     // element's stored rowHash matches. Pins L1 (canonical bytes
     // unchanged across the refactor).
     $canonical = AuditLogService::canonicalize([
-        'changedByUserId' => $rawRow['changedByUserId'] !== null
-            ? (int)$rawRow['changedByUserId']
-            : null,
+        'changedByIdentifier' => $rawRow['changedByIdentifier'],
         'dateCreated' => (new \DateTime($rawRow['dateCreated'], new \DateTimeZone('UTC')))
             ->format(AuditLogService::CANONICAL_DATE_FORMAT),
         'details' => null,
@@ -128,7 +126,6 @@ it('preserves chain bytes across the element round-trip', function() {
         'outcome' => 'success',
         'source' => 'cli',
         'uid' => $rawRow['uid'],
-        'userId' => null,
         'userIdentifier' => null,
     ]);
 

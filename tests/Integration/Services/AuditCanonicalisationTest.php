@@ -127,7 +127,7 @@ it('preserves list order for numerically-indexed arrays with ≥ 10 entries', fu
 
 it('matches the golden canonical string for a representative payload', function() {
     $payload = [
-        'changedByUserId' => 42,
+        'changedByIdentifier' => 'hmac-of-actor-email',
         'dateCreated' => '2026-05-07T08:12:01Z',
         'details' => ['violationType' => 'expired', 'reason' => 'Force reset'],
         'event' => 'force_reset',
@@ -135,11 +135,10 @@ it('matches the golden canonical string for a representative payload', function(
         'outcome' => 'success',
         'source' => 'admin',
         'uid' => '5b3f-uid',
-        'userId' => 17,
         'userIdentifier' => 'hmac-of-email',
     ];
 
-    $expected = '{"changedByUserId":42,'
+    $expected = '{"changedByIdentifier":"hmac-of-actor-email",'
         . '"dateCreated":"2026-05-07T08:12:01Z",'
         . '"details":{"reason":"Force reset","violationType":"expired"},'
         . '"event":"force_reset",'
@@ -147,7 +146,6 @@ it('matches the golden canonical string for a representative payload', function(
         . '"outcome":"success",'
         . '"source":"admin",'
         . '"uid":"5b3f-uid",'
-        . '"userId":17,'
         . '"userIdentifier":"hmac-of-email"}';
 
     expect(AuditLogService::canonicalize($payload))->toBe($expected);

@@ -541,8 +541,15 @@ class AuditController extends Controller
      */
     private function _buildCanonicalPayload(array $row): array
     {
+        // Mirrors the writer in `AuditLogService::logEvent()` exactly.
+        // The mutable FK ints `userId` + `changedByUserId` are EXCLUDED
+        // — both are `ON DELETE SET NULL`, so hashing them would make a
+        // deleted user recompute a different rowHash (GDPR erasure
+        // would self-report as tampering). The immutable HMAC identities
+        // `userIdentifier` (subject) + `changedByIdentifier` (actor) are
+        // hashed instead.
         return [
-            'changedByUserId' => $this->_intOrNull($row['changedByUserId']),
+            'changedByIdentifier' => $row['changedByIdentifier'],
             'dateCreated' => $this->_normaliseDateCreated((string)$row['dateCreated']),
             'details' => $this->_decodeDetails($row['details']),
             'event' => $row['event'],
@@ -550,7 +557,6 @@ class AuditController extends Controller
             'outcome' => $row['outcome'],
             'source' => $row['source'],
             'uid' => $row['uid'],
-            'userId' => $this->_intOrNull($row['userId']),
             'userIdentifier' => $row['userIdentifier'],
         ];
     }
@@ -801,27 +807,6 @@ class AuditController extends Controller
         );
 
         return self::EXIT_CHAIN_BREAK;
-    }
-
-    /**
-     * Coerces a database-fetched value to `int|null`. Yii's row-array
-     * fetch returns numeric columns as strings on some drivers — the
-     * canonical payload contract is bare integers, so the cast must
-     * happen before encoding. Same shape the recompute migration uses.
-     *
-     * @param mixed $value
-     * @return int|null
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _intOrNull(mixed $value): ?int
-    {
-        if ($value === null || $value === '') {
-            return null;
-        }
-
-        return (int)$value;
     }
 
     /**

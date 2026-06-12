@@ -523,6 +523,17 @@ class AuditLogService extends Component
             }
 
             $resolvedChangedByUserId = $changedByUserId ?? $this->_getCurrentAdminId();
+
+            // HMAC actor identifier — the immutable mirror of
+            // `changedByUserId`. This, NOT the FK int, enters the
+            // canonical hash payload: `changedByUserId` is `ON DELETE
+            // SET NULL`, so hashing it would make deleting an admin
+            // (GDPR erasure) recompute a different rowHash and report
+            // the chain as tampered. The HMAC is set once here and
+            // never mutates.
+            $changedByIdentifier = $resolvedChangedByUserId !== null
+                ? $this->_hashUserIdentifier($resolvedChangedByUserId)
+                : null;
             $dateCreated = Carbon::now('UTC');
             $uid = StringHelper::UUID();
 
@@ -561,6 +572,7 @@ class AuditLogService extends Component
                 $geoCountry,
                 $geoRegion,
                 $userIdentifier,
+                $changedByIdentifier,
                 $dateCreated,
                 $uid,
                 &$insertedId,
@@ -573,14 +585,23 @@ class AuditLogService extends Component
                     $previousHash = self::GENESIS_PREVIOUS_HASH;
                 }
 
-                // Canonical-payload order matches the pre-element writer
-                // byte-for-byte. The element-pipeline refactor (Step 5)
-                // is additive — the element layer wraps the same audit
-                // row shape that previously lived under a flat record
-                // writer, so canonicalize() input is unchanged. Every
-                // existing chain hash continues to verify.
+                // Canonical-payload key set (alphabetical):
+                // changedByIdentifier, dateCreated, details, event,
+                // ipHash, outcome, source, uid, userIdentifier.
+                //
+                // The mutable FK ints `userId` + `changedByUserId` are
+                // DELIBERATELY EXCLUDED. Both are `ON DELETE SET NULL`,
+                // so deleting a user nulls them on every historical row
+                // and the verifier would then recompute a different
+                // rowHash — making GDPR erasure indistinguishable from
+                // tampering. We hash the IMMUTABLE HMAC identities
+                // instead: `userIdentifier` (the subject) and
+                // `changedByIdentifier` (the actor), both set once at
+                // write and never mutated. Same exclusion-by-mutability
+                // reasoning as the geo columns below (post-insert
+                // metadata that must not enter the hash).
                 $canonicalPayload = self::canonicalize([
-                    'changedByUserId' => $resolvedChangedByUserId,
+                    'changedByIdentifier' => $changedByIdentifier,
                     'dateCreated' => $dateCreated->format(self::CANONICAL_DATE_FORMAT),
                     'details' => $filteredDetails,
                     'event' => $event,
@@ -588,7 +609,6 @@ class AuditLogService extends Component
                     'outcome' => $outcome,
                     'source' => $source,
                     'uid' => $uid,
-                    'userId' => $userId,
                     'userIdentifier' => $userIdentifier,
                 ]);
 
@@ -620,7 +640,12 @@ class AuditLogService extends Component
                 // fixed key set only).
                 $element->geoCountry = $geoCountry;
                 $element->geoRegion = $geoRegion;
+                // `userId` + `changedByUserId` remain persisted columns
+                // (above) for joins / display / the SET NULL retention
+                // behaviour — they're just no longer part of the hash.
+                // The HMAC identifiers ARE the hashed identity.
                 $element->userIdentifier = $userIdentifier;
+                $element->changedByIdentifier = $changedByIdentifier;
                 $element->previousHash = $previousHash;
                 $element->rowHash = $rowHash;
 

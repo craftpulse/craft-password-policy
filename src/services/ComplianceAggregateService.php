@@ -579,8 +579,15 @@ class ComplianceAggregateService extends Component
      */
     private function _buildCanonicalPayload(array $row): array
     {
+        // Mirrors the writer in `AuditLogService::logEvent()` exactly.
+        // The mutable FK ints `userId` + `changedByUserId` are EXCLUDED
+        // — both are `ON DELETE SET NULL`, so hashing them would make a
+        // deleted user recompute a different rowHash (GDPR erasure would
+        // self-report as tampering). The immutable HMAC identities
+        // `userIdentifier` (subject) + `changedByIdentifier` (actor) are
+        // hashed instead.
         return [
-            'changedByUserId' => $this->_intOrNull($row['changedByUserId']),
+            'changedByIdentifier' => $row['changedByIdentifier'],
             'dateCreated' => (new DateTime((string)$row['dateCreated'], new DateTimeZone('UTC')))
                 ->format(AuditLogService::CANONICAL_DATE_FORMAT),
             'details' => $this->_decodeDetails($row['details']),
@@ -589,7 +596,6 @@ class ComplianceAggregateService extends Component
             'outcome' => $row['outcome'],
             'source' => $row['source'],
             'uid' => $row['uid'],
-            'userId' => $this->_intOrNull($row['userId']),
             'userIdentifier' => $row['userIdentifier'],
         ];
     }
@@ -617,26 +623,6 @@ class ComplianceAggregateService extends Component
         $decoded = json_decode((string)$value, true);
 
         return is_array($decoded) ? $decoded : null;
-    }
-
-    /**
-     * Coerces a database-fetched value to `int|null`. Yii's row-array
-     * fetch returns numeric columns as strings on some drivers; the
-     * canonical payload contract is bare integers.
-     *
-     * @param mixed $value
-     * @return int|null
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _intOrNull(mixed $value): ?int
-    {
-        if ($value === null || $value === '') {
-            return null;
-        }
-
-        return (int)$value;
     }
 
     /**

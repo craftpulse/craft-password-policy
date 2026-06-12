@@ -76,11 +76,24 @@ class AuditLogElement extends Element
     // =========================================================================
 
     /**
+     * @var ?string HMAC-SHA-256 of the actor's email — the immutable
+     *     mirror of `changedByUserId`. THIS is what the canonical hash
+     *     payload hashes for the actor, not the mutable FK int (which is
+     *     `SET NULL` on user delete). NULL when there was no actor, or
+     *     the actor was already gone / had no email at write time.
+     *
+     * @since 5.2.0
+     */
+    public ?string $changedByIdentifier = null;
+
+    /**
      * @var ?int admin / actor user-id who triggered the event when the
      *     event was an admin-on-behalf-of-user action. Nullable —
      *     self-service flows (user-initiated password change) leave it
      *     null. `SET NULL` on user hard-delete so the audit row outlives
-     *     the entity.
+     *     the entity. Persisted for joins / display, but EXCLUDED from
+     *     the canonical hash payload — `changedByIdentifier` is the
+     *     hashed actor identity.
      */
     public ?int $changedByUserId = null;
 
@@ -531,6 +544,7 @@ class AuditLogElement extends Element
             : $this->details;
         $record->ipHash = $this->ipHash;
         $record->userIdentifier = $this->userIdentifier;
+        $record->changedByIdentifier = $this->changedByIdentifier;
         $record->geoCountry = $this->geoCountry;
         $record->geoRegion = $this->geoRegion;
         $record->rowHash = $this->rowHash ?? '';

@@ -18,8 +18,10 @@ Hash-chained audit rows.
 |---|---|---|
 | `id` | int PK | FK to `craft_elements.id`, CASCADE on element delete |
 | `event` | varchar(64), NOT NULL | One of the captured event types (e.g. `password_changed`) |
-| `userIdentifier` | varchar(64), NOT NULL | HMAC-SHA-256 hex of email, keyed by `CRAFT_AUDIT_PII_KEY` |
-| `userId` | int, nullable | FK to `craft_users.id`, `SET NULL` on user hard-delete |
+| `userIdentifier` | varchar(64), NOT NULL | HMAC-SHA-256 hex of the subject's email, keyed by `CRAFT_AUDIT_PII_KEY`. Hashed into the chain (the FK `userId` is not) |
+| `changedByIdentifier` | varchar(64), nullable | HMAC-SHA-256 hex of the acting admin's email, same keying. Hashed into the chain (the FK `changedByUserId` is not) |
+| `userId` | int, nullable | FK to `craft_users.id`, `SET NULL` on user hard-delete. Excluded from the hash payload (mutable on delete) |
+| `changedByUserId` | int, nullable | FK to the acting admin's `craft_users.id`, `SET NULL` on user hard-delete. Excluded from the hash payload |
 | `ipHash` | varchar(64), nullable | SHA-256 hex of the request IP |
 | `outcome` | enum, NOT NULL | `success`, `failure`, `denied`, `pending` |
 | `details` | JSON, nullable | Per-event payload filtered against the PII allowlist |

@@ -181,7 +181,15 @@ class Install extends Migration
             'source' => $this->string(),
             'details' => $this->json(),
             'ipHash' => $this->string(),
+            // Immutable HMAC identities — these, NOT the mutable `userId` /
+            // `changedByUserId` FK ints, are what the canonical hash-chain
+            // payload hashes. Both FK columns are `ON DELETE SET NULL`, so
+            // deleting a user nulls them on every historical row; hashing
+            // them would make a GDPR erasure indistinguishable from log
+            // tampering (the verifier would recompute a different rowHash).
+            // The HMAC identifiers are set once at write and never mutate.
             'userIdentifier' => $this->string(),
+            'changedByIdentifier' => $this->string(),
             // Geolocation enrichment (Feature 4). Country code + region
             // resolved from the request IP via the bundled DB-IP Lite
             // database; the raw IP is NEVER stored. Both EXCLUDED from the

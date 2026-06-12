@@ -43,7 +43,8 @@ use yii\db\ActiveQueryInterface;
  * @property ?string $source
  * @property ?array $details
  * @property ?string $ipHash
- * @property ?string $userIdentifier
+ * @property ?string $userIdentifier HMAC of the subject's email — hashed identity (the FK `userId` is not)
+ * @property ?string $changedByIdentifier HMAC of the actor's email — hashed identity (the FK `changedByUserId` is not)
  * @property ?string $geoCountry ISO 3166-1 alpha-2 country code — excluded from the canonical hash payload
  * @property ?string $geoRegion subdivision/region name — excluded from the canonical hash payload
  * @property string $rowHash sha256(canonicalize(payload) . previousHash)

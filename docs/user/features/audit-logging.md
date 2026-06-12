@@ -33,8 +33,10 @@ The `passwordpolicy_audit_log` table backs the `AuditLogElement` Craft element. 
 |---|---|---|
 | `id` | int (FK to `craft_elements.id`) | Element identity. |
 | `event` | string(64) | One of the event types above. |
-| `userIdentifier` | string(64) | HMAC-SHA-256 of the affected user's email, keyed by `CRAFT_AUDIT_PII_KEY`. See [Privacy guarantees](#privacy-guarantees). |
-| `userId` | int, nullable | FK to `craft_users.id` (`SET NULL` on user hard-delete). |
+| `userIdentifier` | string(64) | HMAC-SHA-256 of the affected user's email, keyed by `CRAFT_AUDIT_PII_KEY`. This — not `userId` — is the subject identity the hash chain anchors to. See [Privacy guarantees](#privacy-guarantees). |
+| `changedByIdentifier` | string(64), nullable | HMAC-SHA-256 of the acting admin's email, same keying. This — not `changedByUserId` — is the actor identity the hash chain anchors to. |
+| `userId` | int, nullable | FK to `craft_users.id` (`SET NULL` on user hard-delete). Kept for joins/display; **excluded** from the hash payload (see below). |
+| `changedByUserId` | int, nullable | FK to the acting admin's `craft_users.id` (`SET NULL` on user hard-delete). Kept for joins/display; **excluded** from the hash payload. |
 | `ipHash` | string(64), nullable | SHA-256 of the request IP. Never raw. |
 | `outcome` | enum | `success`, `failure`, `denied`, `pending`. |
 | `details` | JSON | Per-event structured fields (allowlisted; see below). |
@@ -96,6 +98,7 @@ Every row stores the SHA-256 of its canonical JSON plus the previous row's `rowH
 - Null values preserved (not stripped).
 - The `id` column **excluded** — auto-increment isn't deterministic across database restores. Chain order is established by `dateCreated` + insertion order.
 - The `rowHash` and `previousHash` columns themselves excluded from the canonical payload (they're outputs of the hash, not inputs).
+- The mutable FK ints `userId` and `changedByUserId` are **excluded** — both are `ON DELETE SET NULL`, so deleting a user (e.g. a GDPR right-to-erasure request) nulls them on every one of that user's historical rows. Hashing them would make a routine, compliant deletion recompute a different `rowHash` and self-report as tampering. The chain instead hashes the **immutable** HMAC identities `userIdentifier` (subject) and `changedByIdentifier` (actor), which are written once and survive deletion. The canonical key set is: `changedByIdentifier, dateCreated, details, event, ipHash, outcome, source, uid, userIdentifier`.
 
 ### Genesis row
 
