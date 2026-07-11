@@ -22,6 +22,15 @@ This page covers what the audit log captures, the schema, the privacy guarantees
 | `alert_cooldown_fired` | An alert was suppressed by the cooldown service | `AlertCooldownService` |
 | `siem_forward_attempted` | A row was forwarded (or failed) to a SIEM endpoint | `SiemForwardJob` |
 | `webhook_delivery_attempted` | A webhook was delivered (or failed) | `WebhookForwardJob` |
+| `auth_login` | A passwordless or SSO login succeeded (magic link, OTP, passkey, SSO) | Auth Kit (Warden / Warp) |
+| `auth_registration` | A passwordless registration was fulfilled | Auth Kit (Warp) |
+| `passkey_enrolled` | A passkey was enrolled | Auth Kit (Warden / Warp) |
+| `passkey_deleted` | A passkey was deleted | Auth Kit (Warden / Warp) |
+| `session_revoked` | A session was revoked (self, others, or IdP back-channel logout) | Auth Kit (Warden / Warp) |
+| `scim_provisioned` | A user was provisioned (SCIM or just-in-time) | Auth Kit (Warden) |
+| `scim_deprovisioned` | A user was deprovisioned (SCIM or just-in-time) | Auth Kit (Warden) |
+
+The last seven rows arrive through the [Warden / Warp integration](#warden--warp-integration-auth-kit-audit-contract) and only appear when Auth Kit plus an emitter (Warden or Warp) is installed.
 
 Every event is captured on every edition. Edition gating applies to **exposure** — the CP audit-log index, the verifier CLI, the dashboard, the forwarders, the export utility all require Enterprise. The underlying capture happens whether or not you have Enterprise installed, so upgrading a site from Pro to Enterprise mid-life surfaces the audit history you already had.
 
@@ -287,6 +296,34 @@ The listener never logs the plaintext password, the full SHA-1 hash, or the buck
 | API unreachable (timeout, 5xx) | Fail open (login proceeds) | WARNING |
 | API rate-limited (429) | Site-wide backoff cache key set; every caller short-circuits until the backoff expires | WARNING |
 | TLS verification failure | Fail open | WARNING |
+
+## Warden / Warp integration (Auth Kit audit contract)
+
+Password Policy is an audit **sink** for [Auth Kit](https://github.com/craftpulse/craft-auth-kit)'s neutral audit-event contract. When Auth Kit is installed alongside an emitter, [Warden](https://github.com/craftpulse/craft-warden) (SSO, magic links, passkeys, SCIM) or [Warp](https://github.com/craftpulse/craft-warp) (passwordless login, registration, passkeys, sessions), every authentication event those plugins emit lands on this hash-chained, SIEM-forwarded audit log automatically.
+
+There is nothing to configure. Install either plugin (they already require Auth Kit), keep audit logging enabled, and the seven `auth_*` / `passkey_*` / `session_revoked` / `scim_*` event classes start appearing in the log, the compliance dashboard, exports, and every SIEM forwarder and webhook, exactly like any native event.
+
+Password Policy has no hard dependency on Auth Kit: it is listed under composer `suggest`, not `require`. The sink registers through Auth Kit's `Audit::EVENT_REGISTER_AUDIT_SINKS` event, so with Auth Kit absent the integration is inert and costs nothing.
+
+### How events map
+
+Auth Kit hands Password Policy a neutral `AuthEvent` (a plugin-agnostic value object: a name, an emitter handle, an outcome, the subject and actor user IDs, and a scalar, non-PII `details` payload). The sink (`integrations\AuthKitAuditSink`) maps each neutral name onto a Password Policy event class:
+
+| Neutral `AuthEvent` name | PP event class | `details` |
+|---|---|---|
+| `login.magic_link`, `login.otp`, `login.passkey`, `login.sso` | `auth_login` | `method` (the login mechanism), `provider` (SSO only), `source` (the emitter) |
+| `registration.fulfilled` | `auth_registration` | `method`, `source` |
+| `passkey.enrolled` | `passkey_enrolled` | `source` |
+| `passkey.deleted` | `passkey_deleted` | `source` |
+| `session.revoked` | `session_revoked` | `scope` (`single` / `others` / `backchannel`), `source` |
+| `scim.provisioned` | `scim_provisioned` | `trigger` (`scim` / `jit`), `source` |
+| `scim.deprovisioned` | `scim_deprovisioned` | `trigger`, `source` |
+
+The emitter handle (`warden` or `warp`) becomes the row's `source` column, the neutral outcome becomes the row `outcome`, the subject becomes `userId`, and the acting admin or system user (when present) becomes `changedByUserId`. As with every event, the per-event allowlist strips anything not listed above, so no PII crosses the boundary even if a future emitter adds a key.
+
+Names the sink does not recognise are ignored silently. Auth Kit adds event names in minor releases, so a newer emitter can send a name this version has never heard of without producing a stray warning or a dropped-row log line.
+
+The killer compliance detail: `session_revoked` with `scope = backchannel` is an **IdP-initiated** (OIDC back-channel) logout, landing an externally-triggered session termination in the tamper-evident chain.
 
 ## Compliance framework anchors
 

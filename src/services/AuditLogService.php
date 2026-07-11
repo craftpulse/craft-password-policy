@@ -147,6 +147,24 @@ class AuditLogService extends Component
         'account_inactive' => ['action', 'source'],
         'account_locked' => ['source'],
         'account_unlocked' => ['source'],
+        // Auth Kit audit contract (Integration 1). The seven event
+        // classes below are populated exclusively by
+        // `integrations\AuthKitAuditSink`, which maps neutral
+        // `craftpulse\authkit\audit\AuthEvent` names emitted by Warden
+        // and Warp onto these PP classes. The sink passes a *mapped
+        // variable* to `logEvent()`, so the codebase-grep test can't see
+        // these targets — `AuditAllowlistRegistryTest` asserts the sink's
+        // `AuthKitAuditSink::EVENT_MAP` values against these keys instead.
+        //
+        // Every key here is scalar, non-PII, and mirrors the neutral
+        // contract's documented `details`: `method` is the login/registration
+        // mechanism (`magic_link` | `otp` | `passkey` | `sso`), `provider`
+        // the SSO identity-provider handle, `scope` the session-revocation
+        // breadth (`single` | `others` | `backchannel`), `trigger` the
+        // provisioning origin (`scim` | `jit`), and `source` the emitting
+        // plugin handle (`warden` | `warp`).
+        'auth_login' => ['method', 'provider', 'source'],
+        'auth_registration' => ['method', 'source'],
         'breach_detected' => ['source'],
         'hibp_breach_detected' => ['source', 'failMode'],
         'hibp_check_failed' => ['source', 'failMode'],
@@ -154,9 +172,16 @@ class AuditLogService extends Component
         // human-readable "Chrome on macOS" label — NEVER the raw
         // user-agent or raw IP, which the device row never stores either.
         'new_device' => ['source', 'deviceLabel'],
+        // Auth Kit audit contract (Integration 1) — see `auth_login` above.
+        'passkey_deleted' => ['source'],
+        'passkey_enrolled' => ['source'],
         'password_changed' => ['method', 'reason', 'source'],
         'password_reset_forced' => ['reason', 'source'],
         'policy_changed' => ['diff', 'policyId', 'policyName'],
+        // Auth Kit audit contract (Integration 1) — see `auth_login` above.
+        'scim_deprovisioned' => ['trigger', 'source'],
+        'scim_provisioned' => ['trigger', 'source'],
+        'session_revoked' => ['scope', 'source'],
         'siem_test' => ['source'],
         'webhook_test' => ['source'],
     ];

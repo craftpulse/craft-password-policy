@@ -34,6 +34,7 @@ uses(TestCase::class)->in(
     'Integration/Console',
     'Integration/Controllers',
     'Integration/Events',
+    'Integration/Integrations',
     'Integration/Jobs',
     'Integration/Models',
     'Integration/Records',

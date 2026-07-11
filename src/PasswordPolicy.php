@@ -53,6 +53,8 @@ use craft\web\Application;
 use craft\web\twig\variables\CraftVariable;
 use craft\web\UrlManager;
 use craft\web\View;
+use craftpulse\authkit\events\RegisterAuditSinksEvent;
+use craftpulse\authkit\services\Audit as AuthKitAudit;
 use craftpulse\passwordpolicy\assetbundles\passwordpolicy\PasswordPolicyAsset;
 use craftpulse\passwordpolicy\controllers\UserSecurityController;
 use craftpulse\passwordpolicy\elements\actions\ChangeUserPassword;
@@ -75,6 +77,7 @@ use craftpulse\passwordpolicy\events\GroupAlertDispatchedEvent;
 use craftpulse\passwordpolicy\events\NewDeviceDetectedEvent;
 use craftpulse\passwordpolicy\events\PasswordChangedEvent;
 use craftpulse\passwordpolicy\events\PasswordValidationEvent;
+use craftpulse\passwordpolicy\integrations\AuthKitAuditSink;
 use craftpulse\passwordpolicy\models\AuditContext;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
@@ -800,6 +803,11 @@ class PasswordPolicy extends Plugin
 
         // Craft security event listeners (Enterprise audit logging)
         $this->_registerCraftSecurityListeners();
+
+        // Auth Kit audit-event contract (Integration 1) — lands every
+        // Warden/Warp passwordless/SSO/SCIM event on PP's hash-chained log.
+        // No-op unless Auth Kit is installed and fires the registration event.
+        $this->_registerAuthKitAuditSink();
 
         // Observability seam for policy assignments dropped via group deletion
         $this->_registerUserGroupListeners();
@@ -1545,6 +1553,34 @@ class PasswordPolicy extends Plugin
                     event: 'account_unlocked',
                     outcome: 'success',
                 );
+            }
+        );
+    }
+
+    /**
+     * Registers PP's Auth Kit audit sink so Warden/Warp passwordless, SSO, and
+     * SCIM events land on the hash-chained audit log (Integration 1).
+     *
+     * The wiring is dependency-free by design: `AuthKitAudit::class` is a
+     * compile-time string that autoloads nothing, and the closure — which
+     * instantiates {@see AuthKitAuditSink} — only runs when Auth Kit is
+     * installed and triggers `EVENT_REGISTER_AUDIT_SINKS`. With Auth Kit absent
+     * the closure never fires and the sink class never loads, so PP carries no
+     * hard dependency (Auth Kit sits in composer `suggest`, never `require`).
+     * There is deliberately no `isPluginInstalled()` check.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerAuthKitAuditSink(): void
+    {
+        Event::on(
+            AuthKitAudit::class,
+            AuthKitAudit::EVENT_REGISTER_AUDIT_SINKS,
+            static function(RegisterAuditSinksEvent $event): void {
+                $event->sinks[] = new AuthKitAuditSink();
             }
         );
     }

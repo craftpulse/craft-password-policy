@@ -67,6 +67,12 @@
 - Dedicated `auditPiiKey` HMAC secret — `CRAFT_AUDIT_PII_KEY` env var (independent of `securityKey`). `password-policy/audit/generate-pii-key` console command provisions one and writes to `.env`. Rotating the key destroys historical correlation without breaking site session/CSRF/asset signing.
 - `AlertCooldownService` — per-(eventClass, cooldownKey) dedup substrate. Generalises the F2 notification-log dedup pattern via a dedicated `passwordpolicy_alert_cooldowns` table with composite indexing.
 
+#### Auth Kit audit integration (Warden / Warp)
+
+- `integrations\AuthKitAuditSink` — Password Policy is now an audit **sink** for [Auth Kit](https://github.com/craftpulse/craft-auth-kit)'s neutral audit-event contract. Install Auth Kit with Warden or Warp and every passwordless, SSO, passkey, session-revocation, and SCIM event those plugins emit lands on the hash-chained audit log automatically, flowing to the compliance dashboard, exports, SIEM forwarders, and webhooks with zero extra configuration.
+- Seven new event classes captured through the sink: `auth_login` (magic link / OTP / passkey / SSO, with `method` + `provider`), `auth_registration`, `passkey_enrolled`, `passkey_deleted`, `session_revoked` (`scope` = `single` / `others` / `backchannel` — IdP-initiated back-channel logouts land in the tamper-evident chain), `scim_provisioned`, and `scim_deprovisioned` (`trigger` = `scim` / `jit`). All added to the fail-closed `ALLOWED_DETAILS_BY_EVENT` allowlist.
+- No hard dependency — Auth Kit is a composer `suggest`, never `require`. The sink registers through `Audit::EVENT_REGISTER_AUDIT_SINKS` via a `::class` reference, so the integration is inert (and free) when Auth Kit is not installed. Unknown neutral event names are ignored silently for forward compatibility.
+
 #### Compliance dashboard (Enterprise)
 
 - `ComplianceDashboardUtility` — registered on Enterprise + `pp:audit-view`. CP utility surfaces five aggregates: totals (by event class, last-30-days), chain health (verifier runs inline with 5-minute cache; surfaces `firstBreakRowId` + checked-row-count), 24-hour alert-cooldown activity, pending SIEM forwards (count + oldest age), retention status (per-table oldest-row age + projected next prune).

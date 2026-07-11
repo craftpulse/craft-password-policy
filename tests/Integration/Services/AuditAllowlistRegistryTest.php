@@ -31,6 +31,7 @@
  */
 
 use craft\db\Query;
+use craftpulse\passwordpolicy\integrations\AuthKitAuditSink;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\services\AuditLogService;
 use yii\log\Logger;
@@ -300,4 +301,30 @@ it('registers every event class fired in src/', function() {
     $allRegistered = array_fill_keys(array_keys($registrationStatus), true);
 
     expect($registrationStatus)->toBe($allRegistered);
+});
+
+// =============================================================================
+// Mapping-table enforcement — Auth Kit sink targets must be registered
+// =============================================================================
+
+it('registers every AuthKitAuditSink::EVENT_MAP target', function() {
+    // The sink passes a *mapped variable* to `logEvent()`, so the
+    // codebase-grep test above (which only sees `event: '<literal>'`)
+    // can't reach these targets. This assertion is the equivalent guard:
+    // every neutral AuthEvent name the sink maps must resolve to a PP
+    // event class that exists in the allowlist registry — otherwise the
+    // row would silently fail-closed at runtime.
+    $registryKeys = array_keys(AuditLogService::ALLOWED_DETAILS_BY_EVENT);
+
+    $mappingStatus = [];
+    foreach (AuthKitAuditSink::EVENT_MAP as $neutralName => $ppEvent) {
+        $label = sprintf("'%s' => '%s'", $neutralName, $ppEvent);
+        $mappingStatus[$label] = in_array($ppEvent, $registryKeys, true);
+    }
+
+    expect($mappingStatus)->not->toBeEmpty();
+
+    $allRegistered = array_fill_keys(array_keys($mappingStatus), true);
+
+    expect($mappingStatus)->toBe($allRegistered);
 });

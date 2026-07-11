@@ -26,6 +26,15 @@
     ],
     "minimum-stability": "dev",
     "prefer-stable": true,
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../*",
+            "options": {
+                "symlink": true
+            }
+        }
+    ],
     "require": {
         "php": "^8.2.0",
         "bjeavons/zxcvbn-php": "^1.4",
@@ -34,9 +43,13 @@
         "nesbot/carbon": "^2.0.0",
         "nystudio107/craft-plugin-vite": "^5.0.0"
     },
+    "suggest": {
+        "craftpulse/craft-auth-kit": "Install Auth Kit (with Warden or Warp) to land every passwordless, SSO, and SCIM event on Password Policy's hash-chained, SIEM-forwarded audit log."
+    },
     "require-dev":{
         "craftcms/ecs": "dev-main",
         "craftcms/phpstan": "dev-main",
+        "craftpulse/craft-auth-kit": "^1.2.0@dev",
         "yiisoft/yii2-redis": "^2.0",
         "vlucas/phpdotenv": "^5.4.0",
         "pestphp/pest": "^4.6"
