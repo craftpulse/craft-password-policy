@@ -6,10 +6,11 @@
 {% set selectedItem = 'audit' %}
 {% set title = 'Audit Logging'|t('password-policy') %}
 
-{# Audit CAPTURE (enable + retention) is universal across editions. Only the
-   admin-alert EXPOSURE field below is Enterprise-gated — as are the compliance
-   dashboard, exports, and SIEM/webhook forwarding (gated on their own pages). #}
-{% set adminAlertsLocked = not isEnterprise %}
+{# Audit CAPTURE (enable + retention) is universal across editions, so this
+   page renders on every edition. Only the admin-alert / geo-IP EXPOSURE
+   fields below are Enterprise-gated — omitted entirely below Enterprise (as
+   are the compliance dashboard, exports, and SIEM/webhook forwarding, gated
+   on their own pages). #}
 
 {% block actionButton %}
     {% if not readOnly %}
@@ -41,35 +42,35 @@
             disabled: readOnly,
         }) }}
 
-        <hr>
+        {# Admin-alert + geo-IP are Enterprise EXPOSURE features — omitted
+           entirely below Enterprise (no locked/badged upsell fields). #}
+        {% if isEnterprise %}
+            <hr>
 
-        {% if adminAlertsLocked %}
-            {% include "password-policy/_components/edition-gate" with { edition: 'Enterprise' } %}
+            {{ forms.autosuggestField({
+                label: 'Admin alert email'|t('password-policy'),
+                instructions: "Email address for security alerts (lockouts, breach detections). Supports environment variables."|t('password-policy'),
+                name: 'settings[adminAlertEmail]',
+                suggestEnvVars: true,
+                value: settings.adminAlertEmail,
+                disabled: readOnly,
+            }) }}
+
+            <hr>
+
+            {{ forms.lightswitchField({
+                label: 'Enable IP geolocation'|t('password-policy'),
+                instructions: "Resolve the country of each audit event's IP address and store it alongside the entry. Only the country code is stored — never the raw IP. Off by default for data minimisation."|t('password-policy'),
+                name: 'settings[geoIpEnabled]',
+                on: settings.geoIpEnabled,
+                disabled: readOnly,
+            }) }}
+
+            <blockquote class="note tip">
+                <p>
+                    {{ "Geolocation uses the bundled DB-IP Lite database — country-level only, no external API calls or downloads required. IP Geolocation by DB-IP (https://db-ip.com), licensed under CC BY 4.0."|t('password-policy') }}
+                </p>
+            </blockquote>
         {% endif %}
-
-        {{ forms.autosuggestField({
-            label: 'Admin alert email'|t('password-policy'),
-            instructions: "Email address for security alerts (lockouts, breach detections). Supports environment variables."|t('password-policy'),
-            name: 'settings[adminAlertEmail]',
-            suggestEnvVars: true,
-            value: settings.adminAlertEmail,
-            disabled: readOnly or adminAlertsLocked,
-        }) }}
-
-        <hr>
-
-        {{ forms.lightswitchField({
-            label: 'Enable IP geolocation'|t('password-policy'),
-            instructions: "Resolve the country of each audit event's IP address and store it alongside the entry. Only the country code is stored — never the raw IP. Off by default for data minimisation."|t('password-policy'),
-            name: 'settings[geoIpEnabled]',
-            on: settings.geoIpEnabled,
-            disabled: readOnly or adminAlertsLocked,
-        }) }}
-
-        <blockquote class="note tip">
-            <p>
-                {{ "Geolocation uses the bundled DB-IP Lite database — country-level only, no external API calls or downloads required. IP Geolocation by DB-IP (https://db-ip.com), licensed under CC BY 4.0."|t('password-policy') }}
-            </p>
-        </blockquote>
     </div>
 {% endblock %}

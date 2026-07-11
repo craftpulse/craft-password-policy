@@ -48,22 +48,25 @@
         }) }}
     </div>
 
-    <hr>
+    {# Minimum change interval is a Pro feature — omitted entirely on Lite
+       (no locked/badged upsell field). #}
+    {% if isPro %}
+        <hr>
 
-    <div class="flex-fields">
-        {% set minChangeIntervalInfo %}
-            <span class="info">{{ "Stops a user from re-changing their password again within this window — which would otherwise let them cycle through new passwords to flush the reuse history. Admin-forced, expiry-forced, first-login, and breach-forced resets always bypass this limit. Set to 0 to disable. Per-group overrides require the Pro edition."|t('password-policy') }}</span>
-        {% endset %}
-        {{ forms.textField({
-            label: 'Minimum change interval (hours)'|t('password-policy'),
-            instructions: "The minimum number of hours that must pass between two password changes for the same user."|t('password-policy') ~ minChangeIntervalInfo,
-            name: 'settings[minChangeIntervalHours]',
-            value: settings.minChangeIntervalHours,
-            size: 5,
-            type: 'number',
-            min: 0,
-            disabled: readOnly or not isPro,
-            warning: not isPro ? 'Requires the Pro edition.'|t('password-policy'),
-        }) }}
-    </div>
+        <div class="flex-fields">
+            {% set minChangeIntervalInfo %}
+                <span class="info">{{ "Stops a user from re-changing their password again within this window — which would otherwise let them cycle through new passwords to flush the reuse history. Admin-forced, expiry-forced, first-login, and breach-forced resets always bypass this limit. Set to 0 to disable. Per-group overrides require the Pro edition."|t('password-policy') }}</span>
+            {% endset %}
+            {{ forms.textField({
+                label: 'Minimum change interval (hours)'|t('password-policy'),
+                instructions: "The minimum number of hours that must pass between two password changes for the same user."|t('password-policy') ~ minChangeIntervalInfo,
+                name: 'settings[minChangeIntervalHours]',
+                value: settings.minChangeIntervalHours,
+                size: 5,
+                type: 'number',
+                min: 0,
+                disabled: readOnly,
+            }) }}
+        </div>
+    {% endif %}
 {% endblock %}

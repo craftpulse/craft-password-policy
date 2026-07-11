@@ -174,11 +174,11 @@ The plugin validates the template path at save time — `Craft::$app->getView()-
 
 ### Edition-strip on save
 
-The CP edit screen renders the templatePath field visible-but-disabled on Pro and Lite editions. The save and test-send actions also strip the field server-side if a crafted POST tries to bypass the UI — defense in depth.
+The CP edit screen omits the templatePath field entirely on Pro and Lite editions (it only renders on Enterprise). The save and test-send actions also strip the field server-side if a crafted POST tries to bypass the UI — defense in depth.
 
 ### Downgrade behaviour
 
-If you downgrade an Enterprise install to Pro, existing template rows retain their `templatePath` value in the JSON content column, but the renderer falls back to the DB body. The Pro edit screen renders the field disabled with the Enterprise badge. Upgrade back to Enterprise and the path resumes working.
+If you downgrade an Enterprise install to Pro, existing template rows retain their `templatePath` value in the JSON content column, but the renderer falls back to the DB body. The Pro edit screen omits the field entirely. Upgrade back to Enterprise and the path resumes working.
 
 The renderer gate is enforced at the `composeFromTemplate()` call site — when the plugin is no longer Enterprise, the templatePath is ignored regardless of what's in the JSON.
 

@@ -45,30 +45,26 @@
 
         <hr>
 
-        {# Complexity Mode is Pro-gated. Visible-but-disabled on Lite so the
-           upgrade path stays discoverable; mirrors the `_settings/audit.twig`
-           shape (`editionLocked` + the edition-gate callout). #}
-        {% set complexityLocked = not isPro %}
-
-        {% set complexityInfo %}
-            <span class="info">{{ "Individual toggles lets you require specific character types independently — best when your policy mandates exact requirements. Minimum character types requires at least X of 4 types, giving users flexibility. This is the NIST-recommended approach as it encourages diversity without overly prescriptive rules."|t('password-policy') }}</span>
-        {% endset %}
-        {{ forms.selectField({
-            label: 'Complexity mode'|t('password-policy'),
-            instructions: "How password complexity is enforced."|t('password-policy') ~ complexityInfo,
-            name: 'settings[complexityMode]',
-            options: [
-                { label: 'Individual toggles'|t('password-policy'), value: 'individual' },
-                { label: 'Minimum character types'|t('password-policy'), value: 'minimum' },
-            ],
-            value: settings.complexityMode,
-            toggle: not complexityLocked,
-            targetPrefix: 'complexity-',
-            disabled: readOnly or complexityLocked,
-        }) }}
-
-        {% if complexityLocked %}
-            {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
+        {# Complexity Mode is a Pro feature — omitted entirely on Lite, which
+           always runs the individual toggles below (no mode selector, no
+           locked/badged upsell row). #}
+        {% if isPro %}
+            {% set complexityInfo %}
+                <span class="info">{{ "Individual toggles lets you require specific character types independently — best when your policy mandates exact requirements. Minimum character types requires at least X of 4 types, giving users flexibility. This is the NIST-recommended approach as it encourages diversity without overly prescriptive rules."|t('password-policy') }}</span>
+            {% endset %}
+            {{ forms.selectField({
+                label: 'Complexity mode'|t('password-policy'),
+                instructions: "How password complexity is enforced."|t('password-policy') ~ complexityInfo,
+                name: 'settings[complexityMode]',
+                options: [
+                    { label: 'Individual toggles'|t('password-policy'), value: 'individual' },
+                    { label: 'Minimum character types'|t('password-policy'), value: 'minimum' },
+                ],
+                value: settings.complexityMode,
+                toggle: true,
+                targetPrefix: 'complexity-',
+                disabled: readOnly,
+            }) }}
         {% endif %}
 
         <div id="complexity-individual" {% if isPro and settings.complexityMode == 'minimum' %}class="hidden"{% endif %}>

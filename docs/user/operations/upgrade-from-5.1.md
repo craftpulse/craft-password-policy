@@ -38,7 +38,7 @@ Spot-check a few things to confirm the migration applied cleanly:
 ./craft password-policy/blocklist/stats
 ```
 
-The CP should show **Password Policy → Settings** with the redesigned sidebar (Policy / Validation / Monitoring / Audit sections) and edition badges on the Pro/Enterprise-locked rows.
+The CP should show **Password Policy → Settings** with the redesigned sidebar (Policy / Validation / Monitoring / Audit sections). On Lite the Pro-only rows (Group Policies, Compliance Presets) are omitted entirely; they appear once you switch to Pro.
 
 ## Upgrading to Pro
 
@@ -210,11 +210,11 @@ The legacy `pwned` key should auto-migrate. If it didn't, check:
 
 If both return `null`, the setting was never persisted to project config (it lived only in `config/password-policy.php`). The `SettingsModel` alias should still resolve the legacy key from the config file; if not, manually rename `pwned` → `hibp` in `config/password-policy.php` and re-`./craft up`.
 
-### Edition badge missing in the CP after switching to Pro
+### Pro/Enterprise features missing in the CP after switching editions
 
-Hard-refresh the CP (Cmd+Shift+R / Ctrl+Shift+R). Craft caches the project-config interpretation for the duration of a request; the badge appears on the next render.
+Hard-refresh the CP (Cmd+Shift+R / Ctrl+Shift+R). Craft caches the project-config interpretation for the duration of a request; the newly-unlocked subnav items and settings sections appear on the next render.
 
-If the badge still doesn't appear, verify the edition value via:
+If they still don't appear, verify the edition value via:
 
 ```bash
 ./craft project-config/get plugins.password-policy.settings.edition

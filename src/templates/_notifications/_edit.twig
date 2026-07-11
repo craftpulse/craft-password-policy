@@ -11,7 +11,6 @@
 {% import '_includes/forms.twig' as forms %}
 
 {% set isEnterprise = craft.app.plugins.getPlugin('password-policy').getIsEnterprise() %}
-{% set templatePathLocked = not isEnterprise %}
 {% set readOnly = readOnly ?? false %}
 
 {% if readOnly %}
@@ -94,31 +93,23 @@
         </blockquote>
     {% endif %}
 
-    {# G11 — Enterprise-only Twig template override. Visible-but-disabled
-       on Lite/Pro so the upgrade path stays discoverable; matches the
-       `_settings/audit.twig` precedent. The Enterprise edition gate is
-       enforced at the renderer (NotificationService::composeFromTemplate)
-       and on save (NotificationTemplateController::actionSave) — the
-       disabled state here is presentation, the strip there is correctness. #}
-    {{ forms.autosuggestField({
-        label: 'Custom Twig template'|t('password-policy'),
-        instructions: 'Optionally render the body from a site Twig template instead of the field above. Subject is always rendered from the Subject field. Enterprise edition only.'|t('password-policy'),
-        id: 'templatePath',
-        name: 'templatePath',
-        value: template.templatePath,
-        placeholder: '_emails/expiry-reminder.twig',
-        disabled: readOnly or templatePathLocked,
-        suggestEnvVars: true,
-        errors: template.getErrors('templatePath'),
-    }) }}
-
-    {% if templatePathLocked %}
-        <blockquote class="note">
-            <p>
-                {{ "Custom Twig template paths require the Enterprise edition."|t('password-policy') }}
-                &ensp;<span class="badge">{{ 'Enterprise'|t('password-policy') }}</span>
-            </p>
-        </blockquote>
+    {# G11 — Enterprise-only Twig template override. Omitted entirely below
+       Enterprise (no locked/badged upsell field). The edition gate is also
+       enforced at the renderer (NotificationService::composeFromTemplate) and
+       on save (NotificationTemplateController::actionSave) as defense in
+       depth. #}
+    {% if isEnterprise %}
+        {{ forms.autosuggestField({
+            label: 'Custom Twig template'|t('password-policy'),
+            instructions: 'Optionally render the body from a site Twig template instead of the field above. Subject is always rendered from the Subject field.'|t('password-policy'),
+            id: 'templatePath',
+            name: 'templatePath',
+            value: template.templatePath,
+            placeholder: '_emails/expiry-reminder.twig',
+            disabled: readOnly,
+            suggestEnvVars: true,
+            errors: template.getErrors('templatePath'),
+        }) }}
     {% endif %}
 
     <blockquote class="note tip">

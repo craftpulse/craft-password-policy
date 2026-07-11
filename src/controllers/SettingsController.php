@@ -52,6 +52,23 @@ class SettingsController extends Controller
     ];
 
     /**
+     * Settings sections whose entire screen is a Pro feature. On lower
+     * editions these are omitted from the settings sidebar
+     * (`_layouts/password-policy-cp-settings.twig`) and `actionEdit()` denies
+     * direct URL access — a Lite admin never renders the page, badged or
+     * otherwise. Sections that carry universal fields alongside gated ones
+     * (`configuration`, `rules`, `history`, `validators`, `audit`) stay off
+     * this list: they render on every edition and omit only their
+     * higher-edition fields inside the template.
+     *
+     * @var string[]
+     */
+    private const PRO_SECTIONS = [
+        'groups',
+        'presets',
+    ];
+
+    /**
      * Preset fields that get written to the global SettingsModel by
      * `actionApplyPreset()`. Matches the union of fields any of the
      * five `PolicyPreset::_apply*()` methods touch. Fields not in this
@@ -123,10 +140,20 @@ class SettingsController extends Controller
             throw new NotFoundHttpException('Invalid settings section.');
         }
 
+        $plugin = PasswordPolicy::$plugin;
+
+        // Whole-screen Pro sections deny direct URL access on lower editions —
+        // the sidebar already omits them, this closes the crafted-URL path.
+        if (in_array($section, self::PRO_SECTIONS, true) && !$plugin->getIsPro()) {
+            throw new ForbiddenHttpException(
+                Craft::t('password-policy', 'The {section} settings require the Pro edition.', [
+                    'section' => $section,
+                ]),
+            );
+        }
+
         $general = Craft::$app->getConfig()->getGeneral();
         $readOnly = !$general->allowAdminChanges;
-
-        $plugin = PasswordPolicy::$plugin;
         $pluginName = 'Password Policy';
         $templateTitle = Craft::t('password-policy', 'Settings');
 

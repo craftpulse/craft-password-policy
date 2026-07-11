@@ -5,7 +5,6 @@
 
 {% set selectedItem = 'validators' %}
 {% set title = 'Validators'|t('password-policy') %}
-{% set proLocked = not isPro %}
 
 {% block actionButton %}
     {% if not readOnly %}
@@ -32,46 +31,46 @@
         }) }}
     </div>
 
-    {# ---- Pro-only validators ---- #}
-    <hr>
-    <h2>{{ 'Advanced Validators'|t('password-policy') }}</h2>
+    {# Advanced validators (sequential / repeated / contextual) are Pro
+       features — the whole section is omitted on Lite rather than shown as
+       disabled fields behind an upsell callout. #}
+    {% if isPro %}
+        <hr>
+        <h2>{{ 'Advanced Validators'|t('password-policy') }}</h2>
 
-    {% if proLocked %}
-        {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
+        <div class="flex-fields">
+            {% set sequentialInfo %}
+                <span class="info">{{ "Detects alphabetical sequences (abc, xyz), numeric sequences (123, 987), and keyboard row sequences (qwerty, asdf). Also catches less obvious ASCII sequences like pqr or stu. Both ascending and descending sequences of 3+ characters are blocked."|t('password-policy') }}</span>
+            {% endset %}
+            {{ forms.lightswitchField({
+                label: 'Block sequential characters'|t('password-policy'),
+                instructions: "Reject passwords with 3+ sequential characters."|t('password-policy') ~ sequentialInfo,
+                name: 'settings[checkSequentialChars]',
+                on: settings.checkSequentialChars,
+                disabled: readOnly,
+            }) }}
+
+            {% set repeatedInfo %}
+                <span class="info">{{ "Rejects passwords containing the same character 3 or more times in a row (aaa, 111, !!!). Repeated characters dramatically reduce the effective entropy of a password."|t('password-policy') }}</span>
+            {% endset %}
+            {{ forms.lightswitchField({
+                label: 'Block repeated characters'|t('password-policy'),
+                instructions: "Reject passwords with 3+ repeated characters in a row."|t('password-policy') ~ repeatedInfo,
+                name: 'settings[checkRepeatedChars]',
+                on: settings.checkRepeatedChars,
+                disabled: readOnly,
+            }) }}
+
+            {% set contextualInfo %}
+                <span class="info">{{ "Compares the password against the user's username, email address, first name, last name, and the site name. Matching is case-insensitive. Prevents the most common form of weak passwords in organizational contexts."|t('password-policy') }}</span>
+            {% endset %}
+            {{ forms.lightswitchField({
+                label: 'Block contextual passwords'|t('password-policy'),
+                instructions: "Reject passwords containing personal or site-related information."|t('password-policy') ~ contextualInfo,
+                name: 'settings[checkContextual]',
+                on: settings.checkContextual,
+                disabled: readOnly,
+            }) }}
+        </div>
     {% endif %}
-
-    <div class="flex-fields">
-        {% set sequentialInfo %}
-            <span class="info">{{ "Detects alphabetical sequences (abc, xyz), numeric sequences (123, 987), and keyboard row sequences (qwerty, asdf). Also catches less obvious ASCII sequences like pqr or stu. Both ascending and descending sequences of 3+ characters are blocked."|t('password-policy') }}</span>
-        {% endset %}
-        {{ forms.lightswitchField({
-            label: 'Block sequential characters'|t('password-policy'),
-            instructions: "Reject passwords with 3+ sequential characters."|t('password-policy') ~ sequentialInfo,
-            name: 'settings[checkSequentialChars]',
-            on: settings.checkSequentialChars,
-            disabled: readOnly or proLocked,
-        }) }}
-
-        {% set repeatedInfo %}
-            <span class="info">{{ "Rejects passwords containing the same character 3 or more times in a row (aaa, 111, !!!). Repeated characters dramatically reduce the effective entropy of a password."|t('password-policy') }}</span>
-        {% endset %}
-        {{ forms.lightswitchField({
-            label: 'Block repeated characters'|t('password-policy'),
-            instructions: "Reject passwords with 3+ repeated characters in a row."|t('password-policy') ~ repeatedInfo,
-            name: 'settings[checkRepeatedChars]',
-            on: settings.checkRepeatedChars,
-            disabled: readOnly or proLocked,
-        }) }}
-
-        {% set contextualInfo %}
-            <span class="info">{{ "Compares the password against the user's username, email address, first name, last name, and the site name. Matching is case-insensitive. Prevents the most common form of weak passwords in organizational contexts."|t('password-policy') }}</span>
-        {% endset %}
-        {{ forms.lightswitchField({
-            label: 'Block contextual passwords'|t('password-policy'),
-            instructions: "Reject passwords containing personal or site-related information."|t('password-policy') ~ contextualInfo,
-            name: 'settings[checkContextual]',
-            on: settings.checkContextual,
-            disabled: readOnly or proLocked,
-        }) }}
-    </div>
 {% endblock %}

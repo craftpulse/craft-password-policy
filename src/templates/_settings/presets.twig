@@ -3,9 +3,11 @@
 {% extends "password-policy/_layouts/password-policy-cp-settings.twig" %}
 {% import '_includes/forms.twig' as forms %}
 
+{# Compliance Presets is a Pro-only screen: the settings sidebar omits it
+   below Pro and `SettingsController::actionEdit()` denies direct access, so
+   this template only ever renders on Pro+. #}
 {% set selectedItem = 'presets' %}
 {% set title = 'Compliance Presets'|t('password-policy') %}
-{% set editionLocked = not isPro %}
 
 {# No persistent save button — each preset has its own apply form. #}
 {% block actionButton %}{% endblock %}
@@ -23,10 +25,6 @@
         { value: 'strict_enterprise', label: 'Strict Enterprise',
           summary: 'Maximum enforcement: composition, history, HIBP fail-closed, 90-day rotation, plus sequential / repeated / contextual character checks.'|t('password-policy') },
     ] %}
-
-    {% if editionLocked %}
-        {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
-    {% endif %}
 
     <blockquote class="note tip">
         <p>{{ 'Applies a compliance-aligned password policy to your global settings in one click. Use {groupsLink} for per-group named policies.'|t('password-policy', {
@@ -51,8 +49,8 @@
                     </td>
                     <td>{{ preset.summary }}</td>
                     <td>
-                        {% if readOnly or editionLocked %}
-                            <button type="button" class="btn" disabled title="{{ editionLocked ? 'Pro edition required to apply this preset.'|t('password-policy') : '' }}">{{ 'Apply'|t('app') }}</button>
+                        {% if readOnly %}
+                            <button type="button" class="btn" disabled>{{ 'Apply'|t('app') }}</button>
                         {% else %}
                             <form method="post" accept-charset="UTF-8" style="display: inline;">
                                 {{ csrfInput() }}

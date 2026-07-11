@@ -26,10 +26,6 @@
 {% endblock %}
 
 {% block content %}
-    {% if not isPro %}
-        {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
-    {% endif %}
-
     <div class="readable">
         <h2>{{ 'Common passwords'|t('password-policy') }}</h2>
 

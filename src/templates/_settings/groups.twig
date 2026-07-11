@@ -1,7 +1,9 @@
-{# Group policies settings — toggle + link to named policies manager #}
+{# Group policies settings — toggle + link to named policies manager. This is
+   a Pro-only screen: the settings sidebar omits it below Pro and
+   `SettingsController::actionEdit()` denies direct access, so this template
+   only ever renders on Pro+. #}
 {# @var settings \craftpulse\passwordpolicy\models\SettingsModel #}
 {# @var readOnly bool #}
-{# @var isPro bool #}
 
 {% requirePermission "pp:settings" %}
 
@@ -10,10 +12,9 @@
 
 {% set selectedItem = 'groups' %}
 {% set title = 'Group Policies'|t('password-policy') %}
-{% set editionLocked = not isPro %}
 
 {% block actionButton %}
-    {% if not readOnly and not editionLocked %}
+    {% if not readOnly %}
         <input type="submit" class="btn submit" value="{{ 'Save'|t('app') }}">
     {% endif %}
 {% endblock %}
@@ -22,10 +23,6 @@
     <input type="hidden" name="action" value="password-policy/settings/save">
     <input type="hidden" name="pluginHandle" value="password-policy">
     {{ redirectInput('password-policy/settings/groups') }}
-
-    {% if editionLocked %}
-        {% include "password-policy/_components/edition-gate" with { edition: 'Pro' } %}
-    {% endif %}
 
     {% set perGroupInfo %}
         <span class="info">{{ "When a user belongs to multiple groups, each setting is resolved independently using \"most restrictive wins\" logic. Boolean checks can only be strengthened (enabled), never weakened. Numeric minimums take the highest value, numeric maximums take the lowest."|t('password-policy') }}</span>
@@ -36,7 +33,7 @@
         id: 'enablePerGroupPolicies',
         name: 'settings[enablePerGroupPolicies]',
         on: settings.enablePerGroupPolicies,
-        disabled: readOnly or editionLocked,
+        disabled: readOnly,
         toggle: '#group-policies-container',
     }) }}
 
