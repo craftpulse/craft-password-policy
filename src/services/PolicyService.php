@@ -11,9 +11,11 @@
 namespace craftpulse\passwordpolicy\services;
 
 use Craft;
+use craft\db\Query;
 use craftpulse\passwordpolicy\elements\PolicyElement;
 use craftpulse\passwordpolicy\events\PolicySaveEvent;
 use craftpulse\passwordpolicy\models\PolicyModel;
+use craftpulse\passwordpolicy\PasswordPolicy;
 use Throwable;
 use yii\base\Component;
 
@@ -252,6 +254,13 @@ class PolicyService extends Component
         // `policy->id` on the INSERT branch via the element pipeline's
         // id-pullback below, so capture isNew before the round-trip.
         $isNew = $policy->id === null;
+
+        // Snapshot the on-disk group assignments before the save so the
+        // governance bus emission below can diff old vs new and fire one
+        // `group_assignment_changed` event per genuine add/remove. A new
+        // policy has no prior assignments.
+        $oldGroupIds = $isNew ? [] : $this->_assignedGroupIds($policy->id);
+
         $element = PolicyElement::fromModel($policy, $groupIds);
 
         if (!Craft::$app->getElements()->saveElement($element)) {
@@ -284,6 +293,15 @@ class PolicyService extends Component
         ]);
         $this->trigger(self::EVENT_AFTER_SAVE_POLICY, $afterEvent);
 
+        // Governance fan-out onto the shared Audit Kit bus — ADDITIVE to PP's
+        // own `policy_changed` chain row (fired from the element's afterSave()),
+        // never a replacement. Emits `policy_saved` once and one
+        // `group_assignment_changed` per genuine assignment add/remove. The
+        // emitter is fail-soft; a bus problem can't unwind the committed save.
+        $governance = PasswordPolicy::$plugin->getGovernanceAudit();
+        $governance->policySaved($policy, $isNew);
+        $governance->groupsChanged($policy, $oldGroupIds, $groupIds);
+
         return true;
     }
 
@@ -309,7 +327,21 @@ class PolicyService extends Component
      */
     public function deletePolicy(int $id): bool
     {
-        return (bool)Craft::$app->getElements()->deleteElementById($id, PolicyElement::class, hardDelete: true);
+        // Resolve the handle + uid BEFORE the delete so the governance emission
+        // below carries them (post-delete the row is gone). A missing policy
+        // yields nulls, and the delete still runs to preserve prior behaviour.
+        $policy = $this->getPolicyById($id);
+        $handle = $policy?->handle;
+        $uid = $policy?->uid;
+
+        $deleted = (bool)Craft::$app->getElements()->deleteElementById($id, PolicyElement::class, hardDelete: true);
+
+        if ($deleted) {
+            // Governance fan-out onto the shared Audit Kit bus (fail-soft).
+            PasswordPolicy::$plugin->getGovernanceAudit()->policyDeleted($id, $handle, $uid);
+        }
+
+        return $deleted;
     }
 
     /**
@@ -352,5 +384,30 @@ class PolicyService extends Component
         }
 
         return true;
+    }
+
+    // Private Methods
+    // =========================================================================
+
+    /**
+     * Returns the user-group ids currently assigned to a policy, read straight
+     * from the junction table. Used to diff group assignments for the
+     * governance bus emission without round-tripping the element pipeline.
+     *
+     * @param int $policyId
+     * @return int[]
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _assignedGroupIds(int $policyId): array
+    {
+        $groupIds = (new Query())
+            ->select(['groupId'])
+            ->from('{{%passwordpolicy_policy_groups}}')
+            ->where(['policyId' => $policyId])
+            ->column();
+
+        return array_map('intval', $groupIds);
     }
 }

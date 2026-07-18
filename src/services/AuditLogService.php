@@ -15,9 +15,15 @@ use Craft;
 use craft\db\Query;
 use craft\helpers\Json;
 use craft\helpers\StringHelper;
+use craftpulse\auditkit\engine\Canonicalizer;
+use craftpulse\auditkit\engine\ChainWriter;
+use craftpulse\auditkit\engine\ContextCapturer;
+use craftpulse\auditkit\engine\Pruner;
+use craftpulse\auditkit\events\ChainRotatedEvent;
 use craftpulse\passwordpolicy\elements\AuditLogElement;
 use craftpulse\passwordpolicy\events\AuditChainRotatedEvent;
 use craftpulse\passwordpolicy\PasswordPolicy;
+use RuntimeException;
 use Throwable;
 use yii\base\Component;
 
@@ -191,15 +197,17 @@ class AuditLogService extends Component
      * zero hex chars — same width as a SHA-256 digest, so verifier
      * chain-walks treat it as a hash without a null-handling branch.
      *
-     * Single source of truth — referenced by `AuditController` (the
-     * G2 verifier CLI) and the `m260507_081852_RecomputeAuditLogChain`
-     * migration. Drift between the writer and either reader silently
-     * invalidates every chain hash in the table, so the constant lives
-     * in one place and the readers import it.
+     * Single source of truth — aliases {@see Canonicalizer::GENESIS_PREVIOUS_HASH}
+     * (the shared Audit Kit engine now owns the value) while preserving the
+     * `AuditLogService::GENESIS_PREVIOUS_HASH` reference that `AuditController`
+     * (the G2 verifier CLI) and the `m260507_081852_RecomputeAuditLogChain`
+     * migration import. Drift between the writer and either reader silently
+     * invalidates every chain hash in the table, so the value lives in the kit
+     * and every reader resolves to it.
      *
      * @var string
      */
-    public const GENESIS_PREVIOUS_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
+    public const GENESIS_PREVIOUS_HASH = Canonicalizer::GENESIS_PREVIOUS_HASH;
 
     /**
      * Canonical-payload `dateCreated` format. UTC, ISO 8601 with the
@@ -208,15 +216,17 @@ class AuditLogService extends Component
      * verifier produces bit-identical output only when the format
      * matches exactly.
      *
-     * Single source of truth — referenced by `AuditController` (the
-     * G2 verifier CLI) and the `m260507_081852_RecomputeAuditLogChain`
-     * migration. Drift between the writer and either reader silently
-     * invalidates every chain hash in the table, so the constant lives
-     * in one place and the readers import it.
+     * Single source of truth — aliases {@see Canonicalizer::CANONICAL_DATE_FORMAT}
+     * (the shared Audit Kit engine now owns the value) while preserving the
+     * `AuditLogService::CANONICAL_DATE_FORMAT` reference that `AuditController`
+     * (the G2 verifier CLI) and the `m260507_081852_RecomputeAuditLogChain`
+     * migration import. Drift between the writer and either reader silently
+     * invalidates every chain hash in the table, so the value lives in the kit
+     * and every reader resolves to it.
      *
      * @var string
      */
-    public const CANONICAL_DATE_FORMAT = 'Y-m-d\TH:i:s\Z';
+    public const CANONICAL_DATE_FORMAT = Canonicalizer::CANONICAL_DATE_FORMAT;
 
     /**
      * Upper bound on the per-page row count the Feature 2 REST `audit`
@@ -270,12 +280,13 @@ class AuditLogService extends Component
      */
     public static function canonicalize(array $payload): string
     {
-        $sorted = self::_sortRecursive($payload);
-
-        return Json::encode(
-            $sorted,
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
-        );
+        // Delegates to the shared Audit Kit engine, which is a byte-for-byte
+        // lift of PP's original canonicalize()/_sortRecursive(). The kit is the
+        // single canonicalisation code path across PP, Ledger, and Reeve — the
+        // very property that lets an external verifier reproduce PP's live
+        // 5.1.x rowHash bytes. This method is retained as PP's public API so
+        // AuditController + the recompute migration + SiemService keep working.
+        return Canonicalizer::canonicalize($payload);
     }
 
     // Public Methods
@@ -508,20 +519,23 @@ class AuditLogService extends Component
                 $source = $this->_detectSource();
             }
 
-            // HMAC IP address (never store raw). Keyed via the same
-            // resolver as `_hashUserIdentifier()` — bare SHA-256 over
-            // IPv4's 32-bit space is rainbow-tableable, and rotating
-            // the `auditPiiKey` should destroy correlation against
-            // both columns symmetrically.
-            //
-            // The raw IP is also fed to the geolocation lookup (Feature
-            // 4) for country/region enrichment — but ONLY the resolved
-            // country code + region are stored, never the raw IP. Geo
-            // enrichment is gated on Enterprise + `geoIpEnabled`; the
+            // Privacy-safe context capture through the shared Audit Kit
+            // ContextCapturer — HMAC of the IP and of the subject/actor
+            // identities, keyed by PP's own `auditPiiKey` (env
+            // `CRAFT_AUDIT_PII_KEY`, `securityKey` fallback). A bare SHA-256
+            // over IPv4's 32-bit space is rainbow-tableable; keying it makes
+            // key rotation destroy correlation across every hashed column
+            // symmetrically. The env-var name + generate-pii-key command stay
+            // PP's; only the HMAC mechanism moves to the kit.
+            $capturer = new ContextCapturer(PasswordPolicy::$plugin->getSettings()->auditPiiKey);
+
+            // HMAC IP address (never store raw). The raw IP is still fed to
+            // PP's own Enterprise geo enrichment for country/region — but ONLY
+            // the resolved country code + region are stored, never the raw IP.
+            // Geo enrichment is gated on Enterprise + `geoIpEnabled`; the
             // edition check lives here at the call site, while the
-            // `geoIpEnabled` flag is enforced inside `GeoIpService`
-            // (gate exposure, not capture — the columns exist on every
-            // edition regardless).
+            // `geoIpEnabled` flag is enforced inside `GeoIpService` (gate
+            // exposure, not capture — the columns exist on every edition).
             $ipHash = null;
             $geoCountry = null;
             $geoRegion = null;
@@ -529,7 +543,7 @@ class AuditLogService extends Component
             if (!$request->getIsConsoleRequest()) {
                 $ip = $request->getUserIP();
                 if ($ip !== null) {
-                    $ipHash = hash_hmac('sha256', $ip, $this->_resolveAuditPiiKey());
+                    $ipHash = $capturer->hashValue($ip);
 
                     if (PasswordPolicy::$plugin->getIsEnterprise()) {
                         $geo = PasswordPolicy::$plugin->getGeoIp()->lookup($ip);
@@ -541,153 +555,123 @@ class AuditLogService extends Component
                 }
             }
 
-            // HMAC user identifier for post-deletion correlation
-            $userIdentifier = null;
-            if ($userId !== null) {
-                $userIdentifier = $this->_hashUserIdentifier($userId);
-            }
+            // HMAC user identifier for post-deletion correlation.
+            $userIdentifier = $userId !== null
+                ? $capturer->hashUserIdentifier($userId)
+                : null;
 
             $resolvedChangedByUserId = $changedByUserId ?? $this->_getCurrentAdminId();
 
             // HMAC actor identifier — the immutable mirror of
-            // `changedByUserId`. This, NOT the FK int, enters the
-            // canonical hash payload: `changedByUserId` is `ON DELETE
-            // SET NULL`, so hashing it would make deleting an admin
-            // (GDPR erasure) recompute a different rowHash and report
-            // the chain as tampered. The HMAC is set once here and
-            // never mutates.
+            // `changedByUserId`. This, NOT the FK int, enters the canonical
+            // hash payload: `changedByUserId` is `ON DELETE SET NULL`, so
+            // hashing it would make deleting an admin (GDPR erasure) recompute
+            // a different rowHash and report the chain as tampered. The HMAC
+            // is set once here and never mutates.
             $changedByIdentifier = $resolvedChangedByUserId !== null
-                ? $this->_hashUserIdentifier($resolvedChangedByUserId)
+                ? $capturer->hashUserIdentifier($resolvedChangedByUserId)
                 : null;
             $dateCreated = Carbon::now('UTC');
             $uid = StringHelper::UUID();
 
-            // Chain write: SELECT ... FOR UPDATE locks the latest rowHash
-            // until the new row's INSERT commits. Two concurrent inserts
-            // serialise — the second one reads the first's committed
-            // rowHash as its own previousHash. Yii's `Query` builder
-            // doesn't expose a `FOR UPDATE` clause, so we issue the
-            // locking read as a raw command. The table name is a
-            // compile-time constant — no user-input interpolation, no
-            // injection surface.
+            // Canonical-payload key set (alphabetical): changedByIdentifier,
+            // dateCreated, details, event, ipHash, outcome, source, uid,
+            // userIdentifier.
             //
-            // The transaction MUST wrap saveElement(). Step 5
-            // converted the writer from a raw record insert to an
-            // element pipeline — Craft inserts the craft_elements row
-            // first, then the element's afterSave() inserts the
-            // audit_log row. Both inserts share the lock; without the
-            // wrapping transaction two concurrent logEvent() calls
-            // could read the same previousHash and produce parallel
-            // chain forks.
-            $db = Craft::$app->getDb();
-            $tableName = $db->getSchema()->getRawTableName('{{%passwordpolicy_audit_log}}');
+            // The mutable FK ints `userId` + `changedByUserId` are
+            // DELIBERATELY EXCLUDED. Both are `ON DELETE SET NULL`, so deleting
+            // a user nulls them on every historical row and the verifier would
+            // then recompute a different rowHash — making GDPR erasure
+            // indistinguishable from tampering. We hash the IMMUTABLE HMAC
+            // identities instead: `userIdentifier` (the subject) and
+            // `changedByIdentifier` (the actor), both set once at write and
+            // never mutated. Same exclusion-by-mutability reasoning as the geo
+            // columns (post-insert metadata that must not enter the hash).
+            //
+            // ⚠️ BIT-IDENTITY: this exact 9-key set + the kit Canonicalizer
+            // bytes reproduce PP's live 5.1.x rowHash. Never add, remove, or
+            // reorder a key here — every byte is regression-pinned by
+            // AuditBitIdentityTest (golden vector) + the live-chain verify gate.
+            $canonicalPayload = [
+                'changedByIdentifier' => $changedByIdentifier,
+                'dateCreated' => $dateCreated->format(self::CANONICAL_DATE_FORMAT),
+                'details' => $filteredDetails,
+                'event' => $event,
+                'ipHash' => $ipHash,
+                'outcome' => $outcome,
+                'source' => $source,
+                'uid' => $uid,
+                'userIdentifier' => $userIdentifier,
+            ];
 
-            $insertedId = null;
+            // Serialized chain write through the shared Audit Kit ChainWriter:
+            // the `SELECT ... FOR UPDATE` tail read, the
+            // `rowHash = sha256(canonicalize(payload) . previousHash)`
+            // computation, and the wrapping transaction all live in the kit.
+            // PP owns the payload shape (above) and the storage — the persist
+            // closure saves the AuditLogElement exactly as before, so the
+            // element pipeline's `craft_elements` + `audit_log` inserts run
+            // inside the same locked transaction. Two concurrent logEvent()
+            // calls serialise on the tail lock and cannot fork the chain.
+            $result = (new ChainWriter())->write(
+                Craft::$app->getDb(),
+                '{{%passwordpolicy_audit_log}}',
+                $canonicalPayload,
+                function(string $previousHash, string $rowHash) use (
+                    $userId,
+                    $resolvedChangedByUserId,
+                    $event,
+                    $outcome,
+                    $source,
+                    $filteredDetails,
+                    $ipHash,
+                    $geoCountry,
+                    $geoRegion,
+                    $userIdentifier,
+                    $changedByIdentifier,
+                    $dateCreated,
+                    $uid,
+                ): int {
+                    // The element pipeline assigns `craft_elements.id` + `uid` +
+                    // `dateCreated` from the element's properties. We set `uid`
+                    // + `dateCreated` explicitly so the persisted values match
+                    // the canonical-payload bytes; `id` is auto-allocated, then
+                    // afterSave() writes the paired audit_log row with that id.
+                    $element = new AuditLogElement();
+                    $element->uid = $uid;
+                    $element->dateCreated = $dateCreated->toDateTime();
+                    $element->userId = $userId;
+                    $element->changedByUserId = $resolvedChangedByUserId;
+                    $element->event = $event;
+                    $element->outcome = $outcome;
+                    $element->source = $source;
+                    $element->details = $filteredDetails;
+                    $element->ipHash = $ipHash;
+                    // Geo enrichment — persisted on the element but DELIBERATELY
+                    // absent from the canonical payload above. Geo is
+                    // post-insert metadata; hashing it would break every
+                    // existing chain row.
+                    $element->geoCountry = $geoCountry;
+                    $element->geoRegion = $geoRegion;
+                    // `userId` + `changedByUserId` stay persisted (joins /
+                    // display / SET NULL retention) but are no longer hashed —
+                    // the HMAC identifiers ARE the hashed identity.
+                    $element->userIdentifier = $userIdentifier;
+                    $element->changedByIdentifier = $changedByIdentifier;
+                    $element->previousHash = $previousHash;
+                    $element->rowHash = $rowHash;
 
-            $db->transaction(function() use (
-                $db,
-                $tableName,
-                $userId,
-                $resolvedChangedByUserId,
-                $event,
-                $outcome,
-                $source,
-                $filteredDetails,
-                $ipHash,
-                $geoCountry,
-                $geoRegion,
-                $userIdentifier,
-                $changedByIdentifier,
-                $dateCreated,
-                $uid,
-                &$insertedId,
-            ): void {
-                $previousHash = $db
-                    ->createCommand("SELECT [[rowHash]] FROM {$db->quoteTableName($tableName)} ORDER BY [[id]] DESC LIMIT 1 FOR UPDATE")
-                    ->queryScalar();
+                    if (!Craft::$app->getElements()->saveElement($element, runValidation: false)) {
+                        throw new RuntimeException(
+                            'AuditLogElement save failed: ' . implode('; ', $element->getFirstErrors()),
+                        );
+                    }
 
-                if (!is_string($previousHash) || $previousHash === '') {
-                    $previousHash = self::GENESIS_PREVIOUS_HASH;
-                }
+                    return (int)$element->id;
+                },
+            );
 
-                // Canonical-payload key set (alphabetical):
-                // changedByIdentifier, dateCreated, details, event,
-                // ipHash, outcome, source, uid, userIdentifier.
-                //
-                // The mutable FK ints `userId` + `changedByUserId` are
-                // DELIBERATELY EXCLUDED. Both are `ON DELETE SET NULL`,
-                // so deleting a user nulls them on every historical row
-                // and the verifier would then recompute a different
-                // rowHash — making GDPR erasure indistinguishable from
-                // tampering. We hash the IMMUTABLE HMAC identities
-                // instead: `userIdentifier` (the subject) and
-                // `changedByIdentifier` (the actor), both set once at
-                // write and never mutated. Same exclusion-by-mutability
-                // reasoning as the geo columns below (post-insert
-                // metadata that must not enter the hash).
-                $canonicalPayload = self::canonicalize([
-                    'changedByIdentifier' => $changedByIdentifier,
-                    'dateCreated' => $dateCreated->format(self::CANONICAL_DATE_FORMAT),
-                    'details' => $filteredDetails,
-                    'event' => $event,
-                    'ipHash' => $ipHash,
-                    'outcome' => $outcome,
-                    'source' => $source,
-                    'uid' => $uid,
-                    'userIdentifier' => $userIdentifier,
-                ]);
-
-                $rowHash = hash('sha256', $canonicalPayload . $previousHash);
-
-                // The element pipeline assigns `craft_elements.id` +
-                // `craft_elements.uid` + `craft_elements.dateCreated`
-                // from the element's properties (or auto-allocates when
-                // unset). We explicitly set `uid` + `dateCreated` so
-                // the canonical-payload bytes match the persisted
-                // values. `id` is auto-allocated by Craft from the
-                // craft_elements row, then the element's afterSave()
-                // writes the paired audit_log row with that id.
-                $element = new AuditLogElement();
-                $element->uid = $uid;
-                $element->dateCreated = $dateCreated->toDateTime();
-                $element->userId = $userId;
-                $element->changedByUserId = $resolvedChangedByUserId;
-                $element->event = $event;
-                $element->outcome = $outcome;
-                $element->source = $source;
-                $element->details = $filteredDetails;
-                $element->ipHash = $ipHash;
-                // Geo enrichment — set on the element so afterSave()
-                // persists it, but DELIBERATELY absent from the
-                // canonicalize() payload above. Geo is post-insert
-                // metadata; including it in the hash would break every
-                // existing chain row (the verifier recomputes from the
-                // fixed key set only).
-                $element->geoCountry = $geoCountry;
-                $element->geoRegion = $geoRegion;
-                // `userId` + `changedByUserId` remain persisted columns
-                // (above) for joins / display / the SET NULL retention
-                // behaviour — they're just no longer part of the hash.
-                // The HMAC identifiers ARE the hashed identity.
-                $element->userIdentifier = $userIdentifier;
-                $element->changedByIdentifier = $changedByIdentifier;
-                $element->previousHash = $previousHash;
-                $element->rowHash = $rowHash;
-
-                if (!Craft::$app->getElements()->saveElement($element, runValidation: false)) {
-                    throw new \RuntimeException(
-                        'AuditLogElement save failed: ' . implode('; ', $element->getFirstErrors()),
-                    );
-                }
-
-                // Capture the new row's primary key for the return
-                // value. Read from the saved element rather than the
-                // raw lastInsertID — works through Yii's identity-map
-                // cache.
-                $insertedId = (int)$element->id;
-            });
-
-            return $insertedId;
+            return is_int($result) ? $result : null;
         } catch (Throwable $e) {
             // Never block the parent operation
             Craft::error(
@@ -716,144 +700,55 @@ class AuditLogService extends Component
      */
     public function purgeOldEntries(int $daysToKeep = 365): int
     {
-        $threshold = Carbon::now('UTC')->subDays($daysToKeep)->format('Y-m-d H:i:s');
+        // The id-prefix-safe prune mechanism (resolve the highest id past the
+        // retention threshold, delete the whole `id <= maxId` prefix so the
+        // survivors are always a clean chain suffix, then fire a rotation event
+        // with the boundary anchors) lives in the shared Audit Kit Pruner. PP
+        // supplies the retention window, the element-CASCADE delete closure,
+        // and re-publishes the rotation under its own event contract.
+        $pruner = new Pruner();
 
-        // Resolve the highest `id` that falls past the retention
-        // threshold, then delete by `id <= maxId` — NOT by `dateCreated
-        // < threshold` directly.
-        //
-        // The chain links rows by `id` order; `previousHash` references
-        // the `rowHash` of the immediately-lower `id`. A wall-clock step
-        // (NTP correction, DST jump, a manual backfill with an
-        // out-of-order `dateCreated`) can produce a row whose
-        // `dateCreated` is older than a lower-id neighbour's. A
-        // `dateCreated < threshold` delete would then drop that one row
-        // while keeping its id-neighbours — punching a mid-chain hole
-        // the verifier reports as tampering. Collapsing the predicate to
-        // a single `maxId` boundary guarantees a contiguous id prefix is
-        // removed, so the surviving rows are always a clean chain
-        // suffix.
-        $maxId = (new Query())
-            ->from('{{%passwordpolicy_audit_log}}')
-            ->where(['<', 'dateCreated', $threshold])
-            ->max('id');
-
-        if ($maxId === null) {
-            return 0;
-        }
-
-        $maxId = (int)$maxId;
-
-        // Audit retention is a compliance requirement — rows must be
-        // GONE from disk past the retention boundary (L3 of the Step 5
-        // invariants). Element soft-delete via `dateDeleted` is NOT
-        // acceptable for this path. Delete the paired
-        // `craft_elements` rows; the FK CASCADE on
-        // `audit_log.id → craft_elements.id` drops the audit rows in
-        // the same statement.
-        //
-        // Bulk DELETE on craft_elements rather than per-row
-        // `deleteElementById($id, hardDelete: true)` — the latter
-        // would fire ElementHelper lifecycle events per row, which
-        // both spams the event bus and bumps memory on a large prune
-        // batch. Retention is a bulk operation by design.
-        //
-        // The id list is materialised against the same `id <= maxId`
-        // predicate so the CASCADE delete targets exactly the audit
-        // rows being pruned (the `elements` table holds rows for other
-        // element types too — an unqualified `id <= maxId` against it
-        // would over-delete).
-        $expiredIds = (new Query())
-            ->select(['id'])
-            ->from('{{%passwordpolicy_audit_log}}')
-            ->where(['<=', 'id', $maxId])
-            ->column();
-
-        $deleted = 0;
-        if ($expiredIds !== []) {
-            $deleted = Craft::$app->getDb()->createCommand()
-                ->delete('{{%elements}}', ['id' => $expiredIds])
-                ->execute();
-        }
-
-        if ($deleted < 1) {
-            return $deleted;
-        }
-
-        // Resolve the new chain head (the first surviving row). When the
-        // prune emptied the table we have no anchor for downstream
-        // listeners — skip the event entirely so consumers don't have
-        // to handle a "rotation with no head" payload.
-        //
-        // `previousHash` is selected because it IS the rotation
-        // boundary: the surviving head's `previousHash` is the `rowHash`
-        // of the highest-id row the prune just deleted. Publishing the
-        // head's own stored link is more robust than re-querying the
-        // deleted row's `rowHash` (which is already gone post-delete)
-        // and is exactly the value the verifier accepts as the
-        // chain-start sentinel after rotation.
-        $startRow = (new Query())
-            ->select(['id', 'rowHash', 'previousHash'])
-            ->from('{{%passwordpolicy_audit_log}}')
-            ->orderBy(['id' => SORT_ASC])
-            ->limit(1)
-            ->one();
-
-        if (!is_array($startRow)) {
-            return $deleted;
-        }
-
-        $this->trigger(
-            self::EVENT_AUDIT_CHAIN_ROTATED,
-            new AuditChainRotatedEvent([
-                'startId' => (int)$startRow['id'],
-                'startRowHash' => (string)$startRow['rowHash'],
-                'endId' => $maxId,
-                'endRowHash' => (string)$startRow['previousHash'],
-                'rotatedAt' => Carbon::now('UTC')->toDateTime(),
-            ]),
+        // Bridge the kit's neutral ChainRotatedEvent onto PP's own
+        // EVENT_AUDIT_CHAIN_ROTATED so existing listeners and the
+        // AuditChainRotatedEvent payload contract are unchanged. The kit owns
+        // the boundary computation; PP owns the event surface.
+        $pruner->on(
+            Pruner::EVENT_CHAIN_ROTATED,
+            function(ChainRotatedEvent $event): void {
+                $this->trigger(
+                    self::EVENT_AUDIT_CHAIN_ROTATED,
+                    new AuditChainRotatedEvent([
+                        'startId' => $event->startId,
+                        'startRowHash' => $event->startRowHash,
+                        'endId' => $event->endId,
+                        'endRowHash' => $event->endRowHash,
+                        'rotatedAt' => $event->rotatedAt,
+                    ]),
+                );
+            },
         );
 
-        return $deleted;
+        // Audit retention is a compliance delete — rows must be GONE from disk
+        // past the boundary (element soft-delete via `dateDeleted` is not
+        // acceptable here). Delete the paired `craft_elements` rows; the FK
+        // CASCADE on `audit_log.id → craft_elements.id` drops the audit rows in
+        // the same statement. Bulk DELETE (not per-row deleteElementById) so a
+        // large prune doesn't spam element lifecycle events or balloon memory.
+        // The Pruner resolves the id list against the audit table, so the
+        // CASCADE targets exactly the pruned rows (the elements table holds
+        // other element types too).
+        return $pruner->prune(
+            Craft::$app->getDb(),
+            '{{%passwordpolicy_audit_log}}',
+            $daysToKeep,
+            static fn(array $expiredIds): int => Craft::$app->getDb()->createCommand()
+                ->delete('{{%elements}}', ['id' => $expiredIds])
+                ->execute(),
+        );
     }
 
     // Private Methods
     // =========================================================================
-
-    /**
-     * Recursively sorts an array's string keys for canonicalisation.
-     * Numeric-keyed (list) arrays preserve their integer order — they
-     * encode as JSON arrays where order is the contract.
-     *
-     * The `array_is_list()` guard is load-bearing: without it,
-     * `ksort($value, SORT_STRING)` reorders list values for lists with
-     * ≥ 10 entries (string compare of keys: `'10' < '2'`). The writer
-     * + verifier both use this function so the chain still verifies,
-     * but a list-shaped `details` value would canonicalise into a
-     * different positional order than the caller passed — silently
-     * breaking the docblock's contract and any future external
-     * verifier that follows the rule.
-     *
-     * @param array<mixed, mixed> $value
-     * @return array<mixed, mixed>
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private static function _sortRecursive(array $value): array
-    {
-        foreach ($value as $key => $inner) {
-            if (is_array($inner)) {
-                $value[$key] = self::_sortRecursive($inner);
-            }
-        }
-
-        if (!array_is_list($value)) {
-            ksort($value, SORT_STRING);
-        }
-
-        return $value;
-    }
 
     /**
      * Detects the source context for the current operation.
@@ -897,63 +792,5 @@ class AuditLogService extends Component
         $currentUser = Craft::$app->getUser()->getIdentity();
 
         return $currentUser?->id;
-    }
-
-    /**
-     * Creates an HMAC-SHA-256 hash of the user's email for post-deletion correlation.
-     *
-     * The HMAC secret is resolved via {@see _resolveAuditPiiKey()} —
-     * a dedicated `auditPiiKey` (env-var-backed via
-     * `CRAFT_AUDIT_PII_KEY` + `config/password-policy.php`) with a
-     * `securityKey` fallback. Rotating the dedicated key destroys
-     * correlation against new rows without touching session signing,
-     * CSRF tokens, asset URLs, or anything else `securityKey` anchors.
-     *
-     * @param int $userId
-     * @return string|null
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _hashUserIdentifier(int $userId): ?string
-    {
-        $user = Craft::$app->getUsers()->getUserById($userId);
-
-        if ($user === null || $user->email === null) {
-            return null;
-        }
-
-        return hash_hmac('sha256', $user->email, $this->_resolveAuditPiiKey());
-    }
-
-    /**
-     * Resolves the HMAC key for `userIdentifier` hashing.
-     *
-     * Reads `SettingsModel::$auditPiiKey` first (operator-managed via
-     * `CRAFT_AUDIT_PII_KEY` env var → `config/password-policy.php`).
-     * Falls back to `securityKey` when unset so dev installs that
-     * skipped the generator still produce hashable rows.
-     *
-     * The fallback is intentional but the USP-grade rotation property
-     * (key rotation destroys historical correlation without breaking
-     * the rest of the site) only applies once the env var is set —
-     * operators wanting the privacy lever MUST run
-     * `ddev craft password-policy/audit/generate-pii-key` once and
-     * redeploy.
-     *
-     * @return string
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _resolveAuditPiiKey(): string
-    {
-        $configured = PasswordPolicy::$plugin->getSettings()->auditPiiKey;
-
-        if (!empty($configured)) {
-            return $configured;
-        }
-
-        return Craft::$app->getConfig()->getGeneral()->securityKey;
     }
 }

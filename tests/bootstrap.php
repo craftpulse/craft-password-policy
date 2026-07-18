@@ -209,6 +209,22 @@ if (!$app->getIsInstalled(true)) {
 
 $plugins = $app->getPlugins();
 
+// Audit Kit is a hard dependency (composer `require`) — the shared hash-chain
+// engine + the dispatch Bus PP emits governance events onto live in it. It ships
+// no tables/migrations, so installing it just runs its init() (sets
+// `AuditKit::$plugin`, registers the Bus + EventTypes components). Install it
+// first so PP's own install sees its dependency satisfied.
+if (!$plugins->isPluginInstalled('audit-kit')) {
+    try {
+        $plugins->installPlugin('audit-kit');
+    } catch (InvalidPluginException) {
+        // Path-repo composer install may not surface the plugin to
+        // getPluginInfo() until a rescan; audit-kit has no schema to land, so a
+        // failed install here is non-fatal — the runtime instance below covers
+        // the services PP needs.
+    }
+}
+
 if (!$plugins->isPluginInstalled('password-policy')) {
     try {
         $plugins->installPlugin('password-policy');

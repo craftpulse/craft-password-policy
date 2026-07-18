@@ -27,6 +27,7 @@ use yii\base\InvalidConfigException;
  * @property DeviceLabelService $deviceLabel
  * @property DeviceTrackingService $deviceTracking
  * @property GeoIpService $geoIp
+ * @property GovernanceAuditService $governanceAudit
  * @property GroupAlertService $groupAlerts
  * @property HibpClientInterface $hibpClient
  * @property InactiveAccountService $inactiveAccounts
@@ -71,6 +72,7 @@ trait ServicesTrait
                 'deviceLabel' => DeviceLabelService::class,
                 'deviceTracking' => DeviceTrackingService::class,
                 'geoIp' => GeoIpService::class,
+                'governanceAudit' => GovernanceAuditService::class,
                 'groupAlerts' => GroupAlertService::class,
                 'hibpClient' => GuzzleHibpClient::class,
                 'inactiveAccounts' => InactiveAccountService::class,
@@ -250,6 +252,24 @@ trait ServicesTrait
     public function getGeoIp(): GeoIpService
     {
         return $this->get('geoIp');
+    }
+
+    /**
+     * Returns the governance-audit emitter — PP's publisher onto the shared
+     * Audit Kit bus for named-policy saves/deletes and user-group → policy
+     * assignment changes. Emission only; PP registers no recorder sink on the
+     * bus (it keeps its own hash-chained log and its Auth Kit sink).
+     *
+     * @return GovernanceAuditService
+     *
+     * @throws InvalidConfigException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getGovernanceAudit(): GovernanceAuditService
+    {
+        return $this->get('governanceAudit');
     }
 
     /**

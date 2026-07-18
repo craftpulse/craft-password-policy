@@ -15,6 +15,7 @@ use craft\console\Controller;
 use craft\db\Query;
 use craft\helpers\App;
 use craft\helpers\Json;
+use craftpulse\auditkit\engine\ChainVerifier;
 use craftpulse\passwordpolicy\jobs\AuditExportJob;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\services\AuditLogService;
@@ -58,19 +59,6 @@ class AuditController extends Controller
      * @var int
      */
     public const EXIT_UNREADABLE = 2;
-
-    /**
-     * Safety margin (in seconds) added to the retention window when
-     * deciding whether a non-genesis first surviving row's
-     * `previousHash` is an acceptable retention boundary. Tolerates
-     * clock drift between the prune-cron host and the verifier host
-     * without papering over actual tampering — a recent first row
-     * whose `previousHash` doesn't anchor anywhere is still a chain
-     * break.
-     *
-     * @var int
-     */
-    private const RETENTION_BOUNDARY_SAFETY_MARGIN_SECONDS = 86400;
 
     // Public Properties
     // =========================================================================
@@ -778,93 +766,6 @@ class AuditController extends Controller
     }
 
     /**
-     * Emits a chain-break record + summary + returns the exit code.
-     * Collapses the three-step break path the verifier hits at four
-     * different decision points.
-     *
-     * @param array<string, mixed> $row
-     * @param string $expectedHash
-     * @param string $reason
-     * @param int $totalRows
-     * @param int $verifiedRows
-     * @return int
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _failBreak(
-        array $row,
-        string $expectedHash,
-        string $reason,
-        int $totalRows,
-        int $verifiedRows,
-    ): int {
-        $this->_emitBreak(row: $row, expectedHash: $expectedHash, reason: $reason);
-        $this->_emitSummary(
-            totalRows: $totalRows,
-            verifiedRows: $verifiedRows,
-            exitCode: self::EXIT_CHAIN_BREAK,
-        );
-
-        return self::EXIT_CHAIN_BREAK;
-    }
-
-    /**
-     * Returns true when a non-genesis first surviving row is an
-     * acceptable retention-purge boundary. Two conditions both required:
-     *
-     *  1. Full-verify mode — `--from` is unset. Bounded ranges never
-     *     get the boundary tolerance because the user explicitly
-     *     asked to start mid-chain; we can't distinguish "intentional
-     *     mid-chain start" from "tamper at the lower bound".
-     *  2. The row's `dateCreated` is older than the WIDENED cutoff
-     *     `now - auditLogRetentionDays + safety margin`. The 24h
-     *     safety margin widens the acceptance window forward so a head
-     *     the prune left standing (whose anchor row sat right on the
-     *     retention threshold) still verifies despite clock drift
-     *     between the prune-cron host and the verifier host — without
-     *     papering over a recent first row that doesn't anchor
-     *     anywhere.
-     *
-     * @param array<string, mixed> $row
-     * @return bool
-     *
-     * @throws \Exception when DateTime parsing fails on a malformed value
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _isAcceptableRetentionBoundary(array $row): bool
-    {
-        if ($this->from !== null) {
-            return false;
-        }
-
-        $retentionDays = PasswordPolicy::$plugin->getSettings()->auditLogRetentionDays;
-
-        // WIDEN the acceptance window with the safety margin, don't
-        // narrow it. The surviving head of a pruned chain is the row
-        // immediately newer than the retention threshold — its
-        // `dateCreated` sits at roughly `now - retentionDays`, give or
-        // take clock drift between the prune-cron host and this
-        // verifier host. Subtracting the margin (`now - retentionDays -
-        // margin`) would demand the head be even OLDER than the
-        // threshold, which it never is — so verify exited 1 on every
-        // pruned install. Adding the margin (`now - retentionDays +
-        // margin`) lets a head that the prune left standing — and whose
-        // anchor row was legitimately deleted — verify as a chain
-        // start. There is no smaller id to walk back to; the chain is
-        // verified forward only from this head.
-        $cutoff = Carbon::now('UTC')
-            ->subDays($retentionDays)
-            ->addSeconds(self::RETENTION_BOUNDARY_SAFETY_MARGIN_SECONDS);
-
-        $rowCreated = new \DateTime((string)$row['dateCreated'], new \DateTimeZone('UTC'));
-
-        return $rowCreated->getTimestamp() < $cutoff->getTimestamp();
-    }
-
-    /**
      * Normalises the stored `dateCreated` to the canonical-payload
      * format. The column is `DATETIME` (no TZ); values are stored UTC
      * by the writer — re-parsing as UTC and reformatting in
@@ -886,24 +787,27 @@ class AuditController extends Controller
     }
 
     /**
-     * Builds the audit-log query, walks rows in `id ASC` order,
-     * recomputes each row's `rowHash`, and emits OK / break records to
-     * stdout (or JSON Lines on `--json`). Returns the action's exit
-     * code.
+     * Walks the audit-log chain through the shared Audit Kit
+     * {@see ChainVerifier} and emits OK / break records + a summary to stdout
+     * (or JSON Lines on `--json`). Returns the action's exit code.
      *
-     * Invariants:
+     * The walk mechanism — first-divergence stop, genesis / bounded-start /
+     * retention-boundary first-row handling, retention safety margin, and the
+     * `0` valid / `1` break exit contract — lives entirely in the kit verifier,
+     * shared byte-for-byte with Ledger and Reeve. PP owns only the console UX
+     * around it: the `rebuildPayload` closure ({@see _buildCanonicalPayload})
+     * reconstructs PP's 9-key canonical payload from a stored row, and the
+     * result drives the per-row OK lines, the break record, the `--quiet`
+     * suppression, and the JSON-Lines output.
      *
-     *  - Walks the full table when `--from` and `--to` are unset.
-     *  - Stops at the first break — does not continue past a tampered
-     *    row.
-     *  - Treats the first surviving row's `previousHash` as a chain
-     *    start when it equals the genesis sentinel, OR the verifier
-     *    is in full-walk mode AND the row's `dateCreated` is older
-     *    than `retentionDays + 24h`.
+     * Cursor-style iteration via `->each(1000)` keeps the walk's memory
+     * footprint bounded regardless of row count; the per-row OK re-scan on a
+     * clean verbose pass streams the same way, so a hundred-thousand-row table
+     * never materialises in memory.
      *
      * @return int
      *
-     * @throws \Exception when `_normaliseDateCreated` parses a malformed value
+     * @throws \Exception when `_buildCanonicalPayload` parses a malformed value
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -922,82 +826,51 @@ class AuditController extends Controller
             $query->andWhere(['<=', 'id', $this->to]);
         }
 
-        // Cursor-style iteration via `->each(1000)` keeps the chain
-        // walk's memory footprint bounded at O(batch size) regardless
-        // of audit-log row count. Production-scale tables can exceed
-        // hundreds of thousands of rows — `->all()` would OOM the
-        // verifier before it printed anything.
-        $previousHash = AuditLogService::GENESIS_PREVIOUS_HASH;
-        $isFirstRow = true;
-        $verifiedRows = 0;
-        $totalRows = 0;
+        $result = (new ChainVerifier())->verify(
+            $query->each(1000),
+            fn(array $row): array => $this->_buildCanonicalPayload($row),
+            isFullWalk: $this->from === null,
+            retentionDays: PasswordPolicy::$plugin->getSettings()->auditLogRetentionDays,
+        );
 
-        foreach ($query->each(1000) as $row) {
-            $totalRows++;
-            $expectedPayload = AuditLogService::canonicalize($this->_buildCanonicalPayload($row));
-            $expectedHash = hash('sha256', $expectedPayload . $row['previousHash']);
+        if ($result->exitCode === ChainVerifier::EXIT_CHAIN_BREAK) {
+            // Re-read the offending row for the diagnostic emission — the
+            // verifier returns the break id + reason + expected hash, PP
+            // renders the human/JSON break record from the row's own columns.
+            $breakRow = (new Query())
+                ->from('{{%passwordpolicy_audit_log}}')
+                ->where(['id' => $result->breakId])
+                ->one();
 
-            // First-row boundary handling. Three acceptable shapes:
-            //   1. previousHash equals the genesis sentinel — adopt and
-            //      walk normally from row 2 onward.
-            //   2. `--from` is set — bounded walks have explicit user
-            //      intent to start mid-chain. The first row's stored
-            //      previousHash is trusted as the chain anchor; we
-            //      can't disprove it without walking the prior rows
-            //      the user excluded.
-            //   3. Full-verify mode (no `--from`) AND the row's
-            //      dateCreated predates the retention boundary
-            //      (`auditLogRetentionDays + 24h`) — treat the stored
-            //      previousHash as the running anchor. The row it
-            //      referenced has been legitimately pruned.
-            // Anything else with `previousHash` not matching the prior
-            // row's `rowHash` is a chain break.
-            if ($isFirstRow) {
-                $isFirstRow = false;
-
-                $isGenesis = $row['previousHash'] === AuditLogService::GENESIS_PREVIOUS_HASH;
-                $isBoundedStart = $this->from !== null;
-                $isRetentionBoundary = !$isGenesis
-                    && !$isBoundedStart
-                    && $this->_isAcceptableRetentionBoundary($row);
-
-                if (!$isGenesis && !$isBoundedStart && !$isRetentionBoundary) {
-                    return $this->_failBreak(
-                        row: $row,
-                        expectedHash: $expectedHash,
-                        reason: 'previousHash mismatch',
-                        totalRows: $totalRows,
-                        verifiedRows: $verifiedRows,
-                    );
-                }
-            } elseif ($row['previousHash'] !== $previousHash) {
-                return $this->_failBreak(
-                    row: $row,
-                    expectedHash: $expectedHash,
-                    reason: 'previousHash mismatch',
-                    totalRows: $totalRows,
-                    verifiedRows: $verifiedRows,
+            if (is_array($breakRow)) {
+                $this->_emitBreak(
+                    row: $breakRow,
+                    expectedHash: (string)$result->expectedHash,
+                    reason: (string)$result->breakReason,
                 );
             }
 
-            if ($expectedHash !== $row['rowHash']) {
-                return $this->_failBreak(
-                    row: $row,
-                    expectedHash: $expectedHash,
-                    reason: 'rowHash mismatch',
-                    totalRows: $totalRows,
-                    verifiedRows: $verifiedRows,
-                );
-            }
+            $this->_emitSummary(
+                totalRows: $result->totalRows,
+                verifiedRows: $result->verifiedRows,
+                exitCode: self::EXIT_CHAIN_BREAK,
+            );
 
-            $this->_emitOk($row);
-            $verifiedRows++;
-            $previousHash = $row['rowHash'];
+            return self::EXIT_CHAIN_BREAK;
+        }
+
+        // Clean pass — stream the per-row OK lines (suppressed under `--quiet`),
+        // then the summary. `_emitOk` self-suppresses under `--quiet`, so the
+        // re-scan is skipped entirely in that mode.
+        if (!$this->quiet) {
+            foreach ($query->each(1000) as $row) {
+                $this->_emitOk($row);
+            }
         }
 
         $this->_emitSummary(
-            totalRows: $totalRows,
-            verifiedRows: $verifiedRows,
+            totalRows: $result->totalRows,
+            verifiedRows: $result->verifiedRows,
             exitCode: ExitCode::OK,
         );
 

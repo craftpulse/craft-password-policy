@@ -66,6 +66,12 @@
 - Per-event PII allowlist — `ALLOWED_DETAILS_BY_EVENT` registry codifies which `details` keys each event type may carry. **Fail-closed**: events not in the registry are dropped with a `Craft::warning()` rather than silently allowing arbitrary keys through.
 - Dedicated `auditPiiKey` HMAC secret — `CRAFT_AUDIT_PII_KEY` env var (independent of `securityKey`). `password-policy/audit/generate-pii-key` console command provisions one and writes to `.env`. Rotating the key destroys historical correlation without breaking site session/CSRF/asset signing.
 - `AlertCooldownService` — per-(eventClass, cooldownKey) dedup substrate. Generalises the F2 notification-log dedup pattern via a dedicated `passwordpolicy_alert_cooldowns` table with composite indexing.
+- **Shared Audit Kit engine** — the hash-chain internals (canonicalisation, the `SELECT ... FOR UPDATE` serialised chain write, the chain verifier walk, the id-prefix-safe retention prune, and the HMAC context capture) now run on the `craftpulse/craft-audit-kit` foundation (a new hard dependency), shared byte-for-byte with the rest of the CraftPulse compliance estate. Zero schema change, zero canonical-payload change, zero `rowHash` change: existing 5.1.x production chains verify identically. `AuditLogService::canonicalize()`, `GENESIS_PREVIOUS_HASH`, `CANONICAL_DATE_FORMAT`, the `verify` / `purge` console UX, and the `CRAFT_AUDIT_PII_KEY` env var are all unchanged. Bit-identity is pinned by a golden-vector regression test.
+
+#### Governance audit events (Audit Kit bus)
+
+- Password Policy now **emits** neutral governance events onto the shared Audit Kit dispatch bus for its own administrative actions: `passwordpolicy.policy_saved`, `passwordpolicy.policy_deleted`, and `passwordpolicy.group_assignment_changed` (one per user-group added to or removed from a policy). Category `permissions`; details are fail-closed scalar allowlists (policy handle/uid, group uid, an `assigned` / `unassigned` verb) with no PII. A recorder on the bus (e.g. a compliance aggregator) captures PP's governance changes through the estate's one typed contract.
+- Emission is **additive fan-out**, never a replacement — PP keeps its own hash-chained `policy_changed` row and its Auth Kit `AuthEvent` sink. PP registers its event-type definitions with the kit registry but registers no recorder sink on the bus (one-seam discipline). With no recorder installed, emission is a cheap no-op.
 
 #### Auth Kit audit integration (Warden / Warp)
 

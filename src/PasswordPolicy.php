@@ -53,6 +53,8 @@ use craft\web\Application;
 use craft\web\twig\variables\CraftVariable;
 use craft\web\UrlManager;
 use craft\web\View;
+use craftpulse\auditkit\events\RegisterAuditEventsEvent;
+use craftpulse\auditkit\services\EventTypes as AuditKitEventTypes;
 use craftpulse\authkit\events\RegisterAuditSinksEvent;
 use craftpulse\authkit\services\Audit as AuthKitAudit;
 use craftpulse\passwordpolicy\assetbundles\passwordpolicy\PasswordPolicyAsset;
@@ -808,6 +810,12 @@ class PasswordPolicy extends Plugin
         // Warden/Warp passwordless/SSO/SCIM event on PP's hash-chained log.
         // No-op unless Auth Kit is installed and fires the registration event.
         $this->_registerAuthKitAuditSink();
+
+        // Contribute PP's governance event-type definitions to the shared Audit
+        // Kit registry so a bus recorder knows their category + fail-closed
+        // scalar allowlist. Registration only — PP emits governance events onto
+        // the bus but registers no recorder sink (one-seam rule).
+        $this->_registerAuditKitEventTypes();
 
         // Observability seam for policy assignments dropped via group deletion
         $this->_registerUserGroupListeners();
@@ -1581,6 +1589,34 @@ class PasswordPolicy extends Plugin
             AuthKitAudit::EVENT_REGISTER_AUDIT_SINKS,
             static function(RegisterAuditSinksEvent $event): void {
                 $event->sinks[] = new AuthKitAuditSink();
+            }
+        );
+    }
+
+    /**
+     * Registers PP's governance event-type definitions with the shared Audit
+     * Kit runtime registry ({@see AuditKitEventTypes}). A recorder on the bus
+     * uses each definition's category + fail-closed scalar allowlist to
+     * categorise and sanitise PP's `policy_saved` / `policy_deleted` /
+     * `group_assignment_changed` events before persisting them.
+     *
+     * This is registration of EVENT TYPES, not of a recorder sink — PP owns its
+     * own hash-chained log and does not record other plugins' events. Audit Kit
+     * is a hard dependency (composer `require`), so `AuditKitEventTypes::class`
+     * always resolves; the closure runs when the registry is first assembled.
+     *
+     * @return void
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _registerAuditKitEventTypes(): void
+    {
+        Event::on(
+            AuditKitEventTypes::class,
+            AuditKitEventTypes::EVENT_REGISTER_AUDIT_EVENTS,
+            function(RegisterAuditEventsEvent $event): void {
+                array_push($event->eventTypes, ...$this->getGovernanceAudit()->eventTypes());
             }
         );
     }
