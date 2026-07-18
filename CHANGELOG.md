@@ -129,6 +129,7 @@
 
 #### Permissions
 
+- `pp:manageSettings` — gates the plugin settings screens and the named-policy configuration surfaces (settings sections, `PolicyController`, `PolicyElement` authorization). Estate settings-permission doctrine: the permission gates the screens (a non-admin holding it reaches Settings), never `requireAdmin`; `allowAdminChanges` governs writability only (read-only rendering), never screen access.
 - `pp:blocklist-view` / `pp:blocklist-manage` (nested) — read access vs write access.
 - `pp:notification-templates-manage` — gates the Notifications page + template controllers.
 - `pp:notification-log-view` — gates the Activity index + per-user notification panel (separate from templates-manage so log auditors don't need template edit rights).
@@ -170,6 +171,7 @@
 
 ### Changed
 
+- Settings screens now gate on the `pp:manageSettings` permission instead of `requireAdmin`, aligning Password Policy with the estate settings-permission doctrine. `SettingsController` and `PolicyController` `beforeAction()` gates switched from `requireAdmin` to `requirePermission(pp:manageSettings)`, so a non-admin holding the permission can reach and manage settings; `allowAdminChanges` now governs writability only (the read views already render read-only with disabled fields and no save button when it is off). The permission handle was renamed from `pp:settings` to `pp:manageSettings` and is declared once as `PasswordPolicy::PERMISSION_MANAGE_SETTINGS`, referenced from the registration, the CP nav gating, both controllers, and the policy element authorization.
 - CP password strength indicator now consumes the same AJAX `password-policy/validation/validate` endpoint as the front-end builders — single strength engine across CP and consumer surfaces. Selector generalised from `#newPassword` to `input[type="password"][autocomplete="new-password"]:not([data-pp-no-strength])`; attaches on installer + set-password screens too. Dropped `@zxcvbn-ts/core` + `@zxcvbn-ts/language-common` + `@zxcvbn-ts/language-en` from the buildchain in favour of the server-side `bjeavons/zxcvbn-php` engine — JS bundle dropped from ~1.65 MB to ~2.2 KB.
 - Settings UI redesigned — sidebar grouped under Policy / Validation / Monitoring with edition badges.
 - `pwned` setting renamed to `hibp` (project config + DB) — `m260429_224908_UpgradeTo520Schema` migration handles the rename. `SettingsModel` accepts the legacy `pwned` / `pwnedFailMode` keys from `config/password-policy.php` and aliases them to `hibp` / `hibpFailMode` with a deprecation warning logged at `WARNING`.

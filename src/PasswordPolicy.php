@@ -136,6 +136,24 @@ class PasswordPolicy extends Plugin
     public const EDITION_ENTERPRISE = 'enterprise';
 
     /**
+     * The permission that gates the plugin settings screens (and the named-
+     * policy configuration surfaces that share the same config authority).
+     *
+     * Estate settings-permission doctrine: a dedicated `manageSettings`
+     * permission gates the settings screens, never `requireAdmin`;
+     * `allowAdminChanges` governs writability only (read-only rendering), never
+     * screen access. Declared once here as the single source of truth and
+     * referenced from the permission registration, the CP nav gating, the
+     * settings + policy controllers, and the policy element authorization — a
+     * bare literal would drift silently and a typo would pass for admins while
+     * denying everyone else.
+     *
+     * @var string
+     * @since 5.2.0
+     */
+    public const PERMISSION_MANAGE_SETTINGS = 'pp:manageSettings';
+
+    /**
      * Fired after a password has been changed and stored in history.
      * The plaintext is already gone by this point.
      *
@@ -576,7 +594,7 @@ class PasswordPolicy extends Plugin
         }
 
         // Named policies subnav (Pro + per-group enabled) — listed first
-        if ($this->getIsPro() && $currentUser->can('pp:settings')) {
+        if ($this->getIsPro() && $currentUser->can(self::PERMISSION_MANAGE_SETTINGS)) {
             $settings = $this->getSettings();
             if ($settings->enablePerGroupPolicies) {
                 $subNavs['policies'] = [
@@ -688,8 +706,9 @@ class PasswordPolicy extends Plugin
             ];
         }
 
-        // Settings visible in read-only mode too (admins can view active policy)
-        if ($currentUser->can('pp:settings')) {
+        // Settings visible in read-only mode too (permission holders can view
+        // the active policy even when `allowAdminChanges` is off)
+        if ($currentUser->can(self::PERMISSION_MANAGE_SETTINGS)) {
             $subNavs['settings'] = [
                 'label' => Craft::t('password-policy', 'Settings'),
                 'url' => 'password-policy/settings',
@@ -992,7 +1011,7 @@ class PasswordPolicy extends Plugin
         Event::on(UserPermissions::class, UserPermissions::EVENT_REGISTER_PERMISSIONS,
             function(RegisterUserPermissionsEvent $event) {
                 $permissions = [
-                    'pp:settings' => [
+                    self::PERMISSION_MANAGE_SETTINGS => [
                         'label' => Craft::t('password-policy', 'Manage plugin settings.'),
                     ],
                     'pp:force-reset-passwords' => [

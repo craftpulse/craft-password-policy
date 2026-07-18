@@ -13,9 +13,9 @@
  *  - Universal sections (`configuration`, `audit`, ...) are NOT edition-denied
  *    — they render on every edition and omit only their higher-edition fields.
  *
- * Tests run through `runAction()` so `beforeAction()` fires the same admin
- * gate a real HTTP request would, and the `section` param binds exactly as the
- * `password-policy/settings/<section>` route supplies it.
+ * Tests run through `runAction()` so `beforeAction()` fires the same
+ * manageSettings permission gate a real HTTP request would, and the `section`
+ * param binds exactly as the `password-policy/settings/<section>` route supplies it.
  *
  * @link      https://craftpulse.com
  * @copyright Copyright (c) 2024 CraftPulse
@@ -54,8 +54,8 @@ beforeEach(function() {
     $this->userStub = new UserStub();
     Craft::$app->set('user', $this->userStub);
 
-    // Admin identity clears `requireAdmin()` + the `pp:settings` check, so the
-    // edition gate is the only thing left to fail on Lite.
+    // Admin identity clears the `pp:manageSettings` permission gate in
+    // `beforeAction()`, so the edition gate is the only thing left to fail on Lite.
     $this->actingAdmin = UserFactory::admin();
     $this->userStub->setIdentity($this->actingAdmin);
 });
@@ -74,8 +74,8 @@ afterEach(function() {
 
 /**
  * Runs `SettingsController::actionEdit($section)` through `runAction()` so the
- * `requireAdmin()` gate in `beforeAction()` fires and `section` binds from the
- * route the same way the real request does.
+ * `requirePermission()` gate in `beforeAction()` fires and `section` binds from
+ * the route the same way the real request does.
  */
 function runSettingsEdit(string $section): mixed
 {

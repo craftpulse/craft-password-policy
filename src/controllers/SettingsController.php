@@ -97,11 +97,14 @@ class SettingsController extends Controller
     /**
      * @inheritdoc
      *
-     * Admins always get through the gate so the read-only settings views
-     * keep working when `allowAdminChanges = false` (the standard
-     * production posture). Write actions (`actionSave`, `actionApplyPreset`)
-     * re-check `allowAdminChanges` themselves and throw with a
-     * plugin-specific message.
+     * Estate settings-permission doctrine: every settings action is gated on
+     * {@see PasswordPolicy::PERMISSION_MANAGE_SETTINGS}, never on
+     * `requireAdmin`. A non-admin holding the permission reaches the settings
+     * screens; anyone without it gets a 403. `allowAdminChanges` governs
+     * WRITABILITY only, not screen access — the read views render read-only
+     * (disabled fields, no save button, core read-only notice) when it is off,
+     * and the write actions (`actionSave`, `actionApplyPreset`) re-check it
+     * themselves and throw with a plugin-specific message.
      *
      * @throws ForbiddenHttpException
      *
@@ -109,9 +112,13 @@ class SettingsController extends Controller
      */
     public function beforeAction($action): bool
     {
-        $this->requireAdmin(false);
+        if (!parent::beforeAction($action)) {
+            return false;
+        }
 
-        return parent::beforeAction($action);
+        $this->requirePermission(PasswordPolicy::PERMISSION_MANAGE_SETTINGS);
+
+        return true;
     }
 
     /**
@@ -131,11 +138,8 @@ class SettingsController extends Controller
      */
     public function actionEdit(string $section = 'configuration'): Response
     {
-        $currentUser = Craft::$app->getUser()->getIdentity();
-        if (!$currentUser->can('pp:settings')) {
-            throw new ForbiddenHttpException('You do not have permission to view the Password Policy settings.');
-        }
-
+        // Screen access is gated by `beforeAction()` on the manageSettings
+        // permission; no per-action re-check needed.
         if (!in_array($section, self::VALID_SECTIONS, true)) {
             throw new NotFoundHttpException('Invalid settings section.');
         }
@@ -192,10 +196,8 @@ class SettingsController extends Controller
     {
         $this->requirePostRequest();
 
-        $currentUser = Craft::$app->getUser()->getIdentity();
-        if (!$currentUser->can('pp:settings')) {
-            throw new ForbiddenHttpException('You do not have permission to edit the Password Policy settings.');
-        }
+        // Screen access is gated by `beforeAction()` on the manageSettings
+        // permission. `allowAdminChanges` governs writability only.
         $general = Craft::$app->getConfig()->getGeneral();
         if (!$general->allowAdminChanges) {
             throw new ForbiddenHttpException('Unable to edit Password Policy plugin settings because admin changes are disabled in this environment.');
@@ -268,10 +270,8 @@ class SettingsController extends Controller
     {
         $this->requirePostRequest();
 
-        $currentUser = Craft::$app->getUser()->getIdentity();
-        if (!$currentUser->can('pp:settings')) {
-            throw new ForbiddenHttpException('You do not have permission to edit the Password Policy settings.');
-        }
+        // Screen access is gated by `beforeAction()` on the manageSettings
+        // permission. `allowAdminChanges` governs writability only.
         $general = Craft::$app->getConfig()->getGeneral();
         if (!$general->allowAdminChanges) {
             throw new ForbiddenHttpException('Unable to apply preset because admin changes are disabled in this environment.');

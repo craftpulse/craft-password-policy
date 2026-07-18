@@ -532,14 +532,14 @@ class PolicyElement extends Element
             return true;
         }
 
-        return $user->can('pp:settings');
+        return $user->can(PasswordPolicy::PERMISSION_MANAGE_SETTINGS);
     }
 
     /**
      * @inheritdoc
      *
      * Mirrors the existing `PolicyController::beforeAction()` gate:
-     * admin OR `pp:settings`.
+     * admin OR {@see PasswordPolicy::PERMISSION_MANAGE_SETTINGS}.
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -550,7 +550,7 @@ class PolicyElement extends Element
             return true;
         }
 
-        return $user->can('pp:settings');
+        return $user->can(PasswordPolicy::PERMISSION_MANAGE_SETTINGS);
     }
 
     /**
@@ -565,7 +565,7 @@ class PolicyElement extends Element
             return true;
         }
 
-        return $user->can('pp:settings');
+        return $user->can(PasswordPolicy::PERMISSION_MANAGE_SETTINGS);
     }
 
     /**

@@ -27,7 +27,7 @@ use yii\web\Response;
  * Class PolicyController
  *
  * Handles CRUD operations for named password policies.
- * All actions require admin access and pp:settings permission.
+ * All actions require the {@see PasswordPolicy::PERMISSION_MANAGE_SETTINGS} permission.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -56,16 +56,20 @@ class PolicyController extends Controller
      */
     public function beforeAction($action): bool
     {
-        $viewActions = ['index', 'edit'];
-        if (in_array($action->id, $viewActions, true)) {
-            $this->requireAdmin(false);
-        } else {
-            $this->requireAdmin();
+        if (!parent::beforeAction($action)) {
+            return false;
         }
 
+        // Estate settings-permission doctrine: named-policy configuration is a
+        // settings-domain surface gated by {@see PasswordPolicy::PERMISSION_MANAGE_SETTINGS},
+        // never `requireAdmin`. The permission gate is enforced per action by
+        // `_requireSettingsPermission()`, so a non-admin holding the permission
+        // reaches the index/edit screens; write actions additionally enforce
+        // `allowAdminChanges` via `_requireAdminChanges()`. `allowAdminChanges`
+        // drives the read-only render flag below, never screen access.
         $this->_readOnly = !Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
 
-        return parent::beforeAction($action);
+        return true;
     }
 
     /**
@@ -608,7 +612,7 @@ class PolicyController extends Controller
     }
 
     /**
-     * Requires that the current user has the pp:settings permission.
+     * Requires that the current user holds the manageSettings permission.
      *
      * @return void
      *
@@ -619,7 +623,7 @@ class PolicyController extends Controller
      */
     private function _requireSettingsPermission(): void
     {
-        $this->requirePermission('pp:settings');
+        $this->requirePermission(PasswordPolicy::PERMISSION_MANAGE_SETTINGS);
     }
 
     /**
