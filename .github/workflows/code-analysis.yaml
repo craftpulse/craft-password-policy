@@ -35,6 +35,8 @@ jobs:
                   extensions: 'ctype,curl,dom,iconv,imagick,intl,json,mbstring,openssl,pcre,pdo,reflection,spl,zip'
                   ini-values: post_max_size=256M, max_execution_time=180, memory_limit=512M
                   tools: composer:v2
+            - name: Register audit-kit VCS repository
+              run: composer config repositories.craft-audit-kit vcs https://github.com/craftpulse/craft-audit-kit.git
             - name: Install Composer dependencies
               run: composer install --no-interaction --no-ansi --no-progress
             - run: ${{ matrix.actions.run }}
