@@ -28,11 +28,8 @@
     "prefer-stable": true,
     "repositories": [
         {
-            "type": "path",
-            "url": "../*",
-            "options": {
-                "symlink": true
-            }
+            "type": "vcs",
+            "url": "https://github.com/craftpulse/craft-audit-kit.git"
         }
     ],
     "require": {
