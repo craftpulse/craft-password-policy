@@ -11,10 +11,15 @@
 namespace craftpulse\passwordpolicy\tests\Support;
 
 use Craft;
+use craft\db\Query;
 use craft\db\Table as CraftTable;
+use craft\elements\User;
+use craft\helpers\StringHelper;
 use craftpulse\passwordpolicy\migrations\Install as PluginInstall;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\tests\TestCase;
+use RuntimeException;
+use yii\db\Exception as DbException;
 
 /**
  * Base TestCase for migration-replay tests (T1.2 + TX.2).
@@ -56,8 +61,126 @@ use craftpulse\passwordpolicy\tests\TestCase;
  */
 abstract class MigrationTestCase extends TestCase
 {
+    // Private Properties
+    // =========================================================================
+
+    /**
+     * Element IDs of every user row seeded through {@see seedFixtureUser()}
+     * during the current test. Deleted in `tearDown` so a non-transactional
+     * migration test never leaves users behind in `db_test`.
+     *
+     * @var int[]
+     */
+    private array $_fixtureUserIds = [];
+
     // Public Methods
     // =========================================================================
+
+    /**
+     * Seeds a user row carrying the given raw `users.password` value and
+     * returns its element ID.
+     *
+     * Tests that assert on the upgrade migration's password-history seed need
+     * to OWN the users they count, rather than leaning on whatever the
+     * bootstrap or a sibling test happens to have left in `db_test`.
+     *
+     * The row is cloned from an existing user (`elements` + `users` +
+     * `elements_sites`) with a fresh ID, UID, username, and email, then the
+     * password column is overwritten. Two reasons for raw SQL over
+     * {@see \craftpulse\passwordpolicy\tests\Support\Factories\UserFactory}:
+     *
+     * 1. Callers seed AFTER {@see tearDownPluginSchema()}, and a real element
+     *    save at that point runs the plugin's `User::EVENT_DEFINE_RULES`
+     *    validators and its `EVENT_AFTER_SAVE` history writer against plugin
+     *    tables that no longer exist.
+     * 2. `password = NULL` and `password = ''` are exactly the states the
+     *    migration's seed filter excludes, and neither is reachable through a
+     *    validated element save.
+     *
+     * Cloning rather than hand-listing columns keeps the helper working
+     * across Craft schema changes.
+     *
+     * @param string|null $password Raw value for the `users.password` column.
+     * Pass a bcrypt hash for a "has a password" user, or `null` / `''` for the
+     * states the seed filter skips.
+     * @return int
+     *
+     * @throws DbException
+     * @throws RuntimeException if there's no existing user row to clone.
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function seedFixtureUser(?string $password): int
+    {
+        $db = Craft::$app->getDb();
+
+        $templateElement = (new Query())
+            ->from(CraftTable::ELEMENTS)
+            ->where(['type' => User::class, 'dateDeleted' => null])
+            ->orderBy(['id' => SORT_ASC])
+            ->one();
+
+        if (!is_array($templateElement)) {
+            throw new RuntimeException(
+                'Cannot seed a fixture user: no existing user element row to clone from.',
+            );
+        }
+
+        $templateId = (int)$templateElement['id'];
+        unset($templateElement['id']);
+        $templateElement['uid'] = StringHelper::UUID();
+
+        $db->createCommand()->insert(CraftTable::ELEMENTS, $templateElement)->execute();
+        $userId = (int)$db->getLastInsertID();
+
+        $templateUser = (new Query())
+            ->from(CraftTable::USERS)
+            ->where(['id' => $templateId])
+            ->one();
+
+        if (!is_array($templateUser)) {
+            throw new RuntimeException(
+                sprintf('Cannot seed a fixture user: user row %d is missing.', $templateId),
+            );
+        }
+
+        $unique = bin2hex(random_bytes(4));
+
+        // The cloned row is the source of truth for the column list (`users`
+        // carries no `uid` — that lives on `elements`), so only override
+        // columns the current schema actually has.
+        $templateUser = $this->_override($templateUser, [
+            'id' => $userId,
+            'username' => "fixture-{$unique}",
+            'email' => "fixture-{$unique}@craftpulse.test",
+            'password' => $password,
+            'verificationCode' => null,
+            'verificationCodeIssuedDate' => null,
+        ]);
+
+        $db->createCommand()->insert(CraftTable::USERS, $templateUser)->execute();
+
+        $templateSite = (new Query())
+            ->from(CraftTable::ELEMENTS_SITES)
+            ->where(['elementId' => $templateId])
+            ->one();
+
+        if (is_array($templateSite)) {
+            unset($templateSite['id']);
+
+            $templateSite = $this->_override($templateSite, [
+                'elementId' => $userId,
+                'uid' => StringHelper::UUID(),
+            ]);
+
+            $db->createCommand()->insert(CraftTable::ELEMENTS_SITES, $templateSite)->execute();
+        }
+
+        $this->_fixtureUserIds[] = $userId;
+
+        return $userId;
+    }
 
     /**
      * Drops every plugin table and removes every plugin migration history
@@ -187,6 +310,12 @@ abstract class MigrationTestCase extends TestCase
      */
     protected function tearDown(): void
     {
+        // Migration tests run outside the transaction wrap, so every seeded
+        // user committed. Delete them before restoring the schema — the
+        // `elements` row cascades to `users`, `elements_sites`, and every
+        // plugin table keyed on `userId`.
+        $this->_deleteFixtureUsers();
+
         // Always restore — even if the test failed mid-way, the next test
         // class needs a 5.2.0-shaped schema or it'll see "table doesn't
         // exist" cascading failures.
@@ -207,5 +336,60 @@ abstract class MigrationTestCase extends TestCase
     protected function usesTransaction(): bool
     {
         return false;
+    }
+
+    // Private Methods
+    // =========================================================================
+
+    /**
+     * Applies `$overrides` to a cloned table row, skipping any column the row
+     * doesn't carry. Keeps {@see seedFixtureUser()} working across Craft
+     * schema changes: the clone defines the column list, the overrides only
+     * narrow it.
+     *
+     * @param array<string, mixed> $row
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _override(array $row, array $overrides): array
+    {
+        foreach ($overrides as $column => $value) {
+            if (array_key_exists($column, $row)) {
+                $row[$column] = $value;
+            }
+        }
+
+        return $row;
+    }
+
+    /**
+     * Hard-deletes every user seeded through {@see seedFixtureUser()}.
+     *
+     * Deleting the `elements` row is enough: `users`, `elements_sites`, and
+     * the plugin's `userId` foreign keys all cascade from it. Runs before
+     * {@see restorePluginSchema()} so it works whether or not the test left
+     * the plugin tables in place.
+     *
+     * @return void
+     *
+     * @throws DbException
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _deleteFixtureUsers(): void
+    {
+        if ($this->_fixtureUserIds === []) {
+            return;
+        }
+
+        Craft::$app->getDb()->createCommand()
+            ->delete(CraftTable::ELEMENTS, ['id' => $this->_fixtureUserIds])
+            ->execute();
+
+        $this->_fixtureUserIds = [];
     }
 }

@@ -19,11 +19,19 @@
  * {@see MigrationTestCase} base restores the 5.2.0 schema in `tearDown`
  * so adjacent tests see a clean baseline.
  *
- * Bootstrap creates exactly one user with a real password (the seed admin
- * from `tests/bootstrap.php`), so the password-history seed produces
- * exactly one row in this fixture. Factory-created users land with
- * password = NULL, which the seed's `not null AND not empty` filter
- * intentionally excludes — pinned in a dedicated test below.
+ * Every test that asserts on the password-history seed OWNS the users it
+ * counts: `MigrationTestCase::seedFixtureUser()` writes a user row with an
+ * explicit `password` value (bcrypt hash, `null`, or `''`) and the base class
+ * deletes it in `tearDown`. Assertions compare the seeded `userId` set against
+ * the set of users matching the migration's own filter, so nothing here
+ * depends on how many users the bootstrap, a sibling test, or a previous suite
+ * run happened to leave in `db_test`.
+ *
+ * Count assertions cast through `(int)` on purpose. `craft\db\Query::count()`
+ * inherits Yii's `@return int|string|null` contract ("may be a string
+ * depending on the underlying database engine"), and PDO/MySQL returns the
+ * string `'1'` here. Asserting on the cast value pins the number rather than
+ * the driver's scalar type.
  *
  * @link      https://craftpulse.com
  * @copyright Copyright (c) 2024 CraftPulse
@@ -36,7 +44,6 @@ use craft\db\Query;
 use craft\db\Table as CraftTable;
 use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\PasswordPolicy;
-use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 use craftpulse\passwordpolicy\tests\Support\MigrationTestCase;
 
 // =============================================================================
@@ -103,6 +110,47 @@ function readPluginProjectConfig(): array
     return Craft::$app->getProjectConfig()->get('plugins.password-policy.settings') ?? [];
 }
 
+/**
+ * Bcrypt hash for a fixture user's `password` column. The seed copies the
+ * column verbatim so any non-empty string would do, but hashing keeps the
+ * fixture shaped like a real 5.1.1 row.
+ */
+function fixturePasswordHash(string $plaintext): string
+{
+    return Craft::$app->getSecurity()->hashPassword($plaintext);
+}
+
+/**
+ * Element IDs of every user the migration's seed filter matches (`password`
+ * neither NULL nor empty). Cast to int so the set compares cleanly against
+ * the IDs `seedFixtureUser()` hands back.
+ *
+ * @return int[]
+ */
+function userIdsWithAStoredPassword(): array
+{
+    return array_map('intval', (new Query())
+        ->select(['id'])
+        ->from(CraftTable::USERS)
+        ->where(['not', ['password' => null]])
+        ->andWhere(['not', ['password' => '']])
+        ->column());
+}
+
+/**
+ * Element IDs carried by every row in the seeded password-history table.
+ * Duplicates are preserved — "one row per user" is part of the contract.
+ *
+ * @return int[]
+ */
+function seededHistoryUserIds(): array
+{
+    return array_map('intval', (new Query())
+        ->select(['userId'])
+        ->from('{{%passwordpolicy_password_history}}')
+        ->column());
+}
+
 // =============================================================================
 // T1.2 — upgrade migration seeds password history
 // =============================================================================
@@ -129,79 +177,92 @@ it('creates all eight plugin tables when migrating from 5.1.1', function() {
     }
 });
 
-it('seeds the password history table with one row per existing user', function() {
-    // Bootstrap leaves exactly one user with a saved password (the seed
-    // admin). Snapshot the count of users matching the migration's
-    // filter, run the migrations, and assert the seed produced one
-    // history row per matching user.
-    $userCount = (new Query())
-        ->from(CraftTable::USERS)
-        ->where(['not', ['password' => null]])
-        ->andWhere(['not', ['password' => '']])
-        ->count();
+it('seeds one password history row per user with a stored password', function() {
+    /** @var MigrationTestCase $this */
+    // Own the fixture: two users carrying a hash, one carrying none. The
+    // assertion is set equality between the seeded userIds and the users
+    // matching the migration's own filter, so an extra ambient user can't
+    // flip the result either way.
+    $withPasswords = [
+        $this->seedFixtureUser(fixturePasswordHash('Fixture-Passw0rd!1')),
+        $this->seedFixtureUser(fixturePasswordHash('Fixture-Passw0rd!2')),
+    ];
+    $withoutPassword = $this->seedFixtureUser(null);
 
-    expect($userCount)->toBe('1');
+    $expectedUserIds = userIdsWithAStoredPassword();
+
+    // Guards against a vacuous pass: the fixture users are on the right
+    // sides of the filter before the migration runs.
+    expect($expectedUserIds)->toContain(...$withPasswords)
+        ->and($expectedUserIds)->not->toContain($withoutPassword);
 
     runPendingPluginMigrations();
 
-    $historyCount = (new Query())
-        ->from('{{%passwordpolicy_password_history}}')
-        ->count();
+    $seededUserIds = seededHistoryUserIds();
 
-    expect($historyCount)->toBe('1');
+    // One row per matching user: nothing missing, nothing extra, no
+    // duplicates (a duplicate would break the canonicalized comparison).
+    expect($seededUserIds)->toHaveCount(count($expectedUserIds))
+        ->and($seededUserIds)->toEqualCanonicalizing($expectedUserIds);
 });
 
 it('stores the current bcrypt hash in each seeded history row', function() {
-    runPendingPluginMigrations();
+    /** @var MigrationTestCase $this */
+    // Seed a user whose hash this test knows, so the assertion pins "copied
+    // verbatim" rather than "matches whatever the users table holds."
+    $hash = fixturePasswordHash('Fixture-Passw0rd!3');
+    $userId = $this->seedFixtureUser($hash);
 
-    // Bootstrap user — pull both rows and confirm the seed copied
-    // password into passwordHash without re-hashing or losing it.
-    $userRow = (new Query())
-        ->select(['id', 'password'])
-        ->from(CraftTable::USERS)
-        ->one();
+    runPendingPluginMigrations();
 
     $historyRow = (new Query())
         ->select(['userId', 'passwordHash'])
         ->from('{{%passwordpolicy_password_history}}')
-        ->where(['userId' => $userRow['id']])
+        ->where(['userId' => $userId])
         ->one();
 
     expect($historyRow)->not->toBeNull()
-        ->and($historyRow['passwordHash'])->toBe($userRow['password']);
+        ->and($historyRow['passwordHash'])->toBe($hash);
 });
 
 it('skips users with null or empty passwords during the history seed', function() {
-    // The migration filters via `not password = null` AND `not password = ''`.
-    // We can't easily insert a user with a NULL password through the
-    // factory (Craft's User::beforeSave normalises that), but the query
-    // guard is the contract — pin it by asserting the seed row count
-    // never exceeds the count of users with a real password.
-    UserFactory::admin();
-
-    $usersWithPasswords = (new Query())
-        ->from(CraftTable::USERS)
-        ->where(['not', ['password' => null]])
-        ->andWhere(['not', ['password' => '']])
-        ->count();
+    /** @var MigrationTestCase $this */
+    // The seed filters via `not password = null` AND `not password = ''`.
+    // Neither state is reachable through a validated element save, so the
+    // fixture helper writes both columns directly — the guard is the
+    // contract, and this is the only way to exercise it for real.
+    $nullPassword = $this->seedFixtureUser(null);
+    $emptyPassword = $this->seedFixtureUser('');
+    $storedPassword = $this->seedFixtureUser(fixturePasswordHash('Fixture-Passw0rd!4'));
 
     runPendingPluginMigrations();
 
-    $historyCount = (new Query())
-        ->from('{{%passwordpolicy_password_history}}')
-        ->count();
+    $seededUserIds = seededHistoryUserIds();
 
-    expect($historyCount)->toBe($usersWithPasswords);
+    expect($seededUserIds)->toContain($storedPassword)
+        ->and($seededUserIds)->not->toContain($nullPassword)
+        ->and($seededUserIds)->not->toContain($emptyPassword);
 });
 
 it('is idempotent on re-run: second migrate up does not duplicate rows', function() {
+    /** @var MigrationTestCase $this */
+    // Own a user so the first pass definitely seeds a row — asserting "the
+    // count didn't change" against an empty table would prove nothing.
+    $userId = $this->seedFixtureUser(fixturePasswordHash('Fixture-Passw0rd!5'));
+
     runPendingPluginMigrations();
 
-    $firstCount = (new Query())
+    $ownedRows = (int)(new Query())
+        ->from('{{%passwordpolicy_password_history}}')
+        ->where(['userId' => $userId])
+        ->count();
+
+    $firstCount = (int)(new Query())
         ->from('{{%passwordpolicy_password_history}}')
         ->count();
 
-    expect($firstCount)->toBe('1');
+    expect($ownedRows)->toBe(1)
+        ->and($firstCount)->toBeGreaterThanOrEqual(1);
 
     // Force a re-run: yank the migration history row for the upgrade
     // migration and queue it again. The seed inside `_seedPasswordHistory`
@@ -215,7 +276,7 @@ it('is idempotent on re-run: second migrate up does not duplicate rows', functio
 
     runPendingPluginMigrations();
 
-    $secondCount = (new Query())
+    $secondCount = (int)(new Query())
         ->from('{{%passwordpolicy_password_history}}')
         ->count();
 
