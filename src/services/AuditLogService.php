@@ -14,6 +14,7 @@ use Carbon\Carbon;
 use Craft;
 use craft\db\Query;
 use craft\helpers\Json;
+use craft\helpers\Queue;
 use craft\helpers\StringHelper;
 use craftpulse\auditkit\engine\Canonicalizer;
 use craftpulse\auditkit\engine\ChainWriter;
@@ -22,6 +23,7 @@ use craftpulse\auditkit\engine\Pruner;
 use craftpulse\auditkit\events\ChainRotatedEvent;
 use craftpulse\passwordpolicy\elements\AuditLogElement;
 use craftpulse\passwordpolicy\events\AuditChainRotatedEvent;
+use craftpulse\passwordpolicy\jobs\WriteAuditChainEntryJob;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use RuntimeException;
 use Throwable;
@@ -56,7 +58,10 @@ use yii\base\Component;
  * `transaction()` with `SELECT ... FOR UPDATE` on the latest row's
  * `rowHash`. Two concurrent inserts cannot pick the same `previousHash`
  * — the second one waits for the first's commit, then reads the new
- * tail.
+ * tail. Under sustained concurrent load a writer can still lose the lock
+ * wait (MySQL serialization failure) rather than block forever; that
+ * failure is never dropped — see {@see logEvent()}'s escalate-and-requeue
+ * path and {@see \craftpulse\passwordpolicy\jobs\WriteAuditChainEntryJob}.
  *
  * Capture is universal. The chain runs on every edition (Lite included).
  * Edition gates apply to the dashboard / verifier UI / SIEM forwarder
@@ -441,8 +446,15 @@ class AuditLogService extends Component
      *  1. The event class has no entry in `ALLOWED_DETAILS_BY_EVENT`
      *     (fail-closed registry — see class docblock).
      *  2. `enableAuditLog` is false (feature flag off).
-     *  3. The write threw a `Throwable` (logged, swallowed — never
-     *     blocks the parent operation).
+     *  3. Context resolution (geo lookup, HMAC hashing) threw a
+     *     `Throwable` — logged and dropped; there is no coherent
+     *     payload left to retry.
+     *  4. The chain write itself threw a `Throwable` — this does NOT
+     *     drop the event. It is escalated to an error-level log with
+     *     the full payload and handed to {@see WriteAuditChainEntryJob}
+     *     for a bounded, jittered-backoff retry (mirrors craft-ledger's
+     *     `LedgerLog` / `WriteChainEntry` pattern). Either way, the
+     *     write never blocks the parent operation.
      *
      * Most callers ignore the return value — the audit write is a
      * fire-and-forget side effect. The return contract exists for
@@ -571,116 +583,188 @@ class AuditLogService extends Component
             $changedByIdentifier = $resolvedChangedByUserId !== null
                 ? $capturer->hashUserIdentifier($resolvedChangedByUserId)
                 : null;
-            $dateCreated = Carbon::now('UTC');
-            $uid = StringHelper::UUID();
 
-            // Canonical-payload key set (alphabetical): changedByIdentifier,
-            // dateCreated, details, event, ipHash, outcome, source, uid,
-            // userIdentifier.
-            //
-            // The mutable FK ints `userId` + `changedByUserId` are
-            // DELIBERATELY EXCLUDED. Both are `ON DELETE SET NULL`, so deleting
-            // a user nulls them on every historical row and the verifier would
-            // then recompute a different rowHash — making GDPR erasure
-            // indistinguishable from tampering. We hash the IMMUTABLE HMAC
-            // identities instead: `userIdentifier` (the subject) and
-            // `changedByIdentifier` (the actor), both set once at write and
-            // never mutated. Same exclusion-by-mutability reasoning as the geo
-            // columns (post-insert metadata that must not enter the hash).
-            //
-            // ⚠️ BIT-IDENTITY: this exact 9-key set + the kit Canonicalizer
-            // bytes reproduce PP's live 5.1.x rowHash. Never add, remove, or
-            // reorder a key here — every byte is regression-pinned by
-            // AuditBitIdentityTest (golden vector) + the live-chain verify gate.
-            $canonicalPayload = [
-                'changedByIdentifier' => $changedByIdentifier,
-                'dateCreated' => $dateCreated->format(self::CANONICAL_DATE_FORMAT),
-                'details' => $filteredDetails,
+            // Context is resolved exactly once, here, at capture time — never
+            // repeated on a requeue. `$data` is the complete, self-contained
+            // shape `writePrepared()` needs to perform the chain write; it is
+            // ALSO the exact shape handed to `WriteAuditChainEntryJob` when
+            // the write below fails, so a retried write reproduces bit-
+            // identical canonical-payload bytes regardless of which attempt
+            // finally lands it.
+            $data = [
+                'userId' => $userId,
+                'changedByUserId' => $resolvedChangedByUserId,
                 'event' => $event,
-                'ipHash' => $ipHash,
                 'outcome' => $outcome,
                 'source' => $source,
-                'uid' => $uid,
+                'details' => $filteredDetails,
+                'ipHash' => $ipHash,
+                'geoCountry' => $geoCountry,
+                'geoRegion' => $geoRegion,
                 'userIdentifier' => $userIdentifier,
+                'changedByIdentifier' => $changedByIdentifier,
+                'dateCreated' => Carbon::now('UTC')->format(self::CANONICAL_DATE_FORMAT),
+                'uid' => StringHelper::UUID(),
             ];
-
-            // Serialized chain write through the shared Audit Kit ChainWriter:
-            // the `SELECT ... FOR UPDATE` tail read, the
-            // `rowHash = sha256(canonicalize(payload) . previousHash)`
-            // computation, and the wrapping transaction all live in the kit.
-            // PP owns the payload shape (above) and the storage — the persist
-            // closure saves the AuditLogElement exactly as before, so the
-            // element pipeline's `craft_elements` + `audit_log` inserts run
-            // inside the same locked transaction. Two concurrent logEvent()
-            // calls serialise on the tail lock and cannot fork the chain.
-            $result = (new ChainWriter())->write(
-                Craft::$app->getDb(),
-                '{{%passwordpolicy_audit_log}}',
-                $canonicalPayload,
-                function(string $previousHash, string $rowHash) use (
-                    $userId,
-                    $resolvedChangedByUserId,
-                    $event,
-                    $outcome,
-                    $source,
-                    $filteredDetails,
-                    $ipHash,
-                    $geoCountry,
-                    $geoRegion,
-                    $userIdentifier,
-                    $changedByIdentifier,
-                    $dateCreated,
-                    $uid,
-                ): int {
-                    // The element pipeline assigns `craft_elements.id` + `uid` +
-                    // `dateCreated` from the element's properties. We set `uid`
-                    // + `dateCreated` explicitly so the persisted values match
-                    // the canonical-payload bytes; `id` is auto-allocated, then
-                    // afterSave() writes the paired audit_log row with that id.
-                    $element = new AuditLogElement();
-                    $element->uid = $uid;
-                    $element->dateCreated = $dateCreated->toDateTime();
-                    $element->userId = $userId;
-                    $element->changedByUserId = $resolvedChangedByUserId;
-                    $element->event = $event;
-                    $element->outcome = $outcome;
-                    $element->source = $source;
-                    $element->details = $filteredDetails;
-                    $element->ipHash = $ipHash;
-                    // Geo enrichment — persisted on the element but DELIBERATELY
-                    // absent from the canonical payload above. Geo is
-                    // post-insert metadata; hashing it would break every
-                    // existing chain row.
-                    $element->geoCountry = $geoCountry;
-                    $element->geoRegion = $geoRegion;
-                    // `userId` + `changedByUserId` stay persisted (joins /
-                    // display / SET NULL retention) but are no longer hashed —
-                    // the HMAC identifiers ARE the hashed identity.
-                    $element->userIdentifier = $userIdentifier;
-                    $element->changedByIdentifier = $changedByIdentifier;
-                    $element->previousHash = $previousHash;
-                    $element->rowHash = $rowHash;
-
-                    if (!Craft::$app->getElements()->saveElement($element, runValidation: false)) {
-                        throw new RuntimeException(
-                            'AuditLogElement save failed: ' . implode('; ', $element->getFirstErrors()),
-                        );
-                    }
-
-                    return (int)$element->id;
-                },
-            );
-
-            return is_int($result) ? $result : null;
         } catch (Throwable $e) {
-            // Never block the parent operation
+            // Failure during context resolution (not the chain write itself)
+            // has no coherent payload to requeue — log and drop, same as
+            // before this method's write path grew a retry.
             Craft::error(
-                'Failed to write audit log: ' . $e->getMessage(),
+                sprintf('Failed to prepare audit log entry for event "%s": %s', $event, $e->getMessage()),
                 'password-policy',
             );
 
             return null;
         }
+
+        try {
+            return $this->writePrepared($data);
+        } catch (Throwable $e) {
+            // Never silently drop an audit event. The request path can't
+            // retry inline (the write must never block the parent operation),
+            // so a failed synchronous write is escalated at error level with
+            // the full event payload AND handed to the deferred
+            // WriteAuditChainEntryJob, which retries against the kit
+            // ChainWriter's own single-attempt-per-call write with a jittered
+            // backoff of its own, up to a bounded number of attempts, before
+            // giving up loudly. This is the "surface the failure, then give
+            // it a real second chance" half of the contract — see the class
+            // docblock and `WriteAuditChainEntryJob` for the full pattern
+            // (mirrors craft-ledger's `LedgerLog` / `WriteChainEntry`).
+            Craft::error(
+                sprintf(
+                    'Audit log chain write failed inline for event "%s": %s. Requeuing through the deferred chain-writer job. Payload: %s',
+                    $event,
+                    $e->getMessage(),
+                    Json::encode($data),
+                ),
+                'password-policy',
+            );
+
+            Queue::push(new WriteAuditChainEntryJob(['data' => $data]));
+
+            return null;
+        }
+    }
+
+    /**
+     * Performs the serialized chain write from a prepared, fully-resolved
+     * data array through the kit {@see ChainWriter}: rebuilds the 9-key
+     * canonical payload (see the ⚠️ BIT-IDENTITY note below), locks the tail
+     * `rowHash`, and persists the {@see AuditLogElement} inside the same
+     * transaction. Public so the deferred {@see WriteAuditChainEntryJob} can
+     * call it with the context {@see logEvent()} already resolved at request
+     * time — geo lookups and HMAC hashing never repeat on a requeue.
+     *
+     * Deliberately throws rather than catching: the caller (either
+     * `logEvent()`'s inline path, or the job's `execute()`) decides how to
+     * react to a failed write. Catching here would hide the failure from
+     * both.
+     *
+     * @param array<string, mixed> $data the prepared entry, as built by
+     *     {@see logEvent()}: `userId`, `changedByUserId`, `event`,
+     *     `outcome`, `source`, `details`, `ipHash`, `geoCountry`,
+     *     `geoRegion`, `userIdentifier`, `changedByIdentifier`,
+     *     `dateCreated` (a {@see self::CANONICAL_DATE_FORMAT} string),
+     *     and `uid`
+     * @return int the new row's primary key
+     *
+     * @throws Throwable anything the chain write or element save throws
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function writePrepared(array $data): int
+    {
+        // Canonical-payload key set (alphabetical): changedByIdentifier,
+        // dateCreated, details, event, ipHash, outcome, source, uid,
+        // userIdentifier.
+        //
+        // The mutable FK ints `userId` + `changedByUserId` are DELIBERATELY
+        // EXCLUDED. Both are `ON DELETE SET NULL`, so deleting a user nulls
+        // them on every historical row and the verifier would then recompute
+        // a different rowHash — making GDPR erasure indistinguishable from
+        // tampering. We hash the IMMUTABLE HMAC identities instead:
+        // `userIdentifier` (the subject) and `changedByIdentifier` (the
+        // actor), both set once at write and never mutated. Same
+        // exclusion-by-mutability reasoning as the geo columns (post-insert
+        // metadata that must not enter the hash).
+        //
+        // ⚠️ BIT-IDENTITY: this exact 9-key set + the kit Canonicalizer
+        // bytes reproduce PP's live 5.1.x rowHash. Never add, remove, or
+        // reorder a key here — every byte is regression-pinned by
+        // AuditBitIdentityTest (golden vector) + the live-chain verify gate.
+        $canonicalPayload = [
+            'changedByIdentifier' => $data['changedByIdentifier'],
+            'dateCreated' => $data['dateCreated'],
+            'details' => $data['details'],
+            'event' => $data['event'],
+            'ipHash' => $data['ipHash'],
+            'outcome' => $data['outcome'],
+            'source' => $data['source'],
+            'uid' => $data['uid'],
+            'userIdentifier' => $data['userIdentifier'],
+        ];
+
+        // Serialized chain write through the shared Audit Kit ChainWriter:
+        // the `SELECT ... FOR UPDATE` tail read, the
+        // `rowHash = sha256(canonicalize(payload) . previousHash)`
+        // computation, and the wrapping transaction all live in the kit.
+        // PP owns the payload shape (above) and the storage — the persist
+        // closure saves the AuditLogElement exactly as before, so the
+        // element pipeline's `craft_elements` + `audit_log` inserts run
+        // inside the same locked transaction. Two concurrent writers
+        // serialise on the tail lock and cannot fork the chain.
+        $result = (new ChainWriter())->write(
+            Craft::$app->getDb(),
+            '{{%passwordpolicy_audit_log}}',
+            $canonicalPayload,
+            function(string $previousHash, string $rowHash) use ($data): int {
+                // The element pipeline assigns `craft_elements.id` + `uid` +
+                // `dateCreated` from the element's properties. We set `uid`
+                // + `dateCreated` explicitly so the persisted values match
+                // the canonical-payload bytes; `id` is auto-allocated, then
+                // afterSave() writes the paired audit_log row with that id.
+                $element = new AuditLogElement();
+                $element->uid = $data['uid'];
+                $element->dateCreated = Carbon::createFromFormat(
+                    self::CANONICAL_DATE_FORMAT,
+                    $data['dateCreated'],
+                    'UTC',
+                )->toDateTime();
+                $element->userId = $data['userId'];
+                $element->changedByUserId = $data['changedByUserId'];
+                $element->event = $data['event'];
+                $element->outcome = $data['outcome'];
+                $element->source = $data['source'];
+                $element->details = $data['details'];
+                $element->ipHash = $data['ipHash'];
+                // Geo enrichment — persisted on the element but DELIBERATELY
+                // absent from the canonical payload above. Geo is
+                // post-insert metadata; hashing it would break every
+                // existing chain row.
+                $element->geoCountry = $data['geoCountry'];
+                $element->geoRegion = $data['geoRegion'];
+                // `userId` + `changedByUserId` stay persisted (joins /
+                // display / SET NULL retention) but are no longer hashed —
+                // the HMAC identifiers ARE the hashed identity.
+                $element->userIdentifier = $data['userIdentifier'];
+                $element->changedByIdentifier = $data['changedByIdentifier'];
+                $element->previousHash = $previousHash;
+                $element->rowHash = $rowHash;
+
+                if (!Craft::$app->getElements()->saveElement($element, runValidation: false)) {
+                    throw new RuntimeException(
+                        'AuditLogElement save failed: ' . implode('; ', $element->getFirstErrors()),
+                    );
+                }
+
+                return (int)$element->id;
+            },
+        );
+
+        return (int)$result;
     }
 
     /**
