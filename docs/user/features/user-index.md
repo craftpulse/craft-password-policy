@@ -10,7 +10,7 @@ Nine attributes register on `RegisterElementTableAttributesEvent` for `craft\ele
 
 | Attribute | Edition | Notes |
 |-----------|---------|-------|
-| `passwordpolicy_lastChange` | Lite | Date of the last password change. `—` for never-changed. |
+| `passwordpolicy_lastChange` | Lite | Date of the last password change. `-` for never-changed. |
 | `passwordpolicy_daysUntilExpiry` | Lite | Days remaining until expiry, computed against the resolved policy. Negative for already-expired. |
 | `passwordpolicy_expired` | Lite | Boolean badge: red dot for expired, green for not. |
 | `passwordpolicy_resetRequired` | Lite | `users.passwordResetRequired` value, surfaced as a badge. |

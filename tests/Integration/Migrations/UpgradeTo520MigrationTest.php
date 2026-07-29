@@ -194,7 +194,7 @@ it('skips users with null or empty passwords during the history seed', function(
     expect($historyCount)->toBe($usersWithPasswords);
 });
 
-it('is idempotent on re-run — second migrate up does not duplicate rows', function() {
+it('is idempotent on re-run: second migrate up does not duplicate rows', function() {
     runPendingPluginMigrations();
 
     $firstCount = (new Query())

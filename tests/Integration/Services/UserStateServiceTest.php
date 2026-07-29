@@ -206,7 +206,7 @@ it('round-trips an AuditContext through set + consume', function() {
         ->and($consumed->changedByUserId)->toBe(99);
 });
 
-it('drains the slot on first consume — second call returns null', function() {
+it('drains the slot on first consume: second call returns null', function() {
     $user = UserFactory::admin();
 
     $context = \craftpulse\passwordpolicy\models\AuditContext::adminChange(7);

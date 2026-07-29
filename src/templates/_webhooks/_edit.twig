@@ -186,7 +186,7 @@
 
             <p>
                 <strong>{{ 'Last delivered row id:'|t('password-policy') }}</strong>
-                <span class="code">{{ endpoint.lastDeliveredRowId ?? '—' }}</span>
+                <span class="code">{{ endpoint.lastDeliveredRowId ?? '-' }}</span>
             </p>
 
             {% if not readOnly %}
@@ -291,7 +291,7 @@
                         body: formData,
                     }).then(function(r) { return r.json(); })
                       .then(function(payload) {
-                          var status = payload.statusCode !== null ? payload.statusCode : '—';
+                          var status = payload.statusCode !== null ? payload.statusCode : '-';
                           var bodyText = payload.body || '';
                           var html = '<div class="readable">' +
                               '<p><strong>' + (payload.success ? {{ "Delivered"|t('password-policy')|json_encode|raw }} : {{ "Failed"|t('password-policy')|json_encode|raw }}) + '</strong></p>' +

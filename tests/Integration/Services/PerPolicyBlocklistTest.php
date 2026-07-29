@@ -222,7 +222,7 @@ it('caches the full projection across getWordsForPolicy calls', function() {
         ]);
 });
 
-it('reflects new rows after each write — cache flush handshake', function() {
+it('reflects new rows after each write: cache flush handshake', function() {
     BlocklistFactory::commonWord('first');
     expect($this->service->getWordsForPolicy(null))->toHaveKey('first');
 

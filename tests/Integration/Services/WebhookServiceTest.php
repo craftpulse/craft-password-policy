@@ -387,7 +387,7 @@ it('falls back to the global setting when the override is null', function() {
 // Encryption at rest
 // =============================================================================
 
-it('encrypts the secret at rest — DB column never holds plaintext', function() {
+it('encrypts the secret at rest: DB column never holds plaintext', function() {
     $endpoint = makeEndpoint(['secretCurrent' => 'plaintext-secret-value']);
 
     $rawColumn = (new \craft\db\Query())

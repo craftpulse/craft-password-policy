@@ -81,7 +81,7 @@ it('rejects when the run sits at the end of the password', function() {
 // Case sensitivity + Unicode quirks
 // =============================================================================
 
-it('is case-sensitive — `Aaa` does not trip the rule', function() {
+it('is case-sensitive: `Aaa` does not trip the rule', function() {
     // The `/u` modifier makes the matcher Unicode-aware, but it does NOT
     // case-fold. `A` (U+0041) differs from `a` (U+0061), so only `aa`
     // (two identical code points) sits under the threshold. If we ever

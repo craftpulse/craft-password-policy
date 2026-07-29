@@ -112,7 +112,7 @@ it('writes a failed row with errorMessage when template rendering throws', funct
 // re-fire via the Resend action — `NotificationService::resend()`
 // bypasses the cooldown gate (admin override of dedup).
 
-it('records the cooldown on attempt — failed dispatch suppresses next call within window', function() {
+it('records the cooldown on attempt: failed dispatch suppresses next call within window', function() {
     $user = UserFactory::admin();
     $user->email = 'recipient@example.test';
 

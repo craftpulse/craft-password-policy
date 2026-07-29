@@ -226,7 +226,7 @@
                     {% if retentionStatus.auditLogProjectedNextPrune %}
                         {{ retentionStatus.auditLogProjectedNextPrune|datetime('short') }}
                     {% else %}
-                        <em>—</em>
+                        <em>-</em>
                     {% endif %}
                 </td>
             </tr>
@@ -240,7 +240,7 @@
                         <em>{{ 'No rows yet.'|t('password-policy') }}</em>
                     {% endif %}
                 </td>
-                <td><em>—</em></td>
+                <td><em>-</em></td>
             </tr>
         </tbody>
     </table>

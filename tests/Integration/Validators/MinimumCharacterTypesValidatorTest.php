@@ -174,7 +174,7 @@ it('does not count Unicode digits as the digit class', function() {
     expect($this->validator->validateValue('²'))->not->toBeNull();
 });
 
-it('treats `password123é` as lowercase + digits — symbol still missing', function() {
+it('treats `password123é` as lowercase + digits: symbol still missing', function() {
     // Two distinct classes: lowercase (`p`,`a`,`s`,`w`,`o`,`r`,`d`,`é`)
     // + digits (`1`,`2`,`3`). With required=2 it passes; with required=3
     // it fails because there's no symbol or uppercase. Documents the

@@ -45,7 +45,7 @@
                         <td><code>{{ row.notificationType }}</code></td>
                         <td>
                             <span title="{{ row.subject ?? '' }}">
-                                {{ row.subject ? row.subject|slice(0, 60) ~ (row.subject|length > 60 ? '…' : '') : '—' }}
+                                {{ row.subject ? row.subject|slice(0, 60) ~ (row.subject|length > 60 ? '…' : '') : '-' }}
                             </span>
                         </td>
                         <td class="thin">

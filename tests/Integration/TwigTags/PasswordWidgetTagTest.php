@@ -182,7 +182,7 @@ it('forwards submitGate to the child PasswordFieldTag when explicitly set', func
     expect($html)->toContain('data-pp-submit-gate="button[type=submit]"');
 });
 
-it('does not forward id to the child when not set — child auto-generates one', function() {
+it('does not forward id to the child when not set: child auto-generates one', function() {
     // Same null-gating reasoning as submitGate. PasswordFieldTag::id() is
     // strict-typed `string`; the composite must not pass null.
     $tag = new PasswordWidgetTag(['name' => 'newPassword']);
@@ -207,7 +207,7 @@ it('forwards id to the child when explicitly set', function() {
         ->toContain('data-pp-field="my-custom-id"');
 });
 
-it('forwards an empty groups array — composite always passes `groups` through', function() {
+it('forwards an empty groups array: composite always passes `groups` through', function() {
     // The composite forwards `groups` unconditionally because the child's
     // setter accepts `array` (empty arrays included). Codify the contract:
     // an empty groups array means "no per-group override" and must not

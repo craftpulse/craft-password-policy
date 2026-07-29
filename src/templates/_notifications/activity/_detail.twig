@@ -48,7 +48,7 @@
                 <tr>
                     <th scope="row">{{ 'Recipient'|t('password-policy') }}</th>
                     <td>
-                        {{ row.recipientEmail ?? '—' }}
+                        {{ row.recipientEmail ?? '-' }}
                         {% if recipientUser %}
                             <span class="light">
                                 ({{ 'User'|t('password-policy') }}: <a href="{{ recipientUser.cpEditUrl }}">{{ recipientUser.username }}</a>)
@@ -64,7 +64,7 @@
                     {% set site = craft.app.sites.getSiteById(row.siteIdValue) %}
                     <tr>
                         <th scope="row">{{ 'Site'|t('password-policy') }}</th>
-                        <td>{{ site ? site.name : '— (deleted)'|t('password-policy') }}</td>
+                        <td>{{ site ? site.name : '- (deleted)'|t('password-policy') }}</td>
                     </tr>
                 {% endif %}
                 {% if resentFrom %}

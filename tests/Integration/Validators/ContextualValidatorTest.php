@@ -156,7 +156,7 @@ it('matches case-insensitively against user terms', function() {
 // Email parsing edge cases
 // =============================================================================
 
-it('uses the email local part — not the domain', function() {
+it('uses the email local part: not the domain', function() {
     // Local part is `a` (1 char), short-circuited by the MIN_CONTEXT_LENGTH
     // gate. The domain `example.com` is NEVER added as a term, so the
     // password can embed the full domain and still pass.
