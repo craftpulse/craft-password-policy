@@ -90,6 +90,20 @@ defined('CRAFT_TEMPLATES_PATH') || define('CRAFT_TEMPLATES_PATH', $craftRoot . '
 defined('CRAFT_TRANSLATIONS_PATH') || define('CRAFT_TRANSLATIONS_PATH', $craftRoot . '/translations');
 defined('CRAFT_VENDOR_PATH') || define('CRAFT_VENDOR_PATH', $pluginRoot . '/vendor');
 defined('CRAFT_ROOT_PATH') || define('CRAFT_ROOT_PATH', $craftRoot);
+
+// `tests/_craft/storage/` is entirely gitignored (a fresh checkout has
+// nothing under it but `.gitignore` itself) and only ever gets populated
+// locally because a long history of prior local test runs left its
+// subdirectories behind. Most Craft/Yii components lazily create their own
+// runtime directories on first use, but `yii\web\AssetManager` does not —
+// its `basePath` (`@root/storage/runtime/assets`, set in
+// `tests/_craft/config/app.php` for `View::registerJs()` callers like CP
+// element actions) must already exist or it throws `InvalidConfigException`.
+// A bare CI checkout has no such history, so create it explicitly.
+if (!is_dir(CRAFT_STORAGE_PATH . '/runtime/assets')) {
+    mkdir(CRAFT_STORAGE_PATH . '/runtime/assets', 0777, true);
+}
+
 defined('YII_ENV') || define('YII_ENV', 'test');
 defined('YII_DEBUG') || define('YII_DEBUG', true);
 defined('CRAFT_ENVIRONMENT') || define('CRAFT_ENVIRONMENT', 'test');
