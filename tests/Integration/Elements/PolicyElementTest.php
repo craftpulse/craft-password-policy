@@ -204,6 +204,52 @@ it('leaves two FKs on the policy_groups junction after the migration', function(
 });
 
 // =============================================================================
+// F3 — _syncGroupIds writes dateCreated/dateUpdated through Db::prepareDateForDb()
+// =============================================================================
+
+it('writes policy_groups dateCreated/dateUpdated in UTC, not the PHP-local wall clock', function() {
+    // Regression: `_syncGroupIds()` previously wrote a bare
+    // `(new \DateTime())->format('Y-m-d H:i:s')` — PHP's ambient default
+    // timezone — directly into the UTC-convention `dateCreated` /
+    // `dateUpdated` columns via `createCommand()`, bypassing
+    // `Db::prepareDateForDb()`. The fix routes the value through it.
+    //
+    // Force PHP into a non-UTC zone for the duration of the save so a
+    // regression to the bare constructor produces a timestamp offset by
+    // the zone's UTC offset (10h for Honolulu) — well outside the
+    // tolerance window below.
+    $originalTz = date_default_timezone_get();
+    date_default_timezone_set('Pacific/Honolulu');
+
+    try {
+        $utcBefore = (new \DateTime('now', new \DateTimeZone('UTC')))->getTimestamp();
+
+        $devGroup = GroupFactory::create();
+        PolicyFactory::nist([$devGroup]);
+
+        $utcAfter = (new \DateTime('now', new \DateTimeZone('UTC')))->getTimestamp();
+    } finally {
+        date_default_timezone_set($originalTz);
+    }
+
+    /** @var array<string, mixed>|null $row */
+    $row = (new Query())
+        ->select(['dateCreated', 'dateUpdated'])
+        ->from('{{%passwordpolicy_policy_groups}}')
+        ->where(['groupId' => $devGroup->id])
+        ->one();
+
+    expect($row)->not->toBeNull();
+
+    foreach (['dateCreated', 'dateUpdated'] as $column) {
+        $storedTs = (new \DateTime($row[$column], new \DateTimeZone('UTC')))->getTimestamp();
+
+        expect($storedTs)->toBeGreaterThanOrEqual($utcBefore - 5)
+            ->and($storedTs)->toBeLessThanOrEqual($utcAfter + 5);
+    }
+});
+
+// =============================================================================
 // Authorization — canView / canSave / canDelete admin or pp:manage-settings
 // =============================================================================
 

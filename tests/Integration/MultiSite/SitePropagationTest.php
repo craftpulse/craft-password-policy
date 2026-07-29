@@ -118,12 +118,65 @@ it('writes a recent dateCreated on each propagated row', function() {
 
     expect($rows)->not->toBeEmpty();
 
+    // `dateCreated` is a naive UTC string (F3 now writes it correctly via
+    // `Db::prepareDateForDb()`). Parse with an explicit UTC zone rather
+    // than the bare `strtotime()` this assertion used before F3 — on a
+    // non-UTC container (this DDEV environment's ambient PHP timezone is
+    // NOT UTC), a bare `strtotime()` would misinterpret the now-correct
+    // stored value and fail this assertion against a correctly-written row.
+    $now = (new \DateTime('now', new \DateTimeZone('UTC')))->getTimestamp();
+
     foreach ($rows as $row) {
-        $createdAt = strtotime($row['dateCreated']);
-        $now = time();
+        $createdAt = (new \DateTime($row['dateCreated'], new \DateTimeZone('UTC')))->getTimestamp();
 
         expect($createdAt)->toBeGreaterThan($now - 60)
             ->and($createdAt)->toBeLessThanOrEqual($now + 5);
+    }
+});
+
+// =============================================================================
+// F3 — propagateToSite writes dateCreated/dateUpdated through Db::prepareDateForDb()
+// =============================================================================
+
+it('writes propagated dateCreated/dateUpdated in UTC, not the PHP-local wall clock', function() {
+    // Regression: `propagateToSite()` previously wrote a bare
+    // `(new \DateTime())->format('Y-m-d H:i:s')` — PHP's ambient default
+    // timezone — directly into the UTC-convention `dateCreated` /
+    // `dateUpdated` columns via `createCommand()`, bypassing
+    // `Db::prepareDateForDb()`. The fix routes the value through it.
+    //
+    // Force PHP into a non-UTC zone for the duration of the propagation so
+    // a regression to the bare constructor produces a timestamp offset by
+    // the zone's UTC offset (10h for Honolulu) — well outside the
+    // tolerance window below.
+    $originalTz = date_default_timezone_get();
+    date_default_timezone_set('Pacific/Honolulu');
+
+    try {
+        $utcBefore = (new \DateTime('now', new \DateTimeZone('UTC')))->getTimestamp();
+
+        $site = createSite();
+
+        $utcAfter = (new \DateTime('now', new \DateTimeZone('UTC')))->getTimestamp();
+    } finally {
+        date_default_timezone_set($originalTz);
+    }
+
+    $rows = (new Query())
+        ->select(['dateCreated', 'dateUpdated'])
+        ->from('{{%passwordpolicy_notification_templates}}')
+        ->where(['siteId' => $site->id])
+        ->all();
+
+    expect($rows)->not->toBeEmpty();
+
+    foreach ($rows as $row) {
+        foreach (['dateCreated', 'dateUpdated'] as $column) {
+            $storedTs = (new \DateTime($row[$column], new \DateTimeZone('UTC')))->getTimestamp();
+
+            expect($storedTs)->toBeGreaterThanOrEqual($utcBefore - 5)
+                ->and($storedTs)->toBeLessThanOrEqual($utcAfter + 5);
+        }
     }
 });
 

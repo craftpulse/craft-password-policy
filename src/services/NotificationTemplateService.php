@@ -11,6 +11,7 @@
 namespace craftpulse\passwordpolicy\services;
 
 use Craft;
+use craft\helpers\Db;
 use craft\helpers\Json;
 use craft\helpers\StringHelper;
 use craftpulse\passwordpolicy\data\EmailDefaults;
@@ -162,7 +163,13 @@ class NotificationTemplateService extends Component
             return;
         }
 
-        $now = (new \DateTime())->format('Y-m-d H:i:s');
+        // `dateCreated` / `dateUpdated` are UTC-convention columns (Craft's
+        // standard datetime column contract). A bare
+        // `(new \DateTime())->format(...)` writes the ambient process wall
+        // clock (`system.timeZone`) into them raw, skewing the stored value
+        // by the full UTC offset on any non-UTC install.
+        // `Db::prepareDateForDb()` converts to UTC before formatting.
+        $now = Db::prepareDateForDb(new \DateTime());
 
         foreach (array_keys(EmailDefaults::all()) as $key) {
             $exists = NotificationTemplateRecord::find()

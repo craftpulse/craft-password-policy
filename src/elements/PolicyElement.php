@@ -17,6 +17,7 @@ use craft\elements\actions\Delete;
 use craft\elements\actions\Restore;
 use craft\elements\User;
 use craft\helpers\Cp;
+use craft\helpers\Db;
 use craft\helpers\Html;
 use craft\helpers\Json;
 use craft\helpers\StringHelper;
@@ -895,7 +896,14 @@ class PolicyElement extends Element
     private function _syncGroupIds(array $groupIds): void
     {
         $db = Craft::$app->getDb();
-        $now = (new \DateTime())->format('Y-m-d H:i:s');
+
+        // `dateCreated` / `dateUpdated` are UTC-convention columns
+        // (Craft's standard datetime column contract). A bare
+        // `(new \DateTime())->format(...)` writes the ambient process
+        // wall clock (`system.timeZone`) into them raw, skewing the
+        // stored value by the full UTC offset on any non-UTC install.
+        // `Db::prepareDateForDb()` converts to UTC before formatting.
+        $now = Db::prepareDateForDb(new \DateTime());
 
         $db->createCommand()
             ->delete('{{%passwordpolicy_policy_groups}}', ['policyId' => $this->id])
