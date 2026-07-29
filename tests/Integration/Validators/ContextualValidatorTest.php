@@ -185,7 +185,7 @@ it('skips user-term gathering when the model is not a User instance', function()
     // environment terms (system name + site domain). A POPO with a
     // `password` attribute and no Craft\elements\User pedigree should
     // therefore validate solely against system+domain.
-    $bag = new class {
+    $bag = new class() {
         public ?string $password = null;
 
         public ?string $username = 'shouldBeIgnored';
@@ -258,4 +258,27 @@ it('rejects a password containing the primary site domain stem', function() {
     $this->validator->validateAttribute($user, 'password');
 
     expect($user->getErrors('password'))->not->toBe([]);
+});
+
+it('rejects a password containing a single-label host with no TLD to strip', function() {
+    // Regression: a primary site configured with a bare hostname (e.g.
+    // `localhost`, an internal/intranet name) has no dot to split on.
+    // `explode('.', $host)` then returns a single element, and the term
+    // was previously dropped entirely rather than checked as-is. This
+    // pins the fix deterministically rather than relying on the
+    // playground's ambient primary site happening to be single-label.
+    $site = Craft::$app->getSites()->getPrimarySite();
+    $originalBaseUrl = $site->getBaseUrl(false);
+
+    $site->setBaseUrl('http://internalhost/');
+
+    try {
+        $user = contextualUser([], 'internalhost' . NEUTRAL_PASSWORD);
+
+        $this->validator->validateAttribute($user, 'password');
+
+        expect($user->getErrors('password'))->not->toBe([]);
+    } finally {
+        $site->setBaseUrl($originalBaseUrl);
+    }
 });

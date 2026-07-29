@@ -207,6 +207,8 @@
 - `passwordResetRequired` column pre-loaded in the user-edit short-circuit so the "Password reset has been requested" banner renders and the Force Password Reset button doesn't show when reset is already pending.
 - Notification dedup gate filters on `status = 'sent'`: failed-then-retried no longer suppresses the next attempt.
 - NIS2 transposition status accuracy throughout docs (May 2026): 21/27 EU Member States transposed; Hungary first audit deadline 30 June 2026.
+- `ContextualValidator` now checks the primary site's domain against passwords even when its host has no TLD (e.g. `localhost`, an internal hostname): the stem extraction previously required at least two dot-separated segments and silently skipped single-label hosts entirely.
+- `NotificationActivityService::recentFailureCount()` now computes its window threshold in UTC: it previously used the ambient process timezone (`system.timeZone`) against the naive-UTC `sentAt` column, understating or overstating the window by the full offset on any non-UTC install.
 
 ### Security
 

@@ -136,11 +136,14 @@ class ContextualValidator extends Validator
             if ($baseUrl !== null) {
                 $host = parse_url($baseUrl, PHP_URL_HOST);
                 if ($host) {
-                    // Extract domain without TLD (e.g., "mycompany" from "mycompany.com")
+                    // Extract domain without TLD (e.g., "mycompany" from
+                    // "mycompany.com"). A single-label host (e.g.
+                    // "localhost", an internal/intranet hostname with no
+                    // TLD) has nothing to strip — the whole label is
+                    // itself the identifying term, so it must still be
+                    // checked rather than silently skipped.
                     $parts = explode('.', $host);
-                    if (count($parts) >= 2) {
-                        $terms[] = $parts[0];
-                    }
+                    $terms[] = count($parts) >= 2 ? $parts[0] : $host;
                 }
             }
         } catch (\Throwable) {

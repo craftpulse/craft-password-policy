@@ -10,6 +10,7 @@
 
 namespace craftpulse\passwordpolicy\services;
 
+use Carbon\Carbon;
 use craft\db\Query;
 use craftpulse\passwordpolicy\elements\NotificationLogElement;
 use craftpulse\passwordpolicy\enums\NotificationStatus;
@@ -113,7 +114,12 @@ class NotificationActivityService extends Component
      */
     public function recentFailureCount(int $hoursBack = 24): int
     {
-        $threshold = (new \DateTimeImmutable("-{$hoursBack} hours"))
+        // `sentAt` is stored as a naive UTC string (Craft's standard datetime
+        // column convention). Building the threshold against the ambient
+        // process timezone (`system.timeZone`, not necessarily UTC) would
+        // shift every comparison by the full offset, so pin explicitly.
+        $threshold = Carbon::now('UTC')
+            ->subHours($hoursBack)
             ->format('Y-m-d H:i:s');
 
         return (int)(new Query())
