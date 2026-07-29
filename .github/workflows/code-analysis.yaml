@@ -19,7 +19,7 @@ jobs:
                     - name: 'PHPStan'
                       run: composer phpstan
                     - name: 'Coding Standards'
-                      run: composer fix-cs
+                      run: composer check-cs
         name: ${{ matrix.actions.name }}
         runs-on: ubuntu-latest
         steps:
@@ -40,3 +40,51 @@ jobs:
             - name: Install Composer dependencies
               run: composer install --no-interaction --no-ansi --no-progress
             - run: ${{ matrix.actions.run }}
+    pest:
+        name: Pest
+        runs-on: ubuntu-latest
+        services:
+            mysql:
+                image: mysql:8.0
+                env:
+                    MYSQL_ROOT_PASSWORD: db
+                    MYSQL_DATABASE: db_test
+                    MYSQL_USER: db
+                    MYSQL_PASSWORD: db
+                ports:
+                    - 3306:3306
+                options: >-
+                    --health-cmd="mysqladmin ping"
+                    --health-interval=10s
+                    --health-timeout=5s
+                    --health-retries=5
+        steps:
+            - uses: actions/checkout@v4
+            # tests/bootstrap.php pins the test-DB connection to the DDEV
+            # container hostname `db` (matching local dev). Aliasing it to
+            # the runner's own loopback lets the same bootstrap connect to
+            # the service container above without a CI-specific code path.
+            - name: Alias the test database hostname
+              run: echo "127.0.0.1 db" | sudo tee -a /etc/hosts
+            - name: Cache Composer dependencies
+              uses: actions/cache@v4
+              with:
+                  path: /tmp/composer-cache
+                  key: ${{ runner.os }}-${{ hashFiles('composer.json') }}
+            - name: Setup PHP
+              id: setup-php
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: 8.3
+                  extensions: 'ctype,curl,dom,iconv,imagick,intl,json,mbstring,openssl,pcre,pdo,reflection,spl,zip'
+                  ini-values: post_max_size=256M, max_execution_time=180, memory_limit=512M
+                  tools: composer:v2
+            - name: Install Composer dependencies
+              run: composer install --no-interaction --no-ansi --no-progress
+            # Run from the plugin's own composer-installed Pest binary — the
+            # suite pins its own per-test edition (Lite/Pro/Enterprise) via
+            # `$this->plugin->edition = ...` in each test file's setup, so
+            # no CI-side edition configuration is needed beyond the DB pins
+            # above.
+            - name: Run Pest
+              run: composer pest
