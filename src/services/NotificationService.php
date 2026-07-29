@@ -928,9 +928,17 @@ class NotificationService extends Component
             return 0;
         }
 
-        try {
-            $lastChange = new DateTime($lastChangeRaw);
-        } catch (Throwable) {
+        // `lastPasswordChangeDate` is a naive UTC string (Craft's standard
+        // datetime column convention). `new DateTime($lastChangeRaw)`
+        // without an explicit zone would assume the AMBIENT process
+        // timezone (`system.timeZone`), shifting the resolved instant, and
+        // therefore `daysUntilExpiry`, by the full UTC offset on any
+        // non-UTC install. `DateTimeHelper::toDateTime()` (already used
+        // elsewhere in this class, e.g. the `sentAt` hydration above)
+        // defaults to parsing naive input as UTC.
+        $lastChange = DateTimeHelper::toDateTime($lastChangeRaw);
+
+        if (!$lastChange instanceof DateTime) {
             return 0;
         }
 

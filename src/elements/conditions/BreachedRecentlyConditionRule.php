@@ -126,6 +126,11 @@ class BreachedRecentlyConditionRule extends BaseNumberConditionRule implements E
 
         $cutoff = Carbon::now('UTC')->subDays($window);
 
-        return Carbon::parse((string)$detectedAt)->greaterThanOrEqualTo($cutoff);
+        // `lastBreachDetectedAt` is a naive UTC string (Craft's standard
+        // datetime column convention). `Carbon::parse()` without an
+        // explicit timezone interprets naive input in the AMBIENT process
+        // timezone (`system.timeZone`), shifting the comparison against
+        // `$cutoff` by the full UTC offset on any non-UTC install.
+        return Carbon::parse((string)$detectedAt, 'UTC')->greaterThanOrEqualTo($cutoff);
     }
 }

@@ -86,6 +86,54 @@ it('narrows User::find() to recently-breached users', function() {
 });
 
 // =============================================================================
+// F2 — naive-UTC parse must not shift by the ambient server timezone
+// =============================================================================
+
+it('does not falsely match a breach just outside the window on a non-UTC server', function() {
+    // Regression: `Carbon::parse((string)$detectedAt)` without an explicit
+    // timezone interprets the naive-UTC `lastBreachDetectedAt` string in
+    // the AMBIENT process timezone. Pacific/Honolulu is a fixed UTC-10
+    // (no DST, so the offset is deterministic) — under the bug, parsing a
+    // naive UTC string there shifts the resolved instant ten hours LATER
+    // (more recent) than intended, which can push a breach that's
+    // genuinely outside the window back inside it.
+    $originalTz = date_default_timezone_get();
+    date_default_timezone_set('Pacific/Honolulu');
+
+    try {
+        $user = UserFactory::admin();
+        // True instant: 7 days + 5 hours ago — five hours OUTSIDE a
+        // 7-day window. The +10h bug shift would make this look only
+        // ~-19h ago against the cutoff, i.e. inside the window.
+        seedRecentBreach($user, Carbon::now('UTC')->subDays(7)->subHours(5));
+
+        $rule = new BreachedRecentlyConditionRule();
+        $rule->value = '7';
+
+        expect($rule->matchElement($user))->toBeFalse();
+    } finally {
+        date_default_timezone_set($originalTz);
+    }
+});
+
+it('still matches a breach genuinely inside the window on a non-UTC server', function() {
+    $originalTz = date_default_timezone_get();
+    date_default_timezone_set('Pacific/Honolulu');
+
+    try {
+        $user = UserFactory::admin();
+        seedRecentBreach($user, Carbon::now('UTC')->subDays(2));
+
+        $rule = new BreachedRecentlyConditionRule();
+        $rule->value = '7';
+
+        expect($rule->matchElement($user))->toBeTrue();
+    } finally {
+        date_default_timezone_set($originalTz);
+    }
+});
+
+// =============================================================================
 // Helpers
 // =============================================================================
 

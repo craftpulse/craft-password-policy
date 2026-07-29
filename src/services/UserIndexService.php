@@ -16,6 +16,7 @@ use craft\db\Table;
 use craft\elements\User;
 use craft\enums\Color;
 use craft\helpers\Cp;
+use craft\helpers\DateTimeHelper;
 use craft\helpers\Html;
 use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\PasswordPolicy;
@@ -1186,6 +1187,19 @@ class UserIndexService extends Component
      * actual DateTime instances for arithmetic, so the preload paths
      * convert at the boundary.
      *
+     * Routed through `DateTimeHelper::toDateTime()` (the project's
+     * record-hydration idiom) rather than a bare `new DateTime($value)`.
+     * `users.lastPasswordChangeDate` and `lastBreachDetectedAt` are naive
+     * UTC strings (Craft's standard datetime column convention); parsing
+     * them without an explicit zone assumes the AMBIENT process timezone
+     * (`system.timeZone`), shifting every downstream comparison against
+     * `now` (breached-recent window, expired/expiring thresholds,
+     * `daysUntilExpiry`) by the full UTC offset on any non-UTC install.
+     * `DateTimeHelper::toDateTime()` defaults to parsing naive input as
+     * UTC, then re-labels the result to the system timezone for display —
+     * the absolute instant (and every timestamp/interval comparison
+     * against it) stays correct either way.
+     *
      * @param mixed $value
      * @return DateTime|null
      *
@@ -1195,18 +1209,18 @@ class UserIndexService extends Component
     private function _toDateTime(mixed $value): ?DateTime
     {
         // Carbon extends DateTime so a single instanceof check catches
-        // both. ActiveRecord datetime columns come back as raw strings
-        // (memory gap #10), which is the path we actually need to handle.
+        // both, and DateTimeHelper::toDateTime() short-circuits on it
+        // the same way. ActiveRecord datetime columns come back as raw
+        // strings (memory gap #10), which is the path we actually need
+        // to handle.
         if ($value instanceof DateTime) {
             return $value;
         }
 
         if (is_string($value) && $value !== '') {
-            try {
-                return new DateTime($value);
-            } catch (\Exception) {
-                return null;
-            }
+            $parsed = DateTimeHelper::toDateTime($value);
+
+            return $parsed instanceof DateTime ? $parsed : null;
         }
 
         return null;
