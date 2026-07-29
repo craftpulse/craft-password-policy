@@ -82,7 +82,7 @@ function runSettingsGate(): mixed
  * Creates a non-admin granted the base CP-access permissions plus whatever
  * extra permissions are passed, and returns the re-fetched user so `can()`
  * reflects the grant. `accessCp` + `accessCpWhenSystemIsOff` clear Craft's own
- * control-panel access chain, so the `pp:manageSettings` gate under test is the
+ * control-panel access chain, so the `pp:manage-settings` gate under test is the
  * only discriminator between the two non-admin cases.
  *
  * @param string[] $extraPermissions
@@ -103,8 +103,8 @@ function nonAdminWithPermissions(array $extraPermissions = []): \craft\elements\
 // Non-admin WITHOUT the permission → 403
 // =============================================================================
 
-it('403s a non-admin without the manageSettings permission', function() {
-    // Holds CP access but NOT manageSettings — the permission gate must fire.
+it('403s a non-admin without the manage-settings permission', function() {
+    // Holds CP access but NOT manage-settings — the permission gate must fire.
     $this->userStub->setIdentity(nonAdminWithPermissions());
 
     expect(fn() => runSettingsGate())->toThrow(ForbiddenHttpException::class);
@@ -114,7 +114,7 @@ it('403s a non-admin without the manageSettings permission', function() {
 // Non-admin WITH the permission → clears the gate
 // =============================================================================
 
-it('lets a non-admin with the manageSettings permission through the gate', function() {
+it('lets a non-admin with the manage-settings permission through the gate', function() {
     $this->userStub->setIdentity(nonAdminWithPermissions([PasswordPolicy::PERMISSION_MANAGE_SETTINGS]));
 
     // The permission gate must NOT throw. The action body renders a settings
@@ -130,7 +130,7 @@ it('lets a non-admin with the manageSettings permission through the gate', funct
         // Passed the permission gate; a later render error is out of scope.
     }
 
-    expect($forbidden)->toBeFalse('Non-admin holding pp:manageSettings was wrongly denied the settings screen');
+    expect($forbidden)->toBeFalse('Non-admin holding pp:manage-settings was wrongly denied the settings screen');
 });
 
 // =============================================================================

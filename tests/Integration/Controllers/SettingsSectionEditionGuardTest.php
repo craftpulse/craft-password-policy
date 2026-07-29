@@ -14,7 +14,7 @@
  *    — they render on every edition and omit only their higher-edition fields.
  *
  * Tests run through `runAction()` so `beforeAction()` fires the same
- * manageSettings permission gate a real HTTP request would, and the `section`
+ * manage-settings permission gate a real HTTP request would, and the `section`
  * param binds exactly as the `password-policy/settings/<section>` route supplies it.
  *
  * @link      https://craftpulse.com
@@ -54,7 +54,7 @@ beforeEach(function() {
     $this->userStub = new UserStub();
     Craft::$app->set('user', $this->userStub);
 
-    // Admin identity clears the `pp:manageSettings` permission gate in
+    // Admin identity clears the `pp:manage-settings` permission gate in
     // `beforeAction()`, so the edition gate is the only thing left to fail on Lite.
     $this->actingAdmin = UserFactory::admin();
     $this->userStub->setIdentity($this->actingAdmin);

@@ -138,7 +138,7 @@ class SettingsController extends Controller
      */
     public function actionEdit(string $section = 'configuration'): Response
     {
-        // Screen access is gated by `beforeAction()` on the manageSettings
+        // Screen access is gated by `beforeAction()` on the manage-settings
         // permission; no per-action re-check needed.
         if (!in_array($section, self::VALID_SECTIONS, true)) {
             throw new NotFoundHttpException('Invalid settings section.');
@@ -196,7 +196,7 @@ class SettingsController extends Controller
     {
         $this->requirePostRequest();
 
-        // Screen access is gated by `beforeAction()` on the manageSettings
+        // Screen access is gated by `beforeAction()` on the manage-settings
         // permission. `allowAdminChanges` governs writability only.
         $general = Craft::$app->getConfig()->getGeneral();
         if (!$general->allowAdminChanges) {
@@ -270,7 +270,7 @@ class SettingsController extends Controller
     {
         $this->requirePostRequest();
 
-        // Screen access is gated by `beforeAction()` on the manageSettings
+        // Screen access is gated by `beforeAction()` on the manage-settings
         // permission. `allowAdminChanges` governs writability only.
         $general = Craft::$app->getConfig()->getGeneral();
         if (!$general->allowAdminChanges) {

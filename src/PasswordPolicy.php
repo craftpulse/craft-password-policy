@@ -139,7 +139,7 @@ class PasswordPolicy extends Plugin
      * The permission that gates the plugin settings screens (and the named-
      * policy configuration surfaces that share the same config authority).
      *
-     * Estate settings-permission doctrine: a dedicated `manageSettings`
+     * Estate settings-permission doctrine: a dedicated `manage-settings`
      * permission gates the settings screens, never `requireAdmin`;
      * `allowAdminChanges` governs writability only (read-only rendering), never
      * screen access. Declared once here as the single source of truth and
@@ -148,10 +148,14 @@ class PasswordPolicy extends Plugin
      * bare literal would drift silently and a typo would pass for admins while
      * denying everyone else.
      *
+     * Handles are kebab-case estate-wide. The earlier `pp:settings` (5.1.x) and
+     * `pp:manageSettings` (5.2.0 development) forms are carried over by
+     * `m260729_*_KebabCasePermissions`.
+     *
      * @var string
      * @since 5.2.0
      */
-    public const PERMISSION_MANAGE_SETTINGS = 'pp:manageSettings';
+    public const PERMISSION_MANAGE_SETTINGS = 'pp:manage-settings';
 
     /**
      * Fired after a password has been changed and stored in history.
@@ -303,7 +307,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '2.17.0';
+    public string $schemaVersion = '2.18.0';
 
     /**
      * @var bool

@@ -27,6 +27,14 @@ use craftpulse\passwordpolicy\tests\TestCase;
 // wrap (DDL is auto-committed in MySQL/MariaDB and can't roll back);
 // multi-site tests run outside it (site saves trigger project-config
 // writes that bypass DB transactions).
+//
+// `Integration/Permissions` holds the permission-grant migration coverage.
+// It lives outside `Integration/Migrations` deliberately: that folder is
+// bound to the non-transactional `MigrationTestCase`, and Pest can't
+// override a folder binding for a single file inside it. The permission
+// rename touches no plugin table and no DDL — only `userpermissions*` rows
+// and project-config group lists — so it wants the standard transaction
+// wrap, not the schema drop/restore cycle.
 uses(MigrationTestCase::class)->in('Integration/Migrations');
 uses(MultiSiteTestCase::class)->in('Integration/MultiSite');
 uses(TestCase::class)->in(
@@ -37,6 +45,7 @@ uses(TestCase::class)->in(
     'Integration/Integrations',
     'Integration/Jobs',
     'Integration/Models',
+    'Integration/Permissions',
     'Integration/Records',
     'Integration/Services',
     'Integration/TwigTags',

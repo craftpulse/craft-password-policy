@@ -612,7 +612,7 @@ class PolicyController extends Controller
     }
 
     /**
-     * Requires that the current user holds the manageSettings permission.
+     * Requires that the current user holds the manage-settings permission.
      *
      * @return void
      *

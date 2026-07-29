@@ -204,7 +204,7 @@ it('leaves two FKs on the policy_groups junction after the migration', function(
 });
 
 // =============================================================================
-// Authorization — canView / canSave / canDelete admin or pp:manageSettings
+// Authorization — canView / canSave / canDelete admin or pp:manage-settings
 // =============================================================================
 
 it('allows admin view + save + delete', function() {
