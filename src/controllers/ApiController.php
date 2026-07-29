@@ -18,7 +18,6 @@ use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use yii\base\InvalidConfigException;
 use yii\mutex\Mutex;
-use yii\web\ForbiddenHttpException;
 use yii\web\Response;
 
 /**
@@ -40,12 +39,12 @@ use yii\web\Response;
  * irrelevant. CSRF is NOT disabled and does NOT need to be: every action
  * is a GET, and Craft only validates CSRF on unsafe methods.
  *
- * **Edition gate (4-mode convention).** This is an HTTP controller, so the
- * Enterprise gate throws `ForbiddenHttpException` (per
- * `feedback_edition_gate_convention.md`). The `apiEnabled` admin toggle
- * gates separately — off → 404 (the endpoint doesn't exist for this
- * install). Defense in depth: the CP token manager (the only writer) is
- * also Enterprise-gated, so a sub-edition install has no tokens to present.
+ * **Edition gate.** Below Enterprise the API answers with the same uniform
+ * JSON 404 as an install with `apiEnabled` off: the endpoint does not exist
+ * for that install, and the hide-not-badge doctrine keeps the response from
+ * advertising an edition upgrade. Defense in depth: the CP token manager (the
+ * only writer) is also Enterprise-gated, so a sub-edition install has no
+ * tokens to present.
  *
  * **Rate limit.** Per-token fixed-window counter (60 req/min) in Craft's
  * cache, incremented under a per-token mutex so concurrent requests can't
@@ -110,7 +109,6 @@ class ApiController extends Controller
      * token resolve → per-token rate limit. The first failing gate
      * short-circuits with the appropriate status code.
      *
-     * @throws ForbiddenHttpException when the install isn't Enterprise
      * @throws InvalidConfigException
      *
      * @author CraftPulse
@@ -124,10 +122,13 @@ class ApiController extends Controller
             return false;
         }
 
+        // Below Enterprise the API doesn't exist for this install, so it
+        // answers exactly like a disabled API: a uniform JSON 404, no
+        // existence oracle and no edition-shaped error body.
         if (!PasswordPolicy::$plugin->getIsEnterprise()) {
-            throw new ForbiddenHttpException(
-                'The Password Policy REST API requires the Enterprise edition.',
-            );
+            $this->_send404();
+
+            return false;
         }
 
         // `apiEnabled` off → the endpoint doesn't exist for this install.

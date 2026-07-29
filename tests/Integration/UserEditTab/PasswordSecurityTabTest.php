@@ -109,7 +109,9 @@ function fireDefineEditScreens(User $editedUser, ?User $currentUser): array
  * Variables that the controller sets at render time (`isExpired`,
  * `neverChanged`, `policySource`) are pinned to deterministic values
  * here so the read-only assertions stay independent of the user's
- * actual password-change state.
+ * actual password-change state. `showNotifications` mirrors the
+ * controller's edition gate so the Pro notifications panel renders here
+ * exactly when it would in the CP.
  */
 function renderPasswordSecurityContent(User $user): string
 {
@@ -127,6 +129,7 @@ function renderPasswordSecurityContent(User $user): string
             'policySource' => 'Global',
             'isExpired' => false,
             'neverChanged' => $user->lastPasswordChangeDate === null,
+            'showNotifications' => $plugin->getIsPro(),
             'currentUser' => Craft::$app->getUser()->getIdentity(),
         ]);
     } finally {

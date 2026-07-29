@@ -15,12 +15,14 @@ use craft\helpers\Queue;
 use craft\helpers\UrlHelper;
 use craft\web\Controller;
 
+use craftpulse\passwordpolicy\base\RequiresEditionTrait;
 use craftpulse\passwordpolicy\jobs\SeedBlocklist;
 use craftpulse\passwordpolicy\PasswordPolicy;
 
 use Throwable;
 use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
 /**
@@ -41,14 +43,27 @@ use yii\web\Response;
  */
 class BlocklistController extends Controller
 {
+    // Traits
+    // =========================================================================
+
+    use RequiresEditionTrait;
+
     // Public Methods
     // =========================================================================
 
     /**
      * @inheritdoc
      *
+     * The whole controller is Pro-only: every action either renders the
+     * blocklist editor or backs one of its forms / AJAX calls, and the
+     * subnav entry plus the `pp:blocklist-*` permissions only exist on Pro.
+     * Below Pro the screen is hidden, so a direct hit 404s. Lite operators
+     * seed the common list through the `password-policy/blocklist/update`
+     * console command, which runs on every edition.
+     *
      * @throws BadRequestHttpException
-     * @throws ForbiddenHttpException
+     * @throws ForbiddenHttpException if the user lacks `pp:blocklist-view`
+     * @throws NotFoundHttpException if the edition is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -60,6 +75,7 @@ class BlocklistController extends Controller
         }
 
         $this->requireCpRequest();
+        $this->requireProEdition();
         $this->requirePermission('pp:blocklist-view');
 
         return true;
@@ -79,11 +95,6 @@ class BlocklistController extends Controller
     public function actionIndex(): Response
     {
         $plugin = PasswordPolicy::$plugin;
-
-        if (!$plugin->getIsPro()) {
-            throw new ForbiddenHttpException('The blocklist editor requires the Pro edition.');
-        }
-
         $blocklist = $plugin->getBlocklist();
 
         $pluginName = 'Password Policy';
@@ -99,7 +110,6 @@ class BlocklistController extends Controller
                     'url' => UrlHelper::cpUrl('password-policy'),
                 ],
             ],
-            'isPro' => $plugin->getIsPro(),
             'commonCount' => $blocklist->getCommonCount(),
             'customWords' => $blocklist->getAllCustomWords(),
             'lastUpdated' => $blocklist->getLastUpdated(),
@@ -182,10 +192,6 @@ class BlocklistController extends Controller
     {
         $this->requirePostRequest();
         $this->requirePermission('pp:blocklist-manage');
-
-        if (!PasswordPolicy::$plugin->getIsPro()) {
-            throw new ForbiddenHttpException('The custom blocklist editor requires the Pro edition.');
-        }
 
         $rows = (array)Craft::$app->getRequest()->getBodyParam('words', []);
         $blocklist = PasswordPolicy::$plugin->getBlocklist();

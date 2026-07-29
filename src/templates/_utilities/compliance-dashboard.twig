@@ -2,11 +2,13 @@
  # Compliance dashboard utility — Enterprise read-only operator surface
  # surfacing the Phase G audit infrastructure's state.
  #
- # Edition gate: enforced at registration in `PasswordPolicy::_registerUtilities()`.
- # The `isEnterprise` defensive check below renders a single warning callout
- # if a Pro user somehow reaches this template (e.g. bookmarked URL after
- # downgrade) — utility registration on Pro would have hidden the entry from
- # `/admin/utilities`, but defense-in-depth.
+ # Edition gate: enforced at registration in `PasswordPolicy::_registerUtilities()`,
+ # so below Enterprise the utility class isn't registered and this template is
+ # unreachable. A bookmarked URL after a downgrade lands on Craft's own
+ # fallback: `UtilitiesController::actionShowUtility()` can't resolve an
+ # unregistered utility id and re-runs the utilities index. Nothing here
+ # renders an edition warning: the hide-not-badge doctrine means a lower
+ # edition sees no trace of the dashboard, not a callout about it.
  #
  # Permission gate: `pp:audit-view` enforced both at registration time +
  # via `requirePermission` here.
@@ -21,7 +23,6 @@
  # `ReportController` for evidence-package print-to-PDF / spreadsheet import.
  #
  # @var aggregates  ComplianceAggregateService
- # @var isEnterprise bool
  #
  # @author    CraftPulse
  # @since     5.2.0
@@ -29,228 +30,222 @@
 
 {% requirePermission "pp:audit-view" %}
 
-{% if not isEnterprise %}
-    <blockquote class="note warning">
-        <p>{{ 'Compliance dashboard requires the Enterprise edition.'|t('password-policy') }}</p>
+{% set chainHealth = aggregates.getChainHealth() %}
+{% set totals = aggregates.getTotals() %}
+{% set cooldownActivity = aggregates.getAlertCooldownActivity() %}
+{% set pendingForwards = aggregates.getPendingForwards() %}
+{% set retentionStatus = aggregates.getRetentionStatus() %}
+
+{# ====================================================================
+ # 1. Audit chain status
+ # ==================================================================== #}
+
+<h2>{{ 'Audit chain status'|t('password-policy') }}</h2>
+
+{% if chainHealth.status == 'healthy' %}
+    <blockquote class="note tip">
+        <p>
+            <strong>{{ 'Chain healthy.'|t('password-policy') }}</strong>
+            {{ '{count} rows verified.'|t('password-policy', { count: chainHealth.checkedRowCount }) }}
+            {% if chainHealth.lastRunAt %}
+                {{ 'Last run:'|t('password-policy') }} {{ chainHealth.lastRunAt|datetime('long') }}.
+            {% endif %}
+        </p>
     </blockquote>
 {% else %}
-    {% set chainHealth = aggregates.getChainHealth() %}
-    {% set totals = aggregates.getTotals() %}
-    {% set cooldownActivity = aggregates.getAlertCooldownActivity() %}
-    {% set pendingForwards = aggregates.getPendingForwards() %}
-    {% set retentionStatus = aggregates.getRetentionStatus() %}
-
-    {# ====================================================================
-     # 1. Audit chain status
-     # ==================================================================== #}
-
-    <h2>{{ 'Audit chain status'|t('password-policy') }}</h2>
-
-    {% if chainHealth.status == 'healthy' %}
-        <blockquote class="note tip">
-            <p>
-                <strong>{{ 'Chain healthy.'|t('password-policy') }}</strong>
-                {{ '{count} rows verified.'|t('password-policy', { count: chainHealth.checkedRowCount }) }}
-                {% if chainHealth.lastRunAt %}
-                    {{ 'Last run:'|t('password-policy') }} {{ chainHealth.lastRunAt|datetime('long') }}.
-                {% endif %}
-            </p>
-        </blockquote>
-    {% else %}
-        <blockquote class="note warning">
-            <p>
-                <strong>{{ 'Chain broken.'|t('password-policy') }}</strong>
-                {% if chainHealth.firstBreakRowId %}
-                    {{ 'First broken row id:'|t('password-policy') }} <code>{{ chainHealth.firstBreakRowId }}</code>.
-                {% endif %}
-                {{ '{count} rows verified before break.'|t('password-policy', { count: chainHealth.checkedRowCount }) }}
-                {% if chainHealth.lastRunAt %}
-                    {{ 'Last run:'|t('password-policy') }} {{ chainHealth.lastRunAt|datetime('long') }}.
-                {% endif %}
-            </p>
-            <p>
-                {{ 'Run the verifier CLI for a full diagnostic:'|t('password-policy') }}
-                <code>php craft password-policy/audit/verify --json</code>
-            </p>
-        </blockquote>
-    {% endif %}
-
-    <h3>{{ 'Totals'|t('password-policy') }}</h3>
-
-    <table class="data fullwidth">
-        <thead>
-            <tr>
-                <th scope="col">{{ 'Metric'|t('password-policy') }}</th>
-                <th scope="col">{{ 'Value'|t('password-policy') }}</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <th scope="row">{{ 'Total audit rows'|t('password-policy') }}</th>
-                <td>{{ totals.total }}</td>
-            </tr>
-            <tr>
-                <th scope="row">{{ 'Rows in last 30 days'|t('password-policy') }}</th>
-                <td>{{ totals.last30Days }}</td>
-            </tr>
-        </tbody>
-    </table>
-
-    {% if totals.byEventClass|length %}
-        <h3>{{ 'By event class'|t('password-policy') }}</h3>
-
-        <table class="data fullwidth">
-            <thead>
-                <tr>
-                    <th scope="col">{{ 'Event class'|t('password-policy') }}</th>
-                    <th scope="col">{{ 'Count'|t('password-policy') }}</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for eventClass, count in totals.byEventClass %}
-                    <tr>
-                        <th scope="row"><code>{{ eventClass }}</code></th>
-                        <td>{{ count }}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% endif %}
-
-    <p>
-        <a href="{{ cpUrl('password-policy/reports/audit-summary/html') }}" class="btn">
-            {{ 'Run HTML report'|t('password-policy') }}
-        </a>
-        <a href="{{ cpUrl('password-policy/reports/audit-summary/csv') }}" class="btn">
-            {{ 'Download CSV'|t('password-policy') }}
-        </a>
-    </p>
-
-    <hr>
-
-    {# ====================================================================
-     # 2. Activity in last 24h
-     # ==================================================================== #}
-
-    <h2>{{ 'Activity in last 24 hours'|t('password-policy') }}</h2>
-
-    {% if cooldownActivity.byEventClass|length %}
-        <table class="data fullwidth">
-            <thead>
-                <tr>
-                    <th scope="col">{{ 'Event class'|t('password-policy') }}</th>
-                    <th scope="col">{{ 'Fires'|t('password-policy') }}</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for eventClass, count in cooldownActivity.byEventClass %}
-                    <tr>
-                        <th scope="row"><code>{{ eventClass }}</code></th>
-                        <td>{{ count }}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% else %}
-        <blockquote class="note">
-            <p>{{ 'No alert activity in the last 24 hours.'|t('password-policy') }}</p>
-        </blockquote>
-    {% endif %}
-
-    <p>
-        <a href="{{ cpUrl('password-policy/reports/alert-activity/html') }}" class="btn">
-            {{ 'Run HTML report'|t('password-policy') }}
-        </a>
-        <a href="{{ cpUrl('password-policy/reports/alert-activity/csv') }}" class="btn">
-            {{ 'Download CSV'|t('password-policy') }}
-        </a>
-    </p>
-
-    <hr>
-
-    {# ====================================================================
-     # 3. Pending SIEM forwarding
-     # ==================================================================== #}
-
-    <h2>{{ 'Pending SIEM forwarding'|t('password-policy') }}</h2>
-
-    {% if pendingForwards.count > 0 %}
-        <blockquote class="note warning">
-            <p>
-                <strong>{{ '{count} audit rows pending forwarding.'|t('password-policy', { count: pendingForwards.count }) }}</strong>
-                {% if pendingForwards.oldestAge %}
-                    {{ 'Oldest pending row:'|t('password-policy') }} {{ pendingForwards.oldestAge }}.
-                {% endif %}
-            </p>
-            <p>
-                <a href="{{ cpUrl('password-policy/siem') }}">
-                    {{ 'View SIEM forwarders'|t('password-policy') }}
-                </a>
-            </p>
-        </blockquote>
-    {% else %}
-        <blockquote class="note tip">
-            <p>{{ 'All audit rows have been forwarded.'|t('password-policy') }}</p>
-        </blockquote>
-    {% endif %}
-
-    <hr>
-
-    {# ====================================================================
-     # 4. Retention
-     # ==================================================================== #}
-
-    <h2>{{ 'Retention'|t('password-policy') }}</h2>
-
-    <table class="data fullwidth">
-        <thead>
-            <tr>
-                <th scope="col">{{ 'Log'|t('password-policy') }}</th>
-                <th scope="col">{{ 'Retention (days)'|t('password-policy') }}</th>
-                <th scope="col">{{ 'Oldest row age'|t('password-policy') }}</th>
-                <th scope="col">{{ 'Projected next prune'|t('password-policy') }}</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <th scope="row">{{ 'Audit log'|t('password-policy') }}</th>
-                <td>{{ retentionStatus.auditLogRetentionDays }}</td>
-                <td>
-                    {% if retentionStatus.auditLogOldestAge %}
-                        {{ retentionStatus.auditLogOldestAge }}
-                    {% else %}
-                        <em>{{ 'No rows yet.'|t('password-policy') }}</em>
-                    {% endif %}
-                </td>
-                <td>
-                    {% if retentionStatus.auditLogProjectedNextPrune %}
-                        {{ retentionStatus.auditLogProjectedNextPrune|datetime('short') }}
-                    {% else %}
-                        <em>-</em>
-                    {% endif %}
-                </td>
-            </tr>
-            <tr>
-                <th scope="row">{{ 'Notification log'|t('password-policy') }}</th>
-                <td>{{ retentionStatus.notificationLogRetentionDays }}</td>
-                <td>
-                    {% if retentionStatus.notificationLogOldestAge %}
-                        {{ retentionStatus.notificationLogOldestAge }}
-                    {% else %}
-                        <em>{{ 'No rows yet.'|t('password-policy') }}</em>
-                    {% endif %}
-                </td>
-                <td><em>-</em></td>
-            </tr>
-        </tbody>
-    </table>
-
-    <p>
-        <a href="{{ cpUrl('password-policy/reports/retention-projection/html') }}" class="btn">
-            {{ 'Run HTML report'|t('password-policy') }}
-        </a>
-        <a href="{{ cpUrl('password-policy/reports/retention-projection/csv') }}" class="btn">
-            {{ 'Download CSV'|t('password-policy') }}
-        </a>
-    </p>
+    <blockquote class="note warning">
+        <p>
+            <strong>{{ 'Chain broken.'|t('password-policy') }}</strong>
+            {% if chainHealth.firstBreakRowId %}
+                {{ 'First broken row id:'|t('password-policy') }} <code>{{ chainHealth.firstBreakRowId }}</code>.
+            {% endif %}
+            {{ '{count} rows verified before break.'|t('password-policy', { count: chainHealth.checkedRowCount }) }}
+            {% if chainHealth.lastRunAt %}
+                {{ 'Last run:'|t('password-policy') }} {{ chainHealth.lastRunAt|datetime('long') }}.
+            {% endif %}
+        </p>
+        <p>
+            {{ 'Run the verifier CLI for a full diagnostic:'|t('password-policy') }}
+            <code>php craft password-policy/audit/verify --json</code>
+        </p>
+    </blockquote>
 {% endif %}
+
+<h3>{{ 'Totals'|t('password-policy') }}</h3>
+
+<table class="data fullwidth">
+    <thead>
+        <tr>
+            <th scope="col">{{ 'Metric'|t('password-policy') }}</th>
+            <th scope="col">{{ 'Value'|t('password-policy') }}</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <th scope="row">{{ 'Total audit rows'|t('password-policy') }}</th>
+            <td>{{ totals.total }}</td>
+        </tr>
+        <tr>
+            <th scope="row">{{ 'Rows in last 30 days'|t('password-policy') }}</th>
+            <td>{{ totals.last30Days }}</td>
+        </tr>
+    </tbody>
+</table>
+
+{% if totals.byEventClass|length %}
+    <h3>{{ 'By event class'|t('password-policy') }}</h3>
+
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th scope="col">{{ 'Event class'|t('password-policy') }}</th>
+                <th scope="col">{{ 'Count'|t('password-policy') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for eventClass, count in totals.byEventClass %}
+                <tr>
+                    <th scope="row"><code>{{ eventClass }}</code></th>
+                    <td>{{ count }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endif %}
+
+<p>
+    <a href="{{ cpUrl('password-policy/reports/audit-summary/html') }}" class="btn">
+        {{ 'Run HTML report'|t('password-policy') }}
+    </a>
+    <a href="{{ cpUrl('password-policy/reports/audit-summary/csv') }}" class="btn">
+        {{ 'Download CSV'|t('password-policy') }}
+    </a>
+</p>
+
+<hr>
+
+{# ====================================================================
+ # 2. Activity in last 24h
+ # ==================================================================== #}
+
+<h2>{{ 'Activity in last 24 hours'|t('password-policy') }}</h2>
+
+{% if cooldownActivity.byEventClass|length %}
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th scope="col">{{ 'Event class'|t('password-policy') }}</th>
+                <th scope="col">{{ 'Fires'|t('password-policy') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for eventClass, count in cooldownActivity.byEventClass %}
+                <tr>
+                    <th scope="row"><code>{{ eventClass }}</code></th>
+                    <td>{{ count }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <blockquote class="note">
+        <p>{{ 'No alert activity in the last 24 hours.'|t('password-policy') }}</p>
+    </blockquote>
+{% endif %}
+
+<p>
+    <a href="{{ cpUrl('password-policy/reports/alert-activity/html') }}" class="btn">
+        {{ 'Run HTML report'|t('password-policy') }}
+    </a>
+    <a href="{{ cpUrl('password-policy/reports/alert-activity/csv') }}" class="btn">
+        {{ 'Download CSV'|t('password-policy') }}
+    </a>
+</p>
+
+<hr>
+
+{# ====================================================================
+ # 3. Pending SIEM forwarding
+ # ==================================================================== #}
+
+<h2>{{ 'Pending SIEM forwarding'|t('password-policy') }}</h2>
+
+{% if pendingForwards.count > 0 %}
+    <blockquote class="note warning">
+        <p>
+            <strong>{{ '{count} audit rows pending forwarding.'|t('password-policy', { count: pendingForwards.count }) }}</strong>
+            {% if pendingForwards.oldestAge %}
+                {{ 'Oldest pending row:'|t('password-policy') }} {{ pendingForwards.oldestAge }}.
+            {% endif %}
+        </p>
+        <p>
+            <a href="{{ cpUrl('password-policy/siem') }}">
+                {{ 'View SIEM forwarders'|t('password-policy') }}
+            </a>
+        </p>
+    </blockquote>
+{% else %}
+    <blockquote class="note tip">
+        <p>{{ 'All audit rows have been forwarded.'|t('password-policy') }}</p>
+    </blockquote>
+{% endif %}
+
+<hr>
+
+{# ====================================================================
+ # 4. Retention
+ # ==================================================================== #}
+
+<h2>{{ 'Retention'|t('password-policy') }}</h2>
+
+<table class="data fullwidth">
+    <thead>
+        <tr>
+            <th scope="col">{{ 'Log'|t('password-policy') }}</th>
+            <th scope="col">{{ 'Retention (days)'|t('password-policy') }}</th>
+            <th scope="col">{{ 'Oldest row age'|t('password-policy') }}</th>
+            <th scope="col">{{ 'Projected next prune'|t('password-policy') }}</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <th scope="row">{{ 'Audit log'|t('password-policy') }}</th>
+            <td>{{ retentionStatus.auditLogRetentionDays }}</td>
+            <td>
+                {% if retentionStatus.auditLogOldestAge %}
+                    {{ retentionStatus.auditLogOldestAge }}
+                {% else %}
+                    <em>{{ 'No rows yet.'|t('password-policy') }}</em>
+                {% endif %}
+            </td>
+            <td>
+                {% if retentionStatus.auditLogProjectedNextPrune %}
+                    {{ retentionStatus.auditLogProjectedNextPrune|datetime('short') }}
+                {% else %}
+                    <em>-</em>
+                {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <th scope="row">{{ 'Notification log'|t('password-policy') }}</th>
+            <td>{{ retentionStatus.notificationLogRetentionDays }}</td>
+            <td>
+                {% if retentionStatus.notificationLogOldestAge %}
+                    {{ retentionStatus.notificationLogOldestAge }}
+                {% else %}
+                    <em>{{ 'No rows yet.'|t('password-policy') }}</em>
+                {% endif %}
+            </td>
+            <td><em>-</em></td>
+        </tr>
+    </tbody>
+</table>
+
+<p>
+    <a href="{{ cpUrl('password-policy/reports/retention-projection/html') }}" class="btn">
+        {{ 'Run HTML report'|t('password-policy') }}
+    </a>
+    <a href="{{ cpUrl('password-policy/reports/retention-projection/csv') }}" class="btn">
+        {{ 'Download CSV'|t('password-policy') }}
+    </a>
+</p>

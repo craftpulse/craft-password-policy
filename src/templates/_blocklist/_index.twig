@@ -1,8 +1,12 @@
-{# Blocklist — top-level CP page. Two sections: bundled common list (refresh + last-seeded), and the editable custom words. #}
+{# Blocklist — top-level CP page. Two sections: bundled common list (refresh + last-seeded), and the editable custom words.
+
+   The whole screen is Pro-only and hidden below Pro: the subnav entry, the
+   `pp:blocklist-*` permissions, and `BlocklistController::beforeAction()`
+   (which 404s) all gate on the edition, so nothing here needs an edition
+   conditional. #}
 {# @var commonCount int #}
 {# @var customWords array #}
 {# @var lastUpdated mixed #}
-{# @var isPro bool #}
 
 {% requirePermission "pp:blocklist-view" %}
 
@@ -20,7 +24,7 @@
    without nesting them. #}
 
 {% block actionButton %}
-    {% if canManage and isPro %}
+    {% if canManage %}
         <input type="submit" form="customWordsForm" class="btn submit" value="{{ 'Save'|t('app') }}">
     {% endif %}
 {% endblock %}
@@ -68,7 +72,7 @@
             </blockquote>
         {% endif %}
 
-        {% if canManage and isPro %}
+        {% if canManage %}
             <form method="post" accept-charset="UTF-8">
                 {{ csrfInput() }}
                 {{ redirectInput('password-policy/blocklist') }}
@@ -83,124 +87,122 @@
         {% endif %}
     </div>
 
-    {% if isPro %}
-        <hr>
+    <hr>
 
-        <div class="readable">
-            <h2>{{ 'Check a word'|t('password-policy') }}</h2>
+    <div class="readable">
+        <h2>{{ 'Check a word'|t('password-policy') }}</h2>
 
-            <p>{{ "Test whether a word is currently in the blocklist (bundled common or custom). The word is checked once and never logged."|t('password-policy') }}</p>
+        <p>{{ "Test whether a word is currently in the blocklist (bundled common or custom). The word is checked once and never logged."|t('password-policy') }}</p>
 
-            <div class="flex">
-                <div class="flex-grow">
-                    {{ forms.text({
-                        id: 'pp-blocklist-check-input',
-                        name: 'word',
-                        autocomplete: 'off',
-                        spellcheck: 'false',
-                        placeholder: 'word to check'|t('password-policy'),
-                    }) }}
-                </div>
-                <div>
-                    <button type="button" class="btn" id="pp-blocklist-check-button">{{ 'Check'|t('password-policy') }}</button>
-                </div>
+        <div class="flex">
+            <div class="flex-grow">
+                {{ forms.text({
+                    id: 'pp-blocklist-check-input',
+                    name: 'word',
+                    autocomplete: 'off',
+                    spellcheck: 'false',
+                    placeholder: 'word to check'|t('password-policy'),
+                }) }}
             </div>
-
-            {# Both result states use blockquote.note variants so they share the
-               same shape, padding, and icon system — only the variant
-               (warning vs. tip) and content differ. Inline `style="display:none"`
-               instead of the `hidden` attribute because sibling notice
-               components carry `display: flex` rules that override the
-               `hidden` attribute's default styling. #}
-
-            {# Blocked → blockquote.note.warning (amber alert icon). #}
-            <blockquote class="note warning" id="pp-blocklist-check-error" style="display:none">
-                <p id="pp-blocklist-check-error-message"></p>
-            </blockquote>
-
-            {# Not blocked / empty / fetch error → blockquote.note.tip (blue lightbulb). #}
-            <blockquote class="note tip" id="pp-blocklist-check-notice" style="display:none">
-                <p id="pp-blocklist-check-notice-message"></p>
-            </blockquote>
+            <div>
+                <button type="button" class="btn" id="pp-blocklist-check-button">{{ 'Check'|t('password-policy') }}</button>
+            </div>
         </div>
 
-        {% js %}
-            (function() {
-                const input = document.getElementById('pp-blocklist-check-input');
-                const button = document.getElementById('pp-blocklist-check-button');
-                const errorEl = document.getElementById('pp-blocklist-check-error');
-                const errorMsgEl = document.getElementById('pp-blocklist-check-error-message');
-                const noticeEl = document.getElementById('pp-blocklist-check-notice');
-                const noticeMsgEl = document.getElementById('pp-blocklist-check-notice-message');
+        {# Both result states use blockquote.note variants so they share the
+           same shape, padding, and icon system — only the variant
+           (warning vs. tip) and content differ. Inline `style="display:none"`
+           instead of the `hidden` attribute because sibling notice
+           components carry `display: flex` rules that override the
+           `hidden` attribute's default styling. #}
 
-                if (!input || !button || !errorEl || !noticeEl) return;
+        {# Blocked → blockquote.note.warning (amber alert icon). #}
+        <blockquote class="note warning" id="pp-blocklist-check-error" style="display:none">
+            <p id="pp-blocklist-check-error-message"></p>
+        </blockquote>
 
-                const labels = {
-                    blockedCommon: {{ "Blocked: present in the bundled common-password list."|t('password-policy')|json_encode|raw }},
-                    blockedCustom: {{ "Blocked: present in the custom list."|t('password-policy')|json_encode|raw }},
-                    notBlocked: {{ "Not in the blocklist."|t('password-policy')|json_encode|raw }},
-                    empty: {{ "Enter a word to check."|t('password-policy')|json_encode|raw }},
-                    error: {{ "Couldn't check that word. Please try again."|t('password-policy')|json_encode|raw }},
-                };
+        {# Not blocked / empty / fetch error → blockquote.note.tip (blue lightbulb). #}
+        <blockquote class="note tip" id="pp-blocklist-check-notice" style="display:none">
+            <p id="pp-blocklist-check-notice-message"></p>
+        </blockquote>
+    </div>
 
-                function showError(message) {
-                    errorMsgEl.textContent = message;
-                    errorEl.style.display = '';
-                    noticeEl.style.display = 'none';
+    {% js %}
+        (function() {
+            const input = document.getElementById('pp-blocklist-check-input');
+            const button = document.getElementById('pp-blocklist-check-button');
+            const errorEl = document.getElementById('pp-blocklist-check-error');
+            const errorMsgEl = document.getElementById('pp-blocklist-check-error-message');
+            const noticeEl = document.getElementById('pp-blocklist-check-notice');
+            const noticeMsgEl = document.getElementById('pp-blocklist-check-notice-message');
+
+            if (!input || !button || !errorEl || !noticeEl) return;
+
+            const labels = {
+                blockedCommon: {{ "Blocked: present in the bundled common-password list."|t('password-policy')|json_encode|raw }},
+                blockedCustom: {{ "Blocked: present in the custom list."|t('password-policy')|json_encode|raw }},
+                notBlocked: {{ "Not in the blocklist."|t('password-policy')|json_encode|raw }},
+                empty: {{ "Enter a word to check."|t('password-policy')|json_encode|raw }},
+                error: {{ "Couldn't check that word. Please try again."|t('password-policy')|json_encode|raw }},
+            };
+
+            function showError(message) {
+                errorMsgEl.textContent = message;
+                errorEl.style.display = '';
+                noticeEl.style.display = 'none';
+            }
+
+            function showNotice(message) {
+                noticeMsgEl.textContent = message;
+                noticeEl.style.display = '';
+                errorEl.style.display = 'none';
+            }
+
+            async function check() {
+                const word = input.value.trim();
+                if (word === '') {
+                    showNotice(labels.empty);
+                    return;
                 }
 
-                function showNotice(message) {
-                    noticeMsgEl.textContent = message;
-                    noticeEl.style.display = '';
-                    errorEl.style.display = 'none';
+                button.disabled = true;
+                try {
+                    const formData = new FormData();
+                    formData.append(Craft.csrfTokenName, Craft.csrfTokenValue);
+                    formData.append('word', word);
+
+                    const response = await fetch(Craft.getActionUrl('password-policy/blocklist/check'), {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body: formData,
+                    });
+
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+
+                    const data = await response.json();
+                    if (data.blocked) {
+                        showError(data.source === 'common' ? labels.blockedCommon : labels.blockedCustom);
+                    } else {
+                        showNotice(labels.notBlocked);
+                    }
+                } catch (e) {
+                    showNotice(labels.error);
+                } finally {
+                    button.disabled = false;
                 }
+            }
 
-                async function check() {
-                    const word = input.value.trim();
-                    if (word === '') {
-                        showNotice(labels.empty);
-                        return;
-                    }
-
-                    button.disabled = true;
-                    try {
-                        const formData = new FormData();
-                        formData.append(Craft.csrfTokenName, Craft.csrfTokenValue);
-                        formData.append('word', word);
-
-                        const response = await fetch(Craft.getActionUrl('password-policy/blocklist/check'), {
-                            method: 'POST',
-                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                            body: formData,
-                        });
-
-                        if (!response.ok) throw new Error('HTTP ' + response.status);
-
-                        const data = await response.json();
-                        if (data.blocked) {
-                            showError(data.source === 'common' ? labels.blockedCommon : labels.blockedCustom);
-                        } else {
-                            showNotice(labels.notBlocked);
-                        }
-                    } catch (e) {
-                        showNotice(labels.error);
-                    } finally {
-                        button.disabled = false;
-                    }
+            button.addEventListener('click', check);
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    check();
                 }
+            });
+        })();
+    {% endjs %}
 
-                button.addEventListener('click', check);
-                input.addEventListener('keydown', function(e) {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        check();
-                    }
-                });
-            })();
-        {% endjs %}
-    {% endif %}
-
-    {% if canManage and isPro %}
+    {% if canManage %}
         <hr>
 
         <form method="post" accept-charset="UTF-8" id="customWordsForm">

@@ -15,6 +15,7 @@ use Craft;
 use craft\helpers\Cp;
 use craft\helpers\Queue;
 use craft\web\Controller;
+use craftpulse\passwordpolicy\base\RequiresEditionTrait;
 use craftpulse\passwordpolicy\jobs\RotateWebhookSecretJob;
 use craftpulse\passwordpolicy\models\WebhookEndpointModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
@@ -63,6 +64,11 @@ use yii\web\Response;
  */
 class WebhookEndpointController extends Controller
 {
+    // Traits
+    // =========================================================================
+
+    use RequiresEditionTrait;
+
     // Const Properties
     // =========================================================================
 
@@ -102,7 +108,8 @@ class WebhookEndpointController extends Controller
     /**
      * @inheritdoc
      *
-     * @throws ForbiddenHttpException
+     * @throws ForbiddenHttpException if the user lacks the required permission
+     * @throws NotFoundHttpException if the edition is below Enterprise
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -114,12 +121,7 @@ class WebhookEndpointController extends Controller
         }
 
         $this->requireCpRequest();
-
-        if (!PasswordPolicy::$plugin->getIsEnterprise()) {
-            throw new ForbiddenHttpException(
-                'Webhook endpoint management requires the Enterprise edition.',
-            );
-        }
+        $this->requireEnterpriseEdition();
 
         $this->requirePermission('pp:webhooks-manage');
 

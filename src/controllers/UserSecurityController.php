@@ -197,7 +197,11 @@ class UserSecurityController extends Controller
             && $lastChange !== null
             && $lastChange < $expiryThreshold;
 
-        $notifications = $plugin->getIsPro()
+        // The per-user notifications panel is a Pro surface. Below Pro the
+        // panel isn't rendered at all (hide, never show-empty): the flag drives
+        // the template's include, and the log query is skipped with it.
+        $showNotifications = $plugin->getIsPro();
+        $notifications = $showNotifications
             ? $plugin->getNotificationActivity()->recentForUser($user->id)
             : [];
 
@@ -211,6 +215,7 @@ class UserSecurityController extends Controller
             'isExpired' => $isExpired,
             'neverChanged' => $lastChange === null,
             'notifications' => $notifications,
+            'showNotifications' => $showNotifications,
         ]);
 
         return $response;

@@ -13,6 +13,7 @@ namespace craftpulse\passwordpolicy\controllers;
 use Craft;
 use craft\helpers\UrlHelper;
 use craft\web\Controller;
+use craftpulse\passwordpolicy\base\RequiresEditionTrait;
 use craftpulse\passwordpolicy\elements\NotificationLogElement;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use Throwable;
@@ -47,6 +48,11 @@ use yii\web\Response;
  */
 class NotificationActivityController extends Controller
 {
+    // Traits
+    // =========================================================================
+
+    use RequiresEditionTrait;
+
     // Public Properties
     // =========================================================================
 
@@ -62,7 +68,8 @@ class NotificationActivityController extends Controller
     /**
      * @inheritdoc
      *
-     * @throws ForbiddenHttpException
+     * @throws ForbiddenHttpException if the user lacks `pp:notification-log-view`
+     * @throws NotFoundHttpException if the edition is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -74,12 +81,7 @@ class NotificationActivityController extends Controller
         }
 
         $this->requireCpRequest();
-
-        if (!PasswordPolicy::$plugin->getIsPro()) {
-            throw new ForbiddenHttpException(
-                Craft::t('password-policy', 'The notifications activity surface requires the Pro edition.')
-            );
-        }
+        $this->requireProEdition();
 
         // P3-10: viewing the activity log is an audit-read function
         // gated on the new `pp:notification-log-view` permission. The

@@ -8,9 +8,10 @@
 
 {# Audit CAPTURE (enable + retention) is universal across editions, so this
    page renders on every edition. Only the admin-alert / geo-IP EXPOSURE
-   fields below are Enterprise-gated — omitted entirely below Enterprise (as
+   fields below are Enterprise-gated: omitted entirely below Enterprise (as
    are the compliance dashboard, exports, and SIEM/webhook forwarding, gated
-   on their own pages). #}
+   on their own pages). Copy that names an Enterprise-only surface is gated
+   too, so a Lite or Pro screen never advertises what it can't reach. #}
 
 {% block actionButton %}
     {% if not readOnly %}
@@ -24,9 +25,16 @@
     {{ redirectInput('password-policy/settings/audit') }}
 
     <div class="flex-fields">
+        {# The reader-surface sentence only renders on Enterprise, where those
+           surfaces exist. Below Enterprise it would be upsell chrome on a
+           toggle the edition fully supports. #}
+        {% set auditLogInstructions = "Record password-related security events to the hash-chained audit log."|t('password-policy') %}
+        {% if isEnterprise %}
+            {% set auditLogInstructions = auditLogInstructions ~ ' ' ~ "The compliance dashboard, exports, and SIEM/webhook forwarding all read this trail."|t('password-policy') %}
+        {% endif %}
         {{ forms.lightswitchField({
             label: 'Enable audit logging'|t('password-policy'),
-            instructions: "Record password-related security events to the hash-chained audit log. Captured on every edition; the compliance dashboard, exports, and SIEM/webhook forwarding that read this trail require Enterprise."|t('password-policy'),
+            instructions: auditLogInstructions,
             name: 'settings[enableAuditLog]',
             on: settings.enableAuditLog,
             disabled: readOnly,

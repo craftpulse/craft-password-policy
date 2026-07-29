@@ -16,6 +16,7 @@ use craft\base\FsInterface;
 use craft\db\Query;
 use craft\helpers\Queue;
 use craft\web\Controller;
+use craftpulse\passwordpolicy\base\RequiresEditionTrait;
 use craftpulse\passwordpolicy\jobs\AuditExportJob;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use Throwable;
@@ -63,6 +64,11 @@ use yii\web\Response;
  */
 class AuditExportController extends Controller
 {
+    // Traits
+    // =========================================================================
+
+    use RequiresEditionTrait;
+
     // Const Properties
     // =========================================================================
 
@@ -92,7 +98,8 @@ class AuditExportController extends Controller
     /**
      * @inheritdoc
      *
-     * @throws ForbiddenHttpException
+     * @throws ForbiddenHttpException if the user lacks the required permission
+     * @throws NotFoundHttpException if the edition is below Enterprise
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -104,12 +111,7 @@ class AuditExportController extends Controller
         }
 
         $this->requireCpRequest();
-
-        if (!PasswordPolicy::$plugin->getIsEnterprise()) {
-            throw new ForbiddenHttpException(
-                'Audit-log export requires the Enterprise edition.',
-            );
-        }
+        $this->requireEnterpriseEdition();
 
         $this->requirePermission('pp:audit-export');
 

@@ -59,10 +59,7 @@ class ComplianceDashboardUtility extends Utility
 
         return Craft::$app->getView()->renderTemplate(
             'password-policy/_utilities/compliance-dashboard',
-            [
-                'aggregates' => $plugin->getComplianceAggregates(),
-                'isEnterprise' => $plugin->getIsEnterprise(),
-            ],
+            ['aggregates' => $plugin->getComplianceAggregates()],
         );
     }
 

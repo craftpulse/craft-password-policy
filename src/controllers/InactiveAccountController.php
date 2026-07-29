@@ -13,9 +13,11 @@ namespace craftpulse\passwordpolicy\controllers;
 use Craft;
 use craft\helpers\UrlHelper;
 use craft\web\Controller;
+use craftpulse\passwordpolicy\base\RequiresEditionTrait;
 use craftpulse\passwordpolicy\enums\InactiveAction;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
 /**
@@ -39,13 +41,19 @@ use yii\web\Response;
  */
 class InactiveAccountController extends Controller
 {
+    // Traits
+    // =========================================================================
+
+    use RequiresEditionTrait;
+
     // Public Methods
     // =========================================================================
 
     /**
      * @inheritdoc
      *
-     * @throws ForbiddenHttpException
+     * @throws ForbiddenHttpException if the user lacks `pp:inactive-view`
+     * @throws NotFoundHttpException if the edition is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -57,10 +65,7 @@ class InactiveAccountController extends Controller
         }
 
         $this->requireCpRequest();
-
-        if (!PasswordPolicy::$plugin->getIsPro()) {
-            throw new ForbiddenHttpException('Inactive-account handling requires the Pro edition.');
-        }
+        $this->requireProEdition();
 
         $this->requirePermission('pp:inactive-view');
 

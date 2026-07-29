@@ -122,10 +122,10 @@
 
 #### Settings UI
 
-- Settings UI redesigned: sidebar grouped under Policy / Validation / Monitoring / Audit, with edition badges on locked rows.
+- Settings UI redesigned: sidebar grouped under Policy / Validation / Monitoring / Audit. Higher-edition sections are omitted from the sidebar on lower editions rather than listed and locked.
 - Info icon tooltips on every settings page with framework references (NIST 800-63B, PCI-DSS, GDPR, NIS2).
-- Configuration page exposes `enableHibpOnLogin`, `useZxcvbnStrength`, `cspNonce`, and the `hibp` / `hibpFailMode` fields. Per-page edition gating via `editionLocked` + edition badge.
-- Retention page exposes `auditLogRetentionDays`, `notificationLogRetentionDays`, `passwordHistoryExpiryDays`, expiry reminder window. Pro+ fields visible-but-disabled on Lite.
+- Configuration page exposes `enableHibpOnLogin`, `useZxcvbnStrength`, `cspNonce`, and the `hibp` / `hibpFailMode` fields. Higher-edition fields are omitted on lower editions.
+- Retention page exposes `auditLogRetentionDays`, `notificationLogRetentionDays`, `passwordHistoryExpiryDays`, expiry reminder window. Pro fields are absent on Lite.
 
 #### Permissions
 
@@ -138,6 +138,7 @@
 - `pp:audit-verify`: runs the verifier CLI.
 - `pp:audit-export`: write-side privilege for the audit export utility.
 - `pp:siem-manage`, `pp:webhooks-manage`: Enterprise-only.
+- Edition-scoped registration: every permission that gates a Pro or Enterprise screen registers only on that edition, so a lower edition's permissions screen never lists a grant that leads nowhere. Existing grants survive a downgrade untouched and take effect again on upgrade.
 
 #### Events
 
@@ -171,10 +172,12 @@
 
 ### Changed
 
+- **Edition gating hides, it never badges.** Higher-edition functionality no longer renders at all on lower editions: no disabled fields, no locked sidebar rows, no upsell callouts, and no copy naming a surface the edition can't reach. Three layers carry it. (1) CP nav entries, settings sidebar sections, utilities, element-index columns, condition-rule options, and the per-user notifications panel are omitted below their edition. (2) Permissions for higher-edition surfaces register only on those editions. (3) A direct hit on a higher-edition CP URL now answers **404** (`NotFoundHttpException`) instead of 403, via the shared `RequiresEditionTrait` on `SettingsController`, `PolicyController`, `BlocklistController`, `InactiveAccountController`, `NotificationTemplateController`, `NotificationActivityController`, `GroupAlertController`, `ReportController`, `AuditExportController`, `SiemForwarderController`, `WebhookEndpointController`, and `ApiTokenController`: a 403 would confirm a screen the hidden nav withholds. The read-only REST API returns its existing uniform JSON 404 below Enterprise, byte-identical to the `apiEnabled = false` response. Service, Twig-variable, queue-job, and console gates are unchanged (`EditionRequiredException`, graceful skip, non-zero exit).
+- The whole `BlocklistController` is now Pro-gated rather than only its index and save actions. The word-lookup and common-list refresh endpoints only exist on the Pro editor page; Lite operators seed the bundled list with the `password-policy/blocklist/update` console command, which runs on every edition.
 - Settings screens now gate on the `pp:manage-settings` permission instead of `requireAdmin`, aligning Password Policy with the estate settings-permission doctrine. `SettingsController` and `PolicyController` `beforeAction()` gates switched from `requireAdmin` to `requirePermission(pp:manage-settings)`, so a non-admin holding the permission can reach and manage settings; `allowAdminChanges` now governs writability only (the read views already render read-only with disabled fields and no save button when it is off). The permission handle was renamed from `pp:settings` to `pp:manage-settings` and is declared once as `PasswordPolicy::PERMISSION_MANAGE_SETTINGS`, referenced from the registration, the CP nav gating, both controllers, the settings and policy CP templates, and the policy element authorization.
 - **Permission handle renamed:** `pp:settings` (5.1.x) is now `pp:manage-settings`. Permission handles are kebab-case across the CraftPulse plugin estate, so both halves of the handle are lowercase kebab. `m260729_*_KebabCasePermissions` carries existing grants over automatically: user grants, user group grants, and the `users.groups.<uid>.permissions` project config lists all move to the new name, and the old permission row is removed. No manual re-granting is needed, and integrators only need to update their own `currentUser.can('pp:settings')` checks and any permission lists they manage outside Craft. The intermediate `pp:manageSettings` form used during 5.2.0 development is carried over by the same migration and never shipped in a release.
 - CP password strength indicator now consumes the same AJAX `password-policy/validation/validate` endpoint as the front-end builders: single strength engine across CP and consumer surfaces. Selector generalised from `#newPassword` to `input[type="password"][autocomplete="new-password"]:not([data-pp-no-strength])`; attaches on installer + set-password screens too. Dropped `@zxcvbn-ts/core` + `@zxcvbn-ts/language-common` + `@zxcvbn-ts/language-en` from the buildchain in favour of the server-side `bjeavons/zxcvbn-php` engine, JS bundle dropped from ~1.65 MB to ~2.2 KB.
-- Settings UI redesigned: sidebar grouped under Policy / Validation / Monitoring with edition badges.
+- Settings UI redesigned: sidebar grouped under Policy / Validation / Monitoring.
 - `pwned` setting renamed to `hibp` (project config + DB): `m260429_224908_UpgradeTo520Schema` migration handles the rename. `SettingsModel` accepts the legacy `pwned` / `pwnedFailMode` keys from `config/password-policy.php` and aliases them to `hibp` / `hibpFailMode` with a deprecation warning logged at `WARNING`.
 - Subnav lists Policies before Settings (when per-group policies enabled).
 - `SequentialCharsValidator` detects ASCII sequences (e.g. `pqr`, `xyz`) in addition to keyboard rows. Unicode-aware character classes in `MinimumCharacterTypesValidator` + `RepeatedCharsValidator`.

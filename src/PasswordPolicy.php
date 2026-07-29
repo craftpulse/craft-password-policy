@@ -1006,6 +1006,13 @@ class PasswordPolicy extends Plugin
     /**
      * Registers user permissions.
      *
+     * Edition-gated permissions register only on the edition that owns the
+     * surface they gate: a Lite admin's permissions screen never lists a Pro
+     * grant, and a Pro admin's never lists an Enterprise one. Hide, never
+     * badge. Grants already stored in `userpermissions` survive a downgrade
+     * untouched (Craft never prunes rows for unregistered names), so an
+     * upgrade back restores the previous state.
+     *
      * @return void
      *
      * @author CraftPulse
@@ -1027,36 +1034,55 @@ class PasswordPolicy extends Plugin
                             'Change another user’s password and send password reset emails.',
                         ),
                     ],
-                    'pp:blocklist-view' => [
+                ];
+
+                // Pro-only surfaces. Every permission below gates a screen
+                // that doesn't exist on Lite (blocklist editor, notification
+                // template editor, notification activity log), so a Lite
+                // admin's permissions screen never lists a grant that leads
+                // nowhere. Hide, never badge.
+                if ($this->getIsPro()) {
+                    $permissions['pp:blocklist-view'] = [
                         'label' => Craft::t('password-policy', 'View password blocklist.'),
                         'nested' => [
                             'pp:blocklist-manage' => [
                                 'label' => Craft::t('password-policy', 'Manage password blocklist.'),
                             ],
                         ],
-                    ],
-                    'pp:notification-templates-manage' => [
+                    ];
+
+                    $permissions['pp:notification-templates-manage'] = [
                         'label' => Craft::t('password-policy', 'Manage email notification templates.'),
-                    ],
-                    'pp:notification-log-view' => [
+                    ];
+
+                    $permissions['pp:notification-log-view'] = [
                         'label' => Craft::t(
                             'password-policy',
                             'View the notification activity log (delivery history, errors). Auditor-grantable without template-edit rights.',
                         ),
-                    ],
-                    'pp:audit-view' => [
+                    ];
+                }
+
+                // Enterprise-only audit surfaces. Audit CAPTURE is universal
+                // (see `project_audit_capture_principle.md`), but every
+                // surface that READS the trail (compliance dashboard, audit
+                // schema utility, compliance reports, verifier CLI) is
+                // Enterprise, so the read permissions register there only.
+                if ($this->getIsEnterprise()) {
+                    $permissions['pp:audit-view'] = [
                         'label' => Craft::t(
                             'password-policy',
                             'View audit log entries and the per-event PII allowlist registry. Auditor-grantable without full admin.',
                         ),
-                    ],
-                    'pp:audit-verify' => [
+                    ];
+
+                    $permissions['pp:audit-verify'] = [
                         'label' => Craft::t(
                             'password-policy',
                             'Run the audit-log verifier CLI. Auditor-grantable without full admin.',
                         ),
-                    ],
-                ];
+                    ];
+                }
 
                 // Inactive-account report (Feature 5) is a Pro-only
                 // read surface. Flat (not nested) — it's single-purpose

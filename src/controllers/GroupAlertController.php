@@ -13,10 +13,12 @@ namespace craftpulse\passwordpolicy\controllers;
 use Craft;
 use craft\helpers\UrlHelper;
 use craft\web\Controller;
+use craftpulse\passwordpolicy\base\RequiresEditionTrait;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use Throwable;
 use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
 /**
@@ -38,13 +40,19 @@ use yii\web\Response;
  */
 class GroupAlertController extends Controller
 {
+    // Traits
+    // =========================================================================
+
+    use RequiresEditionTrait;
+
     // Public Methods
     // =========================================================================
 
     /**
      * @inheritdoc
      *
-     * @throws ForbiddenHttpException
+     * @throws ForbiddenHttpException if the user lacks `pp:notification-templates-manage`
+     * @throws NotFoundHttpException if the edition is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -56,10 +64,7 @@ class GroupAlertController extends Controller
         }
 
         $this->requireCpRequest();
-
-        if (!PasswordPolicy::$plugin->getIsPro()) {
-            throw new ForbiddenHttpException('Per-group alerts require the Pro edition.');
-        }
+        $this->requireProEdition();
 
         $this->requirePermission('pp:notification-templates-manage');
 
@@ -121,7 +126,7 @@ class GroupAlertController extends Controller
      * @return Response|null
      *
      * @throws BadRequestHttpException
-     * @throws ForbiddenHttpException
+     * @throws NotFoundHttpException if the edition is below Pro
      * @throws Throwable
      *
      * @author CraftPulse
@@ -131,9 +136,10 @@ class GroupAlertController extends Controller
     {
         $this->requirePostRequest();
 
-        if (!PasswordPolicy::$plugin->getIsPro()) {
-            throw new ForbiddenHttpException('Per-group alerts require the Pro edition.');
-        }
+        // Defense-in-depth: `beforeAction()` already 404s below Pro. Kept as
+        // a second gate on the write path so a future refactor of
+        // `beforeAction()` can't quietly open the writer.
+        $this->requireProEdition();
 
         /** @var array<int|string, array<string, mixed>> $rows */
         $rows = (array)Craft::$app->getRequest()->getBodyParam('subscriptions', []);

@@ -15,6 +15,7 @@ use craft\helpers\App;
 use craft\helpers\Cp;
 use craft\helpers\Html;
 use craft\web\Controller;
+use craftpulse\passwordpolicy\base\RequiresEditionTrait;
 use craftpulse\passwordpolicy\models\PolicyModel;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
@@ -35,6 +36,11 @@ use yii\web\Response;
  */
 class PolicyController extends Controller
 {
+    // Traits
+    // =========================================================================
+
+    use RequiresEditionTrait;
+
     // Private Properties
     // =========================================================================
 
@@ -85,6 +91,7 @@ class PolicyController extends Controller
      * @return Response
      *
      * @throws ForbiddenHttpException
+     * @throws NotFoundHttpException if the edition is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -92,7 +99,7 @@ class PolicyController extends Controller
     public function actionIndex(): Response
     {
         $this->_requireSettingsPermission();
-        $this->_requireProEdition();
+        $this->requireProEdition();
 
         return $this->renderTemplate('password-policy/_policies/_index', [
             'readOnly' => $this->_readOnly,
@@ -119,7 +126,7 @@ class PolicyController extends Controller
     public function actionEdit(?int $policyId = null, ?PolicyModel $policy = null): Response
     {
         $this->_requireSettingsPermission();
-        $this->_requireProEdition();
+        $this->requireProEdition();
 
         $plugin = PasswordPolicy::$plugin;
 
@@ -192,7 +199,6 @@ class PolicyController extends Controller
                 'allGroups' => $allGroups,
                 'assignedGroupIds' => $assignedGroupIds,
                 'globalSettings' => $globalSettings,
-                'isPro' => $plugin->getIsPro(),
                 'isEnterprise' => $isEnterprise,
                 'isNew' => $isNew,
                 'readOnly' => $this->_readOnly,
@@ -238,6 +244,7 @@ class PolicyController extends Controller
      *
      * @throws BadRequestHttpException
      * @throws ForbiddenHttpException
+     * @throws NotFoundHttpException if the edition is below Pro
      * @throws \Throwable
      *
      * @author CraftPulse
@@ -248,7 +255,7 @@ class PolicyController extends Controller
         $this->requirePostRequest();
         $this->_requireSettingsPermission();
         $this->_requireAdminChanges();
-        $this->_requireProEdition();
+        $this->requireProEdition();
 
         $request = Craft::$app->getRequest();
         $policyId = $request->getBodyParam('policyId');
@@ -340,6 +347,7 @@ class PolicyController extends Controller
      *
      * @throws BadRequestHttpException
      * @throws ForbiddenHttpException
+     * @throws NotFoundHttpException if the edition is below Pro
      * @throws \yii\db\Exception
      *
      * @author CraftPulse
@@ -351,7 +359,7 @@ class PolicyController extends Controller
         $this->requireAcceptsJson();
         $this->_requireSettingsPermission();
         $this->_requireAdminChanges();
-        $this->_requireProEdition();
+        $this->requireProEdition();
 
         $id = Craft::$app->getRequest()->getRequiredBodyParam('id');
         PasswordPolicy::$plugin->getPolicies()->deletePolicy((int)$id);
@@ -366,6 +374,7 @@ class PolicyController extends Controller
      *
      * @throws BadRequestHttpException
      * @throws ForbiddenHttpException
+     * @throws NotFoundHttpException if the edition is below Pro
      * @throws \Throwable
      *
      * @author CraftPulse
@@ -377,7 +386,7 @@ class PolicyController extends Controller
         $this->requireAcceptsJson();
         $this->_requireSettingsPermission();
         $this->_requireAdminChanges();
-        $this->_requireProEdition();
+        $this->requireProEdition();
 
         $ids = Craft::$app->getRequest()->getRequiredBodyParam('ids');
         PasswordPolicy::$plugin->getPolicies()->reorderPolicies($ids);
@@ -641,25 +650,6 @@ class PolicyController extends Controller
         if ($this->_readOnly) {
             throw new ForbiddenHttpException(
                 'Administrative changes are disallowed in this environment.',
-            );
-        }
-    }
-
-    /**
-     * Requires that the plugin is running the Pro edition or higher.
-     *
-     * @return void
-     *
-     * @throws ForbiddenHttpException
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _requireProEdition(): void
-    {
-        if (!PasswordPolicy::$plugin->getIsPro()) {
-            throw new ForbiddenHttpException(
-                'Named policies require the Pro edition.',
             );
         }
     }

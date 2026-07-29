@@ -8,10 +8,12 @@
  * otherwise reach `SettingsController::actionEdit()`, so the action denies
  * directly:
  *
- *  - `actionEdit('groups')` / `actionEdit('presets')` 403 on Lite — the page
- *    never renders.
- *  - Universal sections (`configuration`, `audit`, ...) are NOT edition-denied
- *    — they render on every edition and omit only their higher-edition fields.
+ *  - `actionEdit('groups')` / `actionEdit('presets')` 404 on Lite. The section
+ *    doesn't exist on that edition and the sidebar never offered it, so the
+ *    hide-not-badge doctrine wants the same answer as any nonexistent route:
+ *    not a 403, which would confirm the screen is there.
+ *  - Universal sections (`configuration`, `audit`, ...) are NOT edition-denied.
+ *    They render on every edition and omit only their higher-edition fields.
  *
  * Tests run through `runAction()` so `beforeAction()` fires the same
  * manage-settings permission gate a real HTTP request would, and the `section`
@@ -30,7 +32,7 @@ use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
 use craftpulse\passwordpolicy\tests\Support\WebRequestStub;
-use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
 
 // =============================================================================
 // Setup
@@ -88,18 +90,18 @@ function runSettingsEdit(string $section): mixed
 // Lite edition — the Pro-only sections deny outright
 // =============================================================================
 
-it('actionEdit(groups) 403s on Lite', function() {
+it('actionEdit(groups) 404s on Lite', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_LITE;
 
     expect(fn() => runSettingsEdit('groups'))
-        ->toThrow(ForbiddenHttpException::class);
+        ->toThrow(NotFoundHttpException::class);
 });
 
-it('actionEdit(presets) 403s on Lite', function() {
+it('actionEdit(presets) 404s on Lite', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_LITE;
 
     expect(fn() => runSettingsEdit('presets'))
-        ->toThrow(ForbiddenHttpException::class);
+        ->toThrow(NotFoundHttpException::class);
 });
 
 // =============================================================================
@@ -111,19 +113,19 @@ it('does not edition-deny a universal section on Lite', function() {
 
     // `audit` renders on every edition. It will fail later at template render
     // in the console-bootstrapped test process, but it must NOT raise the
-    // edition ForbiddenHttpException — that's the assertion under test.
-    $forbidden = false;
+    // edition 404 — that's the assertion under test.
+    $denied = false;
 
     try {
         runSettingsEdit('audit');
-    } catch (ForbiddenHttpException) {
-        $forbidden = true;
+    } catch (NotFoundHttpException) {
+        $denied = true;
     } catch (\Throwable) {
-        // Any non-403 throwable (e.g. a template-render error) is fine —
-        // it means execution passed the edition gate.
+        // Any other throwable (e.g. a template-render error) is fine: it
+        // means execution passed the edition gate.
     }
 
-    expect($forbidden)->toBeFalse('Universal `audit` section wrongly edition-denied on Lite');
+    expect($denied)->toBeFalse('Universal `audit` section wrongly edition-denied on Lite');
 });
 
 // =============================================================================
@@ -134,16 +136,16 @@ it('does not edition-deny the Pro sections on Pro', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
 
     foreach (['groups', 'presets'] as $section) {
-        $forbidden = false;
+        $denied = false;
 
         try {
             runSettingsEdit($section);
-        } catch (ForbiddenHttpException) {
-            $forbidden = true;
+        } catch (NotFoundHttpException) {
+            $denied = true;
         } catch (\Throwable) {
             // Passed the edition gate; a later render error is out of scope.
         }
 
-        expect($forbidden)->toBeFalse("Pro section `{$section}` wrongly edition-denied on Pro");
+        expect($denied)->toBeFalse("Pro section `{$section}` wrongly edition-denied on Pro");
     }
 });

@@ -13,9 +13,11 @@ namespace craftpulse\passwordpolicy\controllers;
 use Carbon\Carbon;
 use Craft;
 use craft\web\Controller;
+use craftpulse\passwordpolicy\base\RequiresEditionTrait;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
 /**
@@ -52,6 +54,11 @@ use yii\web\Response;
  */
 class ApiTokenController extends Controller
 {
+    // Traits
+    // =========================================================================
+
+    use RequiresEditionTrait;
+
     // Const Properties
     // =========================================================================
 
@@ -76,6 +83,7 @@ class ApiTokenController extends Controller
      * @inheritdoc
      *
      * @throws ForbiddenHttpException
+     * @throws NotFoundHttpException if the edition is below Enterprise
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -87,12 +95,7 @@ class ApiTokenController extends Controller
         }
 
         $this->requireCpRequest();
-
-        if (!PasswordPolicy::$plugin->getIsEnterprise()) {
-            throw new ForbiddenHttpException(
-                'REST API token management requires the Enterprise edition.',
-            );
-        }
+        $this->requireEnterpriseEdition();
 
         $this->requirePermission('pp:api-manage');
 

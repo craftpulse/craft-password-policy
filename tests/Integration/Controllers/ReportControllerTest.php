@@ -133,18 +133,18 @@ function seedReportAuditRow(array $overrides = []): int
 // Edition gate — beforeAction
 // =============================================================================
 
-it('throws ForbiddenHttpException on Pro for html', function() {
+it('throws NotFoundHttpException on Pro for html', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
 
     expect(fn() => runReportAction('html', ['report' => 'audit-summary']))
-        ->toThrow(ForbiddenHttpException::class);
+        ->toThrow(NotFoundHttpException::class);
 });
 
-it('throws ForbiddenHttpException on Lite for csv', function() {
+it('throws NotFoundHttpException on Lite for csv', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_LITE;
 
     expect(fn() => runReportAction('csv', ['report' => 'audit-summary']))
-        ->toThrow(ForbiddenHttpException::class);
+        ->toThrow(NotFoundHttpException::class);
 });
 
 // =============================================================================

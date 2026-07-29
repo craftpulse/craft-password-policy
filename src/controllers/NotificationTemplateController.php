@@ -17,6 +17,7 @@ use craft\helpers\StringHelper;
 use craft\helpers\UrlHelper;
 use craft\web\assets\admintable\AdminTableAsset;
 use craft\web\Controller;
+use craftpulse\passwordpolicy\base\RequiresEditionTrait;
 use craftpulse\passwordpolicy\data\EmailDefaults;
 use craftpulse\passwordpolicy\models\NotificationTemplateModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
@@ -40,13 +41,19 @@ use yii\web\Response;
  */
 class NotificationTemplateController extends Controller
 {
+    // Traits
+    // =========================================================================
+
+    use RequiresEditionTrait;
+
     // Public Methods
     // =========================================================================
 
     /**
      * @inheritdoc
      *
-     * @throws ForbiddenHttpException
+     * @throws ForbiddenHttpException if the user lacks `pp:notification-templates-manage`
+     * @throws NotFoundHttpException if the edition is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -58,10 +65,7 @@ class NotificationTemplateController extends Controller
         }
 
         $this->requireCpRequest();
-
-        if (!PasswordPolicy::$plugin->getIsPro()) {
-            throw new ForbiddenHttpException('Email notification templates require the Pro edition.');
-        }
+        $this->requireProEdition();
 
         $this->requirePermission('pp:notification-templates-manage');
 

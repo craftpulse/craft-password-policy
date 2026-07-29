@@ -15,6 +15,7 @@ use craft\helpers\Queue;
 use craft\helpers\UrlHelper;
 use craft\web\Controller;
 use craft\web\UrlManager;
+use craftpulse\passwordpolicy\base\RequiresEditionTrait;
 use craftpulse\passwordpolicy\enums\PolicyPreset;
 use craftpulse\passwordpolicy\jobs\SeedBlocklist;
 use craftpulse\passwordpolicy\PasswordPolicy;
@@ -32,6 +33,11 @@ use yii\web\Response;
  */
 class SettingsController extends Controller
 {
+    // Traits
+    // =========================================================================
+
+    use RequiresEditionTrait;
+
     // Const Properties
     // =========================================================================
 
@@ -60,6 +66,9 @@ class SettingsController extends Controller
      * (`configuration`, `rules`, `history`, `validators`, `audit`) stay off
      * this list: they render on every edition and omit only their
      * higher-edition fields inside the template.
+     *
+     * A hit on a Pro-only section below Pro 404s, not 403s — the section
+     * doesn't exist on that edition, and the sidebar never offered it.
      *
      * @var string[]
      */
@@ -148,12 +157,8 @@ class SettingsController extends Controller
 
         // Whole-screen Pro sections deny direct URL access on lower editions —
         // the sidebar already omits them, this closes the crafted-URL path.
-        if (in_array($section, self::PRO_SECTIONS, true) && !$plugin->getIsPro()) {
-            throw new ForbiddenHttpException(
-                Craft::t('password-policy', 'The {section} settings require the Pro edition.', [
-                    'section' => $section,
-                ]),
-            );
+        if (in_array($section, self::PRO_SECTIONS, true)) {
+            $this->requireProEdition();
         }
 
         $general = Craft::$app->getConfig()->getGeneral();
@@ -262,6 +267,7 @@ class SettingsController extends Controller
      *
      * @throws BadRequestHttpException
      * @throws ForbiddenHttpException
+     * @throws NotFoundHttpException if the edition is below Pro
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -277,10 +283,9 @@ class SettingsController extends Controller
             throw new ForbiddenHttpException('Unable to apply preset because admin changes are disabled in this environment.');
         }
 
+        $this->requireProEdition();
+
         $plugin = PasswordPolicy::$plugin;
-        if (!$plugin->getIsPro()) {
-            throw new ForbiddenHttpException('Compliance presets require the Pro edition.');
-        }
 
         $presetValue = Craft::$app->getRequest()->getRequiredBodyParam('preset');
         $preset = PolicyPreset::tryFrom($presetValue);

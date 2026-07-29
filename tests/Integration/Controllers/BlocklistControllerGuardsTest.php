@@ -3,14 +3,15 @@
  * Pest coverage for `BlocklistController` edition gates landed in the
  * v5.2.0 pre-tag fix-pack.
  *
- * The custom blocklist editor is a Pro feature. The CP controller is
- * reachable on Lite (the subnav + permission don't, on their own, encode
- * the edition tier), so the controller gates explicitly:
+ * The blocklist editor is a Pro screen, hidden below Pro: no subnav entry, no
+ * `pp:blocklist-*` permissions on the permissions screen. `beforeAction()`
+ * carries the same gate for anyone who arrives by URL anyway:
  *
- *  - `actionIndex()` 403s on Lite — the editor page never renders.
- *  - `actionSaveCustom()` 403s on Lite BEFORE touching the blocklist
- *    table — a crafted POST can't persist a custom word on a sub-Pro
- *    install.
+ *  - `actionIndex()` 404s on Lite. The page doesn't exist on that edition, so
+ *    it answers like any other nonexistent route rather than confirming the
+ *    screen with a 403.
+ *  - `actionSaveCustom()` 404s on Lite BEFORE touching the blocklist table, so
+ *    a crafted POST can't persist a custom word on a sub-Pro install.
  *
  * Tests run through `runAction()` so `beforeAction()` fires the same
  * permission gates a real HTTP request would.
@@ -29,7 +30,7 @@ use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
 use craftpulse\passwordpolicy\tests\Support\WebRequestStub;
-use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
 
 // =============================================================================
 // Setup
@@ -86,7 +87,7 @@ afterEach(function() {
  * provide a real session. The session flash is tested at the HTTP-
  * integration level (manual tests T5.x); here we only assert on the DB
  * side-effect (the custom word persisted) and the gate side-effect (the
- * 403 fired before the write).
+ * 404 fired before the write).
  */
 function runBlocklistAction(string $actionId): mixed
 {
@@ -128,14 +129,26 @@ function countGlobalCustomRows(): int
 // Lite edition — the custom blocklist editor is off
 // =============================================================================
 
-it('actionIndex 403s on Lite', function() {
+it('actionIndex 404s on Lite', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_LITE;
 
     expect(fn() => runBlocklistAction('index'))
-        ->toThrow(ForbiddenHttpException::class);
+        ->toThrow(NotFoundHttpException::class);
 });
 
-it('actionSaveCustom 403s on Lite without persisting any custom word', function() {
+it('actionCheck 404s on Lite', function() {
+    // The word-lookup AJAX only exists on the Pro editor page, so it's gated
+    // with the rest of the controller rather than left reachable on Lite.
+    $this->plugin->edition = PasswordPolicy::EDITION_LITE;
+
+    $this->request->stubBodyParams = ['word' => 'hunter2'];
+    $this->request->stubAcceptsJson = true;
+
+    expect(fn() => runBlocklistAction('check'))
+        ->toThrow(NotFoundHttpException::class);
+});
+
+it('actionSaveCustom 404s on Lite without persisting any custom word', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_LITE;
 
     $this->request->stubBodyParams = [
@@ -145,7 +158,7 @@ it('actionSaveCustom 403s on Lite without persisting any custom word', function(
     ];
 
     expect(fn() => runBlocklistAction('save-custom'))
-        ->toThrow(ForbiddenHttpException::class);
+        ->toThrow(NotFoundHttpException::class);
 
     // The gate fires before the blocklist diff — nothing landed.
     expect(countGlobalCustomRows())->toBe(0);

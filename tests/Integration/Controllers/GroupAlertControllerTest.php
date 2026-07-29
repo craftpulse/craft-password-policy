@@ -7,9 +7,10 @@
  * subnav + permission don't, on their own, encode the edition tier), so the
  * controller gates explicitly:
  *
- *  - `actionIndex()` / `actionSave()` 403 on Lite — the editor never renders
+ *  - `actionIndex()` / `actionSave()` 404 on Lite: the editor doesn't exist on
+ *    that edition, so it answers like any nonexistent route
  *    and a crafted POST can't persist a subscription on a sub-Pro install.
- *  - `actionSave()` 403s for a user without `pp:notification-templates-manage`.
+ *  - `actionSave()` 403s for a Pro user without `pp:notification-templates-manage`.
  *  - `actionSave()` persists the submitted subscriptions on Pro for a
  *    permitted user (diff-on-save).
  *
@@ -32,6 +33,7 @@ use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
 use craftpulse\passwordpolicy\tests\Support\WebRequestStub;
 use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
 
 // =============================================================================
 // Setup
@@ -106,14 +108,14 @@ function runGroupAlertAction(string $actionId): mixed
 // Lite edition — the editor is off
 // =============================================================================
 
-it('actionIndex 403s on Lite', function() {
+it('actionIndex 404s on Lite', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_LITE;
 
     expect(fn() => runGroupAlertAction('index'))
-        ->toThrow(ForbiddenHttpException::class);
+        ->toThrow(NotFoundHttpException::class);
 });
 
-it('actionSave 403s on Lite without persisting any subscription', function() {
+it('actionSave 404s on Lite without persisting any subscription', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_LITE;
 
     $this->request->stubBodyParams = [
@@ -128,7 +130,7 @@ it('actionSave 403s on Lite without persisting any subscription', function() {
     ];
 
     expect(fn() => runGroupAlertAction('save'))
-        ->toThrow(ForbiddenHttpException::class);
+        ->toThrow(NotFoundHttpException::class);
 
     expect(GroupAlertSubscriptionRecord::find()->count())->toBe(0);
 });

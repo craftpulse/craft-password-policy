@@ -3,7 +3,8 @@
  * Pest coverage for `ApiTokenController` — the Feature 2 CP token-management
  * surface (Enterprise). Pinned contracts:
  *
- *  - Edition gate: Pro / Lite → ForbiddenHttpException in `beforeAction`
+ *  - Edition gate: Pro / Lite → NotFoundHttpException in `beforeAction` (the
+ *    screen doesn't exist below Enterprise, so it 404s rather than 403s)
  *    (the adversarial "Pro can't reach it" check).
  *  - `actionIssue` mints a token, persists only the hash + prefix (never the
  *    plaintext), and surfaces the plaintext once via the session flash.
@@ -30,6 +31,7 @@ use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
 use craftpulse\passwordpolicy\tests\Support\WebRequestStub;
 use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
 
 // =============================================================================
 // Setup
@@ -103,16 +105,16 @@ function runApiTokenAction(string $actionId, array $params = []): mixed
 // Edition gate — adversarial "Pro / Lite can't reach it"
 // =============================================================================
 
-it('throws ForbiddenHttpException on Pro', function() {
+it('throws NotFoundHttpException on Pro', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
 
-    expect(fn() => runApiTokenAction('issue'))->toThrow(ForbiddenHttpException::class);
+    expect(fn() => runApiTokenAction('issue'))->toThrow(NotFoundHttpException::class);
 });
 
-it('throws ForbiddenHttpException on Lite', function() {
+it('throws NotFoundHttpException on Lite', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_LITE;
 
-    expect(fn() => runApiTokenAction('issue'))->toThrow(ForbiddenHttpException::class);
+    expect(fn() => runApiTokenAction('issue'))->toThrow(NotFoundHttpException::class);
 });
 
 // =============================================================================

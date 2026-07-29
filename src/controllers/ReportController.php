@@ -13,6 +13,7 @@ namespace craftpulse\passwordpolicy\controllers;
 use Carbon\Carbon;
 use Craft;
 use craft\web\Controller;
+use craftpulse\passwordpolicy\base\RequiresEditionTrait;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use Generator;
 use yii\web\ForbiddenHttpException;
@@ -55,6 +56,11 @@ use yii\web\Response;
  */
 class ReportController extends Controller
 {
+    // Traits
+    // =========================================================================
+
+    use RequiresEditionTrait;
+
     // Const Properties
     // =========================================================================
 
@@ -76,7 +82,8 @@ class ReportController extends Controller
     /**
      * @inheritdoc
      *
-     * @throws ForbiddenHttpException
+     * @throws ForbiddenHttpException if the user lacks the required permission
+     * @throws NotFoundHttpException if the edition is below Enterprise
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -88,12 +95,7 @@ class ReportController extends Controller
         }
 
         $this->requireCpRequest();
-
-        if (!PasswordPolicy::$plugin->getIsEnterprise()) {
-            throw new ForbiddenHttpException(
-                'Compliance reports require the Enterprise edition.',
-            );
-        }
+        $this->requireEnterpriseEdition();
 
         $this->requirePermission('pp:audit-view');
 

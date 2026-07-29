@@ -3,7 +3,9 @@
  * Pest coverage for `ApiController` — the Feature 2 read-only REST surface
  * (Enterprise). Pinned contracts:
  *
- *  - Edition gate: Pro / Lite → ForbiddenHttpException in `beforeAction`.
+ *  - Edition gate: Pro / Lite → the same uniform JSON 404 an install with
+ *    `apiEnabled` off returns. Below Enterprise the endpoint doesn't exist, and
+ *    the hide-not-badge doctrine keeps the body from naming an edition.
  *  - `apiEnabled` off → 404 (endpoint doesn't exist for this install).
  *  - No / malformed / unknown / expired token → uniform 401.
  *  - Over the per-token rate limit → 429 with `Retry-After`.
@@ -27,7 +29,6 @@ use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
 use craftpulse\passwordpolicy\tests\Support\WebRequestStub;
-use yii\web\ForbiddenHttpException;
 use yii\web\Response;
 
 // =============================================================================
@@ -112,18 +113,33 @@ function runApiAction(string $actionId, array $params = []): Response
 // Edition gate
 // =============================================================================
 
-it('throws ForbiddenHttpException on Pro', function() {
+it('returns 404 on Pro', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
     setBearer($this->token);
 
-    expect(fn() => runApiAction('audit'))->toThrow(ForbiddenHttpException::class);
+    $response = runApiAction('audit');
+
+    expect($response->getStatusCode())->toBe(404);
 });
 
-it('throws ForbiddenHttpException on Lite', function() {
+it('returns 404 on Lite', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_LITE;
     setBearer($this->token);
 
-    expect(fn() => runApiAction('audit'))->toThrow(ForbiddenHttpException::class);
+    $response = runApiAction('audit');
+
+    expect($response->getStatusCode())->toBe(404);
+});
+
+it('never names an edition in the sub-Enterprise 404 body', function() {
+    // No existence oracle and no upsell: the edition-gated body is
+    // byte-identical to the `apiEnabled = false` body.
+    $this->plugin->edition = PasswordPolicy::EDITION_LITE;
+    setBearer($this->token);
+
+    $response = runApiAction('audit');
+
+    expect($response->data)->toBe(['error' => 'Not found.']);
 });
 
 // =============================================================================

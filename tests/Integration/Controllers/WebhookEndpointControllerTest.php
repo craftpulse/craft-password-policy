@@ -37,6 +37,7 @@ use craftpulse\passwordpolicy\tests\Support\WebRequestStub;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\Psr7\Response as GuzzleResponse;
 use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
 
 // =============================================================================
 // Setup
@@ -118,18 +119,18 @@ function makeControllerEndpoint(): WebhookEndpointModel
 // Edition gate — beforeAction
 // =============================================================================
 
-it('throws ForbiddenHttpException on Pro', function() {
+it('throws NotFoundHttpException on Pro', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
 
     expect(fn() => runWebhookEndpointAction('index'))
-        ->toThrow(ForbiddenHttpException::class);
+        ->toThrow(NotFoundHttpException::class);
 });
 
-it('throws ForbiddenHttpException on Lite', function() {
+it('throws NotFoundHttpException on Lite', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_LITE;
 
     expect(fn() => runWebhookEndpointAction('index'))
-        ->toThrow(ForbiddenHttpException::class);
+        ->toThrow(NotFoundHttpException::class);
 });
 
 // =============================================================================

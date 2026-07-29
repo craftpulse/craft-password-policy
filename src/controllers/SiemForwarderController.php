@@ -13,6 +13,7 @@ namespace craftpulse\passwordpolicy\controllers;
 use Craft;
 use craft\helpers\Cp;
 use craft\web\Controller;
+use craftpulse\passwordpolicy\base\RequiresEditionTrait;
 use craftpulse\passwordpolicy\models\SiemForwarderModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use Throwable;
@@ -40,6 +41,11 @@ use yii\web\Response;
  */
 class SiemForwarderController extends Controller
 {
+    // Traits
+    // =========================================================================
+
+    use RequiresEditionTrait;
+
     // Private Properties
     // =========================================================================
 
@@ -54,7 +60,8 @@ class SiemForwarderController extends Controller
     /**
      * @inheritdoc
      *
-     * @throws ForbiddenHttpException
+     * @throws ForbiddenHttpException if the user lacks the required permission
+     * @throws NotFoundHttpException if the edition is below Enterprise
      *
      * @author CraftPulse
      * @since 5.2.0
@@ -66,12 +73,7 @@ class SiemForwarderController extends Controller
         }
 
         $this->requireCpRequest();
-
-        if (!PasswordPolicy::$plugin->getIsEnterprise()) {
-            throw new ForbiddenHttpException(
-                'SIEM forwarder management requires the Enterprise edition.',
-            );
-        }
+        $this->requireEnterpriseEdition();
 
         $this->requirePermission('pp:siem-manage');
 

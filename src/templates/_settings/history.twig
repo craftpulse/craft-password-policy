@@ -18,8 +18,13 @@
     {{ redirectInput('password-policy/settings/history') }}
 
     <div class="flex-fields">
+        {# The per-group override note only renders on Pro, where named
+           policies exist. Below Pro it would be upsell chrome on a field the
+           edition fully supports. #}
         {% set historyCountInfo %}
-            <span class="info">{{ "Stores bcrypt hashes of previous passwords. When a user changes their password, it is checked against the last N hashes. PCI-DSS v4.0 (Req 8.3.7) requires at least 4. Enterprise security teams typically use 5 to 12. Per-group history overrides require the Pro edition."|t('password-policy') }}</span>
+            <span class="info">{{ "Stores bcrypt hashes of previous passwords. When a user changes their password, it is checked against the last N hashes. PCI-DSS v4.0 (Req 8.3.7) requires at least 4. Enterprise security teams typically use 5 to 12."|t('password-policy') }}
+                {%- if isPro %} {{ "Named policies can override this per group."|t('password-policy') }}{% endif -%}
+            </span>
         {% endset %}
         {{ forms.textField({
             label: 'Password history count'|t('password-policy'),
@@ -55,7 +60,7 @@
 
         <div class="flex-fields">
             {% set minChangeIntervalInfo %}
-                <span class="info">{{ "Stops a user from re-changing their password again within this window, which would otherwise let them cycle through new passwords to flush the reuse history. Admin-forced, expiry-forced, first-login, and breach-forced resets always bypass this limit. Set to 0 to disable. Per-group overrides require the Pro edition."|t('password-policy') }}</span>
+                <span class="info">{{ "Stops a user from re-changing their password again within this window, which would otherwise let them cycle through new passwords to flush the reuse history. Admin-forced, expiry-forced, first-login, and breach-forced resets always bypass this limit. Set to 0 to disable. Named policies can override this per group."|t('password-policy') }}</span>
             {% endset %}
             {{ forms.textField({
                 label: 'Minimum change interval (hours)'|t('password-policy'),
