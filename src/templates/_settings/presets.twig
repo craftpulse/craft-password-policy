@@ -19,9 +19,9 @@
         { value: 'owasp_asvs', label: 'OWASP ASVS L1',
           summary: '12-char minimum, max 128, no composition rules, HIBP enabled. Tracks OWASP ASVS Level 1.'|t('password-policy') },
         { value: 'pci_dss_v4', label: 'PCI-DSS v4.0',
-          summary: '12-char minimum with case + digit composition, last-4 history, HIBP, 90-day rotation. Satisfies Req 8.3.5–8.3.9.'|t('password-policy') },
+          summary: '12-char minimum with case + digit composition, last-4 history, HIBP, 90-day rotation. Satisfies Req 8.3.5 to 8.3.9.'|t('password-policy') },
         { value: 'cis_controls_v8', label: 'CIS Controls v8',
-          summary: '14-char minimum (Safeguard 5.2 password-only floor), last-5 history, HIBP + common-password blocklist, 365-day rotation. Conflicts with NIST on rotation — pick deliberately.'|t('password-policy') },
+          summary: '14-char minimum (Safeguard 5.2 password-only floor), last-5 history, HIBP + common-password blocklist, 365-day rotation. Conflicts with NIST on rotation, so pick deliberately.'|t('password-policy') },
         { value: 'strict_enterprise', label: 'Strict Enterprise',
           summary: 'Maximum enforcement: composition, history, HIBP fail-closed, 90-day rotation, plus sequential / repeated / contextual character checks.'|t('password-policy') },
     ] %}

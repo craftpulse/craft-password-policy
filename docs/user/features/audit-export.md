@@ -9,8 +9,8 @@ This page covers the export utility, format choices, filesystem destinations, th
 ## Quick start
 
 1. Open **Utilities → Audit Export** in the control panel.
-2. Pick a date range — preset windows (last 7 / 30 / 90 days, all time) or a custom range.
-3. Pick a format — **CSV** (spreadsheet-friendly, RFC 4180 quoting) or **JSONL** (one canonical JSON object per line, idiomatic for log-processing tools).
+2. Pick a date range: preset windows (last 7 / 30 / 90 days, all time) or a custom range.
+3. Pick a format: **CSV** (spreadsheet-friendly, RFC 4180 quoting) or **JSONL** (one canonical JSON object per line, idiomatic for log-processing tools).
 4. Click **Run export**.
 
 For ranges under 1,000 rows, the file streams directly to your browser. For larger ranges, the export is queued; you'll receive a one-time download link via the `password-policy:audit-export-ready` email when the job completes.
@@ -42,10 +42,10 @@ GET /admin/password-policy/audit-export/export?days=365&format=jsonl
 
 The controller enqueues `AuditExportJob` (a `BaseBatchedJob`) with:
 
-- `daysFilter` — the configured day window
-- `format` — `csv` or `jsonl`
-- `filesystemHandle` — the configured destination (defaults to the local runtime path)
-- `requestedById` — the admin who requested the export (pinned for the download-token binding)
+- `daysFilter`: the configured day window
+- `format`: `csv` or `jsonl`
+- `filesystemHandle`: the configured destination (defaults to the local runtime path)
+- `requestedById`: the admin who requested the export (pinned for the download-token binding)
 
 The job batches through the audit log via `AuditExportBatcher` (1,000 rows per batch) and streams the rows to a file on the configured filesystem. On completion, it caches a one-time-use download token + sends the requesting admin an email with the download link.
 
@@ -57,13 +57,13 @@ The export's destination is configurable via the `auditExportFilesystem` plugin 
 
 Files write to `@runtime/password-policy/exports/` on the Craft host. The download token serves the file via Craft's `Response::sendFile()`.
 
-This is the simplest setup — no filesystem provisioning needed. The drawback is that a multi-host deployment (multiple web nodes) won't share exports between nodes; the download might land on a node without the file.
+This is the simplest setup: no filesystem provisioning needed. The drawback is that a multi-host deployment (multiple web nodes) won't share exports between nodes; the download might land on a node without the file.
 
 For single-host deployments and dev/staging, local runtime is fine. Production multi-host deployments should configure a shared filesystem.
 
 ### Any Craft filesystem (`auditExportFilesystem = '<handle>'`)
 
-Set the `auditExportFilesystem` setting to the handle of any configured Craft filesystem — S3, FTP, custom plugin filesystems, etc.
+Set the `auditExportFilesystem` setting to the handle of any configured Craft filesystem, S3, FTP, custom plugin filesystems, etc.
 
 ```php
 // config/password-policy.php
@@ -76,7 +76,7 @@ Where `auditExports` is the handle of a Craft filesystem you've configured under
 
 > 📷 *Screenshot: Filesystem configuration in Craft showing an S3 filesystem with handle "auditExports", pointing at an S3 bucket with object-lock enabled.*
 
-The download token in this mode serves the file via the filesystem's signed-URL mechanism (S3 presigned URLs, etc.) — the file content never round-trips through Craft after the job completes.
+The download token in this mode serves the file via the filesystem's signed-URL mechanism (S3 presigned URLs, etc.): the file content never round-trips through Craft after the job completes.
 
 ### Disabled (`auditExportFilesystem = null`)
 
@@ -84,7 +84,7 @@ Setting the value to `null` (or leaving it unset) defaults to the local runtime 
 
 ## Per-admin download tokens
 
-Every queued export produces a one-time-use download token. The token is bound to the requesting admin — a token URL leaked or forwarded to another admin (even another admin with the same `pp:audit-export` permission) returns 403 instead of serving the file.
+Every queued export produces a one-time-use download token. The token is bound to the requesting admin: a token URL leaked or forwarded to another admin (even another admin with the same `pp:audit-export` permission) returns 403 instead of serving the file.
 
 The mechanism:
 
@@ -96,10 +96,10 @@ The mechanism:
 
 ### What happens on mismatch
 
-- **Wrong admin** — 403 `ForbiddenHttpException`. The cache entry is **not** burned (the legitimate requester can still pull their file).
-- **Expired token** — 404 `NotFoundHttpException`.
-- **Already-downloaded token** — 404 `NotFoundHttpException`.
-- **Token doesn't exist** — 404 `NotFoundHttpException`.
+- **Wrong admin**: 403 `ForbiddenHttpException`. The cache entry is **not** burned (the legitimate requester can still pull their file).
+- **Expired token**: 404 `NotFoundHttpException`.
+- **Already-downloaded token**: 404 `NotFoundHttpException`.
+- **Token doesn't exist**: 404 `NotFoundHttpException`.
 
 > ::: tip Token URL hygiene
 > Email forwarding, shared inboxes, and email-archive systems can leak the download URL across admins. The per-admin binding closes the silent-leak risk: even if another admin clicks the URL, they can't pull the file. They get a clear 403; the audit log records the attempt; the legitimate requester can still complete their download.
@@ -163,7 +163,7 @@ When the queued export completes, the requesting admin receives an email via the
 >
 > This download link is valid for 24 hours and bound to your account.
 
-The link expires when the cache entry expires (default 24 hours). For longer retention, configure the `auditExportFilesystem` to point at S3 with your own object-lifecycle policy — the file persists in S3 independent of the cache entry.
+The link expires when the cache entry expires (default 24 hours). For longer retention, configure the `auditExportFilesystem` to point at S3 with your own object-lifecycle policy: the file persists in S3 independent of the cache entry.
 
 ## Compliance evidence workflow
 
@@ -192,7 +192,7 @@ Operations team archives a monthly snapshot to S3 for retention:
    ```
 
 3. The job writes the JSONL to S3 with the date-stamped filename. Object Lock prevents tampering after write.
-4. Combined with the [verifier CLI](./audit-verifier.md), this provides external-anchoring without requiring an RFC 3161 TSA — S3 Object Lock is sufficient for most evidence-package requirements.
+4. Combined with the [verifier CLI](./audit-verifier.md), this provides external-anchoring without requiring an RFC 3161 TSA; S3 Object Lock is sufficient for most evidence-package requirements.
 
 ### Incident-response pull
 
@@ -207,7 +207,7 @@ A security incident requires a specific user's audit history:
 ## Console commands
 
 ```bash
-# Synchronous export from CLI (no row-count limit — beware memory for large exports)
+# Synchronous export from CLI (no row-count limit: beware memory for large exports)
 ./craft password-policy/audit/export --from=2026-04-01 --to=2026-05-01 --format=csv > export.csv
 
 # Queue an async export
@@ -217,7 +217,7 @@ A security incident requires a specific user's audit history:
 ./craft password-policy/audit/exports
 ```
 
-The CLI variant of synchronous export streams to stdout — useful for piping into other tools without a temp file.
+The CLI variant of synchronous export streams to stdout, useful for piping into other tools without a temp file.
 
 ## Permissions
 
@@ -228,14 +228,14 @@ The CLI variant of synchronous export streams to stdout — useful for piping in
 
 A typical role split:
 
-- **Auditors** — `pp:audit-view` only. They can browse, filter, and use the verifier CLI but can't pull exports.
-- **Compliance operations** — `pp:audit-view + pp:audit-export`. They pull the evidence packages.
-- **DB admins** — neither permission. They have raw DB access for emergencies but no CP affordance for export.
+- **Auditors**: `pp:audit-view` only. They can browse, filter, and use the verifier CLI but can't pull exports.
+- **Compliance operations**: `pp:audit-view + pp:audit-export`. They pull the evidence packages.
+- **DB admins**: neither permission. They have raw DB access for emergencies but no CP affordance for export.
 
 ## See also
 
-- [Audit logging](./audit-logging.md) — the source of the rows being exported.
-- [Audit verifier](./audit-verifier.md) — verify the integrity of a JSONL export offline.
-- [SIEM forwarders](./siem-forwarders.md) — alternative streaming-to-SIEM model for ongoing log aggregation.
-- [Webhooks](./webhooks.md) — event-by-event delivery for integrations.
-- [Compliance frameworks](../operations/compliance-frameworks.md) — PCI DSS §10.5.1 12-month retention, SOC 2 evidence requirements.
+- [Audit logging](./audit-logging.md): the source of the rows being exported.
+- [Audit verifier](./audit-verifier.md): verify the integrity of a JSONL export offline.
+- [SIEM forwarders](./siem-forwarders.md): alternative streaming-to-SIEM model for ongoing log aggregation.
+- [Webhooks](./webhooks.md): event-by-event delivery for integrations.
+- [Compliance frameworks](../operations/compliance-frameworks.md): PCI DSS §10.5.1 12-month retention, SOC 2 evidence requirements.

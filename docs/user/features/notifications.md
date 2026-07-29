@@ -1,6 +1,6 @@
 # Notifications
 
-The plugin ships a complete notification surface for password-related emails — expiry reminders, breach alerts, new-device alerts, admin security alerts — across all three editions, with different levels of operator control.
+The plugin ships a complete notification surface for password-related emails (expiry reminders, breach alerts, new-device alerts, admin security alerts) across all three editions, with different levels of operator control.
 
 - **Lite** dispatches the seeded `expiry-reminder` template via the cron / queue path and writes a capture row to the notification log. No CP template editor, no activity screen, no resend, and no breach / new-device / admin-alert emails.
 - **Pro** adds the CP template editor (per-site overrides), token-picker UX, AJAX test-send, the activity log screen, the resend action, plus the `breach-detected` and `new-device-alert` email types that depend on the Pro HIBP-on-login listener.
@@ -31,16 +31,16 @@ Plus one system-mailer-registered key for the audit-export-ready email:
 
 Open **Password Policy → Notifications → Templates** in the control panel.
 
-> 📷 *Screenshot: Edit template screen for "Expiry Reminder" with the General tab visible — subject field, body textarea, click-to-copy token chips ({{ user }}, {{ daysUntilExpiry }}, {{ siteName }}), and the Advanced tab tab in the secondary nav.*
+> 📷 *Screenshot: Edit template screen for "Expiry Reminder" with the General tab visible, subject field, body textarea, click-to-copy token chips ({{ user }}, {{ daysUntilExpiry }}, {{ siteName }}), and the Advanced tab tab in the secondary nav.*
 
 Each template has three tabs:
 
-- **General** — Subject + body (plaintext). Both fields are Twig sources; tokens render at send time with per-user context.
-- **Advanced** — Sender name, sender email, reply-to. Empty fields fall back to Craft's system mailer defaults.
-- **Test** — Test-send the current draft to the signed-in admin's email. The rendered subject and a body excerpt are returned in-page so you can verify token substitution without leaving the screen.
+- **General**: Subject + body (plaintext). Both fields are Twig sources; tokens render at send time with per-user context.
+- **Advanced**: Sender name, sender email, reply-to. Empty fields fall back to Craft's system mailer defaults.
+- **Test**: Test-send the current draft to the signed-in admin's email. The rendered subject and a body excerpt are returned in-page so you can verify token substitution without leaving the screen.
 
 > ::: tip Token chips
-> Click a token chip below the body textarea to insert it at the cursor in whichever field (subject or body) was last focused. Token chips list the variables available for this template's render context — try clicking `{{ user.friendlyName ?? user.username }}` to insert a name-with-fallback expression.
+> Click a token chip below the body textarea to insert it at the cursor in whichever field (subject or body) was last focused. Token chips list the variables available for this template's render context, try clicking `{{ user.friendlyName ?? user.username }}` to insert a name-with-fallback expression.
 > :::
 
 > ::: tip Env-var-aware sender fields
@@ -51,9 +51,9 @@ Save the template. Subsequent notification sends use the new content.
 
 ### Per-site templates
 
-The plugin keeps one row per `(notificationKey, siteId)` tuple. Multi-site installs can edit each template independently per site — useful for translation, different brand voice, or per-site sender overrides.
+The plugin keeps one row per `(notificationKey, siteId)` tuple. Multi-site installs can edit each template independently per site, which is useful for translation, different brand voice, or per-site sender overrides.
 
-The site switcher at the top of the edit screen jumps between sites. When a new site is added to the install, the plugin automatically copies the primary-site template rows into the new site so you don't see a missing-template state on first edit. The propagation listener attaches to `Sites::EVENT_AFTER_SAVE_SITE` and runs defensively — if the propagation fails, the site save itself is never blocked.
+The site switcher at the top of the edit screen jumps between sites. When a new site is added to the install, the plugin automatically copies the primary-site template rows into the new site so you don't see a missing-template state on first edit. The propagation listener attaches to `Sites::EVENT_AFTER_SAVE_SITE` and runs defensively, if the propagation fails, the site save itself is never blocked.
 
 ## Permissions
 
@@ -101,14 +101,14 @@ Each notification type has a per-user dedup window backed by the `AlertCooldownS
 |---|---|---|
 | `expiry_reminder` | `expiryReminderDays` × 86400 seconds | per user |
 | `breach_detected` | 24 hours | per user |
-| `new_device` | (caller is responsible — typically the HIBP-on-login 24h cache) | per user |
+| `new_device` | (caller is responsible, typically the HIBP-on-login 24h cache) | per user |
 | `admin_security_alert` | 5 minutes | per event class |
 
-A subsequent call inside the window short-circuits silently — no email sent, no log row written. The `resend()` admin action explicitly bypasses the dedup gate.
+A subsequent call inside the window short-circuits silently: no email sent, no log row written. The `resend()` admin action explicitly bypasses the dedup gate.
 
 ## Activity log
 
-Every dispatch attempt — success and failure — writes a `NotificationLogElement` row capturing the rendered subject, rendered body, recipient email, error message (on failure), and a link back to the user if applicable.
+Every dispatch attempt (success and failure) writes a `NotificationLogElement` row capturing the rendered subject, rendered body, recipient email, error message (on failure), and a link back to the user if applicable.
 
 Open **Password Policy → Notifications → Activity** to see the chronological log.
 
@@ -127,9 +127,9 @@ Click any row to see the rendered subject, the full body, the error (if any), an
 
 ### Resend
 
-The Resend button re-renders the template **from the current state** — not a snapshot replay. If you've edited the template since the original send, the resend reflects your edits. The original row's `notificationType`, `userId`, and `recipientEmail` are reused; everything else is regenerated.
+The Resend button re-renders the template **from the current state**, not a snapshot replay. If you've edited the template since the original send, the resend reflects your edits. The original row's `notificationType`, `userId`, and `recipientEmail` are reused; everything else is regenerated.
 
-`new-device-alert` and `admin-security-alert` are not resendable in 5.2.0 — these types require their original event payload (`deviceLabel`, `maskedIp`, `event`, `context`) to re-render, and the plugin doesn't snapshot those inputs. Clicking Resend on a row of either type returns a no-op. (A future release may add `templateVarsJson` to unlock resend for these types — captured in `docs/internal/ideas.md`.)
+`new-device-alert` and `admin-security-alert` are not resendable in 5.2.0: these types require their original event payload (`deviceLabel`, `maskedIp`, `event`, `context`) to re-render, and the plugin doesn't snapshot those inputs. Clicking Resend on a row of either type returns a no-op. (A future release may add `templateVarsJson` to unlock resend for these types, captured in `docs/internal/ideas.md`.)
 
 ### Retention
 
@@ -152,7 +152,7 @@ Permission required: `pp:notification-log-view`.
 
 ## Custom Twig email template paths (Enterprise)
 
-Enterprise installs can override the DB-stored body with a site Twig template — useful for whitelabel branding, full HTML emails with `<img>` includes, or dev-managed templates that live in version control alongside the rest of the site.
+Enterprise installs can override the DB-stored body with a site Twig template, which is useful for whitelabel branding, full HTML emails with `<img>` includes, or dev-managed templates that live in version control alongside the rest of the site.
 
 > 📷 *Screenshot: Edit template screen on Enterprise with the "Custom Twig template" field visible (autosuggest, with a placeholder of `_emails/expiry-reminder.twig`).*
 
@@ -166,21 +166,21 @@ When the notification fires:
 - **Subject** still renders from the DB-stored field. Admins want to edit subject without touching a Twig file.
 - **Body** renders from the site template via `Craft::$app->getView()->renderTemplate($templatePath, $vars)` instead of the DB body. The DB body becomes a fallback (more on that below).
 
-The template receives the same render context as the DB body — `user`, `daysUntilExpiry`, `siteName`, etc. The view runs under site mode, so all of Craft's standard site-template helpers (`include`, `extends`, asset URLs) are available.
+The template receives the same render context as the DB body: `user`, `daysUntilExpiry`, `siteName`, etc. The view runs under site mode, so all of Craft's standard site-template helpers (`include`, `extends`, asset URLs) are available.
 
 ### Field validation
 
-The plugin validates the template path at save time — `Craft::$app->getView()->resolveTemplate($templatePath, View::TEMPLATE_MODE_SITE)` must return a real file. Saving a path that doesn't resolve produces a clear "Twig template not found" error on the field rather than a silent runtime failure on the next send.
+The plugin validates the template path at save time: `Craft::$app->getView()->resolveTemplate($templatePath, View::TEMPLATE_MODE_SITE)` must return a real file. Saving a path that doesn't resolve produces a clear "Twig template not found" error on the field rather than a silent runtime failure on the next send.
 
 ### Edition-strip on save
 
-The CP edit screen omits the templatePath field entirely on Pro and Lite editions (it only renders on Enterprise). The save and test-send actions also strip the field server-side if a crafted POST tries to bypass the UI — defense in depth.
+The CP edit screen omits the templatePath field entirely on Pro and Lite editions (it only renders on Enterprise). The save and test-send actions also strip the field server-side if a crafted POST tries to bypass the UI, defense in depth.
 
 ### Downgrade behaviour
 
 If you downgrade an Enterprise install to Pro, existing template rows retain their `templatePath` value in the JSON content column, but the renderer falls back to the DB body. The Pro edit screen omits the field entirely. Upgrade back to Enterprise and the path resumes working.
 
-The renderer gate is enforced at the `composeFromTemplate()` call site — when the plugin is no longer Enterprise, the templatePath is ignored regardless of what's in the JSON.
+The renderer gate is enforced at the `composeFromTemplate()` call site. When the plugin is no longer Enterprise, the templatePath is ignored regardless of what's in the JSON.
 
 ## Console commands
 
@@ -192,7 +192,7 @@ The renderer gate is enforced at the `composeFromTemplate()` call site — when 
 ./craft password-policy/notification/send-expiry-reminders --user=42
 ```
 
-The command enqueues `SendPasswordExpiryRemindersJob` — a `BaseBatchedJob` that recomputes its recipient set per batch for natural retry idempotency. Runs on every edition since 5.2.0.
+The command enqueues `SendPasswordExpiryRemindersJob`: a `BaseBatchedJob` that recomputes its recipient set per batch for natural retry idempotency. Runs on every edition since 5.2.0.
 
 For production, run nightly via cron:
 
@@ -203,18 +203,18 @@ For production, run nightly via cron:
 
 ## Default templates
 
-Default subject + body for each template ship via `EmailDefaults::all()` (`src/data/EmailDefaults.php`). On fresh install they seed per site. On upgrade from 5.1.x or earlier, dated seed migrations add the new keys idempotently — existing custom edits are preserved.
+Default subject + body for each template ship via `EmailDefaults::all()` (`src/data/EmailDefaults.php`). On fresh install they seed per site. On upgrade from 5.1.x or earlier, dated seed migrations add the new keys idempotently, existing custom edits are preserved.
 
 To restore the default content for a single template:
 
 1. Delete the row in `passwordpolicy_notification_templates` for the affected `(notificationKey, siteId)`.
 2. The next send will trigger `propagateToSite()` which re-seeds from `EmailDefaults`.
 
-There's no "Reset to defaults" button in the CP — restoring is a deliberate dev action.
+There's no "Reset to defaults" button in the CP; restoring is a deliberate dev action.
 
 ## See also
 
-- [GC and retention](../operations/gc-and-retention.md) — notification log retention configuration + cron recipe.
-- [Events](../reference/events.md) — `BreachDetectedEvent`, `PasswordChangedEvent`, etc. Listen to these for custom side effects beyond the email path.
-- [Audit logging](./audit-logging.md) — every notification dispatch attempt produces an audit row on Enterprise installs.
-- [Front-end Twig builders](./frontend-twig.md) — the consumer-side surface for change-password and reset-password forms.
+- [GC and retention](../operations/gc-and-retention.md): notification log retention configuration + cron recipe.
+- [Events](../reference/events.md): `BreachDetectedEvent`, `PasswordChangedEvent`, etc. Listen to these for custom side effects beyond the email path.
+- [Audit logging](./audit-logging.md): every notification dispatch attempt produces an audit row on Enterprise installs.
+- [Front-end Twig builders](./frontend-twig.md): the consumer-side surface for change-password and reset-password forms.

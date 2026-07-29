@@ -179,7 +179,7 @@ class NotificationActivityController extends Controller
             return $this->asFailure(
                 Craft::t(
                     'password-policy',
-                    'This notification type isn’t resendable — the original event payload isn’t recorded.',
+                    'This notification type isn’t resendable, because the original event payload isn’t recorded.',
                 ),
             );
         }

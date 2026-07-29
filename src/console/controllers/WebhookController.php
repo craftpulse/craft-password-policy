@@ -20,13 +20,13 @@ use yii\console\ExitCode;
  * Class WebhookController
  *
  * Console parity for the webhook endpoint CP UI (G9). Operators with
- * IaC pipelines provision endpoints from cron — these actions match
+ * IaC pipelines provision endpoints from cron, so these actions match
  * the CP CRUD shape so a Terraform module / Ansible playbook doesn't
  * need to drive a CP click.
  *
  * Edition gate: every action returns
  * `ExitCode::UNSPECIFIED_ERROR` with a stderr message on a sub-
- * Enterprise install. The webhook *registry* is exposure — the table
+ * Enterprise install. The webhook *registry* is exposure: the table
  * exists empty on Lite / Pro but write operations stay gated.
  *
  * Secret-handling contract: the new plaintext secret is printed to
@@ -34,7 +34,7 @@ use yii\console\ExitCode;
  * capture it from the CI log; the plugin's encrypted-at-rest store
  * never echoes it back. Pair the action invocation with whatever
  * secrets manager the operator runs (Vault, AWS Secrets Manager,
- * etc.) — capture the stdout line, push it into the secret store,
+ * etc.): capture the stdout line, push it into the secret store,
  * configure the consumer to read from there.
  *
  * @author      CraftPulse
@@ -48,7 +48,7 @@ class WebhookController extends Controller
 
     /**
      * @var string|null comma-separated event-class allowlist for
-     *     `actionCreate`. Empty = use the global setting.
+     * `actionCreate`. Empty = use the global setting.
      */
     public ?string $events = null;
 
@@ -59,8 +59,7 @@ class WebhookController extends Controller
 
     /**
      * @var string the destination URL for `actionCreate`. Required for
-     *     create. Supports `$ENV_VAR` references — resolution happens
-     *     at dispatch.
+     * create. Supports `$ENV_VAR` references, resolved at dispatch.
      */
     public string $url = '';
 
@@ -89,8 +88,7 @@ class WebhookController extends Controller
     /**
      * Creates a new webhook endpoint and prints the generated secret to
      * stdout exactly once. The plaintext is gone from the controller
-     * layer immediately afterward — the database stores ciphertext
-     * only.
+     * layer immediately afterward; the database stores ciphertext only.
      *
      * Usage:
      *

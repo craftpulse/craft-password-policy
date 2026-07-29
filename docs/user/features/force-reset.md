@@ -2,9 +2,9 @@
 
 The plugin surfaces three ways to force a password reset on existing users:
 
-- **Single user** — `ChangeUserPassword` element action (Pro). Opens a modal in the control panel where an admin can set a new password for one user.
-- **Bulk** — `SendPasswordResetEmail` element action (Pro). Sends Craft's standard "set your password" email to all selected non-admin users.
-- **Force-on-next-login** — `ForcePasswordReset` element action (Pro). Sets `passwordResetRequired = true` on selected users; they must change their password the next time they sign in.
+- **Single user**: `ChangeUserPassword` element action (Pro). Opens a modal in the control panel where an admin can set a new password for one user.
+- **Bulk**: `SendPasswordResetEmail` element action (Pro). Sends Craft's standard "set your password" email to all selected non-admin users.
+- **Force-on-next-login**: `ForcePasswordReset` element action (Pro). Sets `passwordResetRequired = true` on selected users; they must change their password the next time they sign in.
 
 All three are bulk-friendly via the Users index. The single-user `ChangeUserPassword` action is also available from the per-user edit-screen action menu.
 
@@ -16,7 +16,7 @@ This page covers the three actions, their permission requirements, the underlyin
 
 | Action | Affects | When the user notices | Audit reason |
 |---|---|---|---|
-| **Change password…** (`ChangeUserPassword`) | One user at a time | Immediately — admin sets the new password directly | `AdminChange` |
+| **Change password…** (`ChangeUserPassword`) | One user at a time | Immediately, admin sets the new password directly | `AdminChange` |
 | **Send reset email** (`SendPasswordResetEmail`) | Bulk | User receives Craft's standard set-password email | `AdminForceReset` |
 | **Force password reset on next sign-in** (`ForcePasswordReset`) | Bulk | Next time the user signs in, they're redirected to a change-password screen | `AdminForceReset` |
 
@@ -29,7 +29,7 @@ This page covers the three actions, their permission requirements, the underlyin
 | `pp:change-user-passwords` | Single-user `ChangeUserPassword` action + the `UserPasswordController` POST handler. |
 | Craft's `editUsers` permission | `SendPasswordResetEmail` and `ForcePasswordReset` actions. |
 
-`pp:change-user-passwords` is registered separately because setting another user's password directly is a higher-privilege operation than triggering a reset email — the latter requires the user to authenticate via email, the former bypasses that step.
+`pp:change-user-passwords` is registered separately because setting another user's password directly is a higher-privilege operation than triggering a reset email: the latter requires the user to authenticate via email, the former bypasses that step.
 
 ## Audit trail
 
@@ -42,13 +42,13 @@ Every force-reset action writes a row to `passwordpolicy_user_state` with a `pen
 | Force on Next Login | `AdminForceReset` | `AdminForceReset` |
 | HIBP-on-login forced reset | `BreachDetectedForceReset` | `BreachDetectedForceReset` |
 | Expiry forced reset | `ExpiryForceReset` | `ExpiryForceReset` |
-| User-initiated change | — | `UserChange` |
+| User-initiated change | - | `UserChange` |
 
 On Enterprise installs, both the `password_changed` and `password_reset_forced` audit events carry this reason in their `details` JSON. Filtering the audit log by reason produces a clean view of admin actions vs user actions.
 
 ## Programmatic API
 
-For automation, integrations, and custom controllers — every action above is backed by service-layer methods that work on every edition. The Pro gate is on the CP element-action surface, not the underlying capability.
+For automation, integrations, and custom controllers: every action above is backed by service-layer methods that work on every edition. The Pro gate is on the CP element-action surface, not the underlying capability.
 
 ### `UserPasswordController::actionSet()` (HTTP)
 
@@ -70,7 +70,7 @@ The lower-level seam. Pins a `pendingReason` enum value on the user's `user_stat
 
 `PasswordService::destroyOtherSessions(int $userId, ?string $excludeToken = null): int` removes auth tokens from `Table::SESSIONS` for a user. Returns the count of destroyed sessions.
 
-When called from a web context with `$excludeToken = Craft::$app->getRequest()->getCsrfToken()`, the current admin's session is preserved — the admin stays logged in even if they invalidate themselves. CLI commands have no web session, so all target sessions are removed.
+When called from a web context with `$excludeToken = Craft::$app->getRequest()->getCsrfToken()`, the current admin's session is preserved: the admin stays logged in even if they invalidate themselves. CLI commands have no web session, so all target sessions are removed.
 
 Craft's `User::afterSave` already calls this on every password change in 5.9.21+; the front-end `PasswordChangeController` calls it again explicitly as belt-and-braces against any future Craft refactor.
 
@@ -90,7 +90,7 @@ Default behaviour runs synchronously. Use `--queue` to push the work to a queue 
 
 ## See also
 
-- [User-index integration](./user-index.md) — the status columns + condition rules that surface "force reset pending" + "password expired" on the Users index.
-- [Audit logging](./audit-logging.md) — how the audit trail records the reason for each reset.
-- [Notifications](./notifications.md) — the email-template surface for the breach-detected / new-device / admin-security alert flows.
-- [Events](../reference/events.md) — `PasswordChangedEvent` (every change), `BreachDetectedEvent` (HIBP-on-login matches).
+- [User-index integration](./user-index.md): the status columns + condition rules that surface "force reset pending" + "password expired" on the Users index.
+- [Audit logging](./audit-logging.md): how the audit trail records the reason for each reset.
+- [Notifications](./notifications.md): the email-template surface for the breach-detected / new-device / admin-security alert flows.
+- [Events](../reference/events.md): `PasswordChangedEvent` (every change), `BreachDetectedEvent` (HIBP-on-login matches).

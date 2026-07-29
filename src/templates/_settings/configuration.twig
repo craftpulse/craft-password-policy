@@ -30,7 +30,7 @@
         }) }}
 
         {% set failModeInfo %}
-            <span class="info">{{ "Fail-open accepts the password when the API is unreachable — prioritizes availability. Fail-closed rejects it — prioritizes security but may block all password changes during an outage. Most organizations should use fail-open unless compliance requires otherwise."|t('password-policy') }}</span>
+            <span class="info">{{ "Fail-open accepts the password when the API is unreachable, prioritizing availability. Fail-closed rejects it, prioritizes security but may block all password changes during an outage. Most organizations should use fail-open unless compliance requires otherwise."|t('password-policy') }}</span>
         {% endset %}
         {{ forms.selectField({
             label: 'HIBP Failure Mode'|t('password-policy'),
@@ -64,7 +64,7 @@
             <hr>
 
             {% set hibpLoginInfo %}
-                <span class="info">{{ "Re-checks the user's password against the HIBP breach database every time they sign in. If a match is found, the user is forced to reset their password on the next sign-in and receives a notification email. Login is never blocked. Same k-anonymity model as HIBP-at-change-time — only the SHA-1 prefix leaves your server."|t('password-policy') }}</span>
+                <span class="info">{{ "Re-checks the user's password against the HIBP breach database every time they sign in. If a match is found, the user is forced to reset their password on the next sign-in and receives a notification email. Login is never blocked. Same k-anonymity model as HIBP-at-change-time: only the SHA-1 prefix leaves your server."|t('password-policy') }}</span>
             {% endset %}
             {{ forms.lightswitchField({
                 label: 'Re-check passwords against HIBP on login'|t('password-policy'),
@@ -78,7 +78,7 @@
         <hr>
 
         {% set strengthIndicatorInfo %}
-            <span class="info">{{ "Powered by zxcvbn — analyses the password against common patterns, dictionaries, and keyboard sequences. Same engine drives the front-end Twig render builders, so blocklist hits and per-group policy resolution surface in the CP indicator too."|t('password-policy') }}</span>
+            <span class="info">{{ "Powered by zxcvbn, which analyses the password against common patterns, dictionaries, and keyboard sequences. Same engine drives the front-end Twig render builders, so blocklist hits and per-group policy resolution surface in the CP indicator too."|t('password-policy') }}</span>
         {% endset %}
         {{ forms.lightswitchField({
             label: 'Show password strength indicator'|t('password-policy'),

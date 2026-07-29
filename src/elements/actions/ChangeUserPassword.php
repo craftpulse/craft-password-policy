@@ -354,7 +354,7 @@ JS;
     {
         $this->setMessage(Craft::t(
             'password-policy',
-            'Change password is a single-user action — use the modal trigger from the index.',
+            'Change password is a single-user action. Use the modal trigger from the index.',
         ));
 
         return false;

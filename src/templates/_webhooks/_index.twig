@@ -33,7 +33,7 @@
 
     <div class="readable">
         <p>
-            {{ "Audit-log rows are POSTed to every active webhook endpoint with an HMAC-signed JSON body. Each endpoint is an independent subscriber tracking its own dispatch cursor — endpoint A's success never marks endpoint B's row delivered."|t('password-policy') }}
+            {{ "Audit-log rows are POSTed to every active webhook endpoint with an HMAC-signed JSON body. Each endpoint is an independent subscriber tracking its own dispatch cursor, so endpoint A's success never marks endpoint B's row delivered."|t('password-policy') }}
         </p>
     </div>
 

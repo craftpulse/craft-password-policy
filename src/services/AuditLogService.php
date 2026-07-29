@@ -483,7 +483,7 @@ class AuditLogService extends Component
             Craft::warning(
                 Craft::t(
                     'password-policy',
-                    "Audit event '{event}' fired without a registry entry — row dropped (fail-closed). Add the event class to AuditLogService::ALLOWED_DETAILS_BY_EVENT before firing.",
+                    "Audit event '{event}' fired without a registry entry, so the row was dropped (fail-closed). Add the event class to AuditLogService::ALLOWED_DETAILS_BY_EVENT before firing.",
                     ['event' => $event],
                 ),
                 'password-policy',

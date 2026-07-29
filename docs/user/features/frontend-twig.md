@@ -2,11 +2,11 @@
 
 Reference for the `craft.passwordPolicy.*` render builders that ship with v5.2.0. Use these to build login, registration, password-change, and password-reset pages on consumer-facing site templates without re-implementing the policy criteria, AJAX validation, strength meter, show/hide toggle, or a11y wiring yourself.
 
-The render builders require the **Pro edition**. The variable methods (`passwordField()`, `passwordWidget()`, `loginForm()`, `passwordChangeForm()`, `passwordResetForm()`, `requirementList()`, `strengthMeter()`, `requirementsHint()`) throw `craftpulse\passwordpolicy\exceptions\EditionRequiredException` (a `\RuntimeException` subclass) on Lite — Twig surfaces the exception in dev mode and renders the friendly error template in production. Integrators can catch the dedicated class to react to the gate explicitly; generic `\RuntimeException` handlers continue to work. Lite installs that want consumer-side password UX can roll their own markup against the universal **data accessors** documented in this page: `requirements()`, `requirementsText()`, `requirementRules()`. On Pro, the resolved per-group policy applies automatically when the user (or anonymous group-preview hint) has groups assigned.
+The render builders require the **Pro edition**. The variable methods (`passwordField()`, `passwordWidget()`, `loginForm()`, `passwordChangeForm()`, `passwordResetForm()`, `requirementList()`, `strengthMeter()`, `requirementsHint()`) throw `craftpulse\passwordpolicy\exceptions\EditionRequiredException` (a `\RuntimeException` subclass) on Lite, Twig surfaces the exception in dev mode and renders the friendly error template in production. Integrators can catch the dedicated class to react to the gate explicitly; generic `\RuntimeException` handlers continue to work. Lite installs that want consumer-side password UX can roll their own markup against the universal **data accessors** documented in this page: `requirements()`, `requirementsText()`, `requirementRules()`. On Pro, the resolved per-group policy applies automatically when the user (or anonymous group-preview hint) has groups assigned.
 
 > **Both `craft.passwordPolicy` (camelCase, canonical) and `craft.passwordpolicy` (all-lowercase, legacy 5.1.1 form) work.** The lowercase form ships permanently for backward compatibility with 5.1.1 consumers; new code should prefer the camelCase form to match modern Craft variable conventions. This page uses camelCase throughout.
 
-> **Twig errors propagate naturally.** Builders throw `\InvalidArgumentException` on misuse — missing required fields, unknown options, contradictory config. Twig surfaces the exception in dev mode; production renders the friendly error template. Don't wrap calls in `try/catch`.
+> **Twig errors propagate naturally.** Builders throw `\InvalidArgumentException` on misuse: missing required fields, unknown options, contradictory config. Twig surfaces the exception in dev mode; production renders the friendly error template. Don't wrap calls in `try/catch`.
 
 ---
 
@@ -99,7 +99,7 @@ A single `<input type="password">` with optional show/hide toggle, AJAX live val
 
 | Setter | Type | Default | Notes |
 |--------|------|---------|-------|
-| `name(string)` | required | — | Input `name` attribute |
+| `name(string)` | required | - | Input `name` attribute |
 | `id(string)` | optional | auto-generated | Input `id` |
 | `value(string)` | optional | empty | Never prefilled in production |
 | `autocomplete(string)` | optional | `new-password` | |
@@ -108,7 +108,7 @@ A single `<input type="password">` with optional show/hide toggle, AJAX live val
 | `toggleVisibility(bool)` | optional | `true` | Show/hide eye button |
 | `toggleAttrs(array)` | optional | `[]` | Merged into the toggle button |
 | `liveValidation(bool)` | optional | `false` | Auto-registers the JS asset |
-| `submitGate(string)` | optional | — | CSS selector for submit button to enable/disable |
+| `submitGate(string)` | optional | - | CSS selector for submit button to enable/disable |
 | `groups(array)` | optional | `[]` | Group handles for anonymous group-preview validation |
 
 ```twig
@@ -145,17 +145,17 @@ A `<p>` with the human-readable summary returned by `requirementsText()`.
 
 ### `passwordWidget()`
 
-Composite — wraps `passwordField` + `strengthMeter` + `requirementList` (+ optional `requirementsHint`) in a single `<div class="pp-widget">`.
+Composite: wraps `passwordField` + `strengthMeter` + `requirementList` (+ optional `requirementsHint`) in a single `<div class="pp-widget">`.
 
 | Setter | Type | Default |
 |--------|------|---------|
-| `name(string)` | required | — |
+| `name(string)` | required | - |
 | `id(string)` | optional | auto |
 | `inputAttrs(array)` | optional | `[]` |
 | `wrapperAttrs(array)` | optional | `[]` |
 | `toggleVisibility(bool)` | optional | `true` |
 | `liveValidation(bool)` | optional | `true` |
-| `submitGate(string)` | optional | — |
+| `submitGate(string)` | optional | - |
 | `showStrength(bool)` | optional | `true` |
 | `showRequirements(bool)` | optional | `true` |
 | `showHint(bool)` | optional | `false` |
@@ -185,7 +185,7 @@ POSTs to Craft's `users/login` action.
 | `passwordAttrs(array)` | `[]` |
 | `submitButtonAttrs(array)` | `[]` |
 | `submitLabel(string)` | "Login" |
-| `successRedirect(string)` | — |
+| `successRedirect(string)` | - |
 | `rememberMe(bool)` | `true` |
 
 ### `passwordChangeForm()`
@@ -197,11 +197,11 @@ POSTs to `password-policy/front/password-change/save` (the plugin's own `Front\P
 | `formAttrs(array)` | `[]` |
 | `submitButtonAttrs(array)` | `[]` |
 | `submitLabel(string)` | "Update password" |
-| `successRedirect(string)` | — |
+| `successRedirect(string)` | - |
 
 ### `passwordResetForm({code, userUid})`
 
-POSTs to Craft's `users/set-password` action. Token-based reset flow — Craft validates the `code` + `userUid` from the reset email link, the plugin's `User::EVENT_DEFINE_RULES` listener validates the new password against the policy.
+POSTs to Craft's `users/set-password` action. Token-based reset flow: Craft validates the `code` + `userUid` from the reset email link, the plugin's `User::EVENT_DEFINE_RULES` listener validates the new password against the policy.
 
 ```twig
 {{ craft.passwordPolicy.passwordResetForm({
@@ -210,7 +210,7 @@ POSTs to Craft's `users/set-password` action. Token-based reset flow — Craft v
 }).render() }}
 ```
 
-`code` and `userUid` are **required** — the builder throws `\InvalidArgumentException` if either is missing so consumers learn about the wiring mistake at render time.
+`code` and `userUid` are **required**: the builder throws `\InvalidArgumentException` if either is missing so consumers learn about the wiring mistake at render time.
 
 ---
 
@@ -235,19 +235,19 @@ The validate AJAX endpoint returns a `strength` block alongside the per-rule `er
 }
 ```
 
-The plugin runs `bjeavons/zxcvbn-php` server-side. zxcvbn analyses the candidate password against common patterns, dictionaries, keyboard sequences, and (when context is supplied) the user's own username/email. Returns a 0-4 score, a crack-time estimate, an array of suggestions, and an optional warning string. Same engine on every edition — the `engine` key always reads `'zxcvbn'`.
+The plugin runs `bjeavons/zxcvbn-php` server-side. zxcvbn analyses the candidate password against common patterns, dictionaries, keyboard sequences, and (when context is supplied) the user's own username/email. Returns a 0-4 score, a crack-time estimate, an array of suggestions, and an optional warning string. Same engine on every edition: the `engine` key always reads `'zxcvbn'`.
 
 The label vocabulary is `weak | fair | strong | excellent` (mapped from score: `0,1 → weak`, `2 → fair`, `3 → strong`, `4 → excellent`). CSS classes key off the `label` so consumer styles are stable.
 
-**Blocklist hit override.** When the password matches the plugin's bundled or custom blocklist, `label` is forced to `weak` and `score` to `0` regardless of zxcvbn's natural reading. zxcvbn doesn't know about the plugin's custom dictionary, so without this override a blocklisted long+complex password reads as "excellent" while the back-end correctly rejects it. The override is intentionally narrow — `crackTime`, `suggestions`, and `warning` carry through unchanged so the user still sees the dictionary breakdown.
+**Blocklist hit override.** When the password matches the plugin's bundled or custom blocklist, `label` is forced to `weak` and `score` to `0` regardless of zxcvbn's natural reading. zxcvbn doesn't know about the plugin's custom dictionary, so without this override a blocklisted long+complex password reads as "excellent" while the back-end correctly rejects it. The override is intentionally narrow, `crackTime`, `suggestions`, and `warning` carry through unchanged so the user still sees the dictionary breakdown.
 
 ### Lite vs Pro on strength
 
-The CP strength meter (`showStrengthIndicator` toggle) ships on every edition — Lite included. The Pro upsell on strength is **the front-end render-builder surface itself**: `passwordField()`, `passwordWidget()`, `requirementList()`, `strengthMeter()`, and the form builders. Pro consumer sites get the turnkey markup + AJAX wiring + a11y baseline; Lite installs use the CP meter without the front-end render builders.
+The CP strength meter (`showStrengthIndicator` toggle) ships on every edition, Lite included. The Pro upsell on strength is **the front-end render-builder surface itself**: `passwordField()`, `passwordWidget()`, `requirementList()`, `strengthMeter()`, and the form builders. Pro consumer sites get the turnkey markup + AJAX wiring + a11y baseline; Lite installs use the CP meter without the front-end render builders.
 
 ### Same engine drives the CP indicator
 
-The CP password-strength indicator (`buildchain/src/js/indicator.ts`, registered via `PasswordPolicyAsset` on every CP request when `showStrengthIndicator` is on) consumes the same `password-policy/validation/validate` endpoint. There is one strength engine in the plugin, and it lives in `services/StrengthService.php`. Adjustments to the zxcvbn-php integration apply uniformly to consumer-facing forms and to admin/installer/set-password screens in the control panel — no second implementation to keep in sync.
+The CP password-strength indicator (`buildchain/src/js/indicator.ts`, registered via `PasswordPolicyAsset` on every CP request when `showStrengthIndicator` is on) consumes the same `password-policy/validation/validate` endpoint. There is one strength engine in the plugin, and it lives in `services/StrengthService.php`. Adjustments to the zxcvbn-php integration apply uniformly to consumer-facing forms and to admin/installer/set-password screens in the control panel: no second implementation to keep in sync.
 
 ---
 
@@ -255,27 +255,27 @@ The CP password-strength indicator (`buildchain/src/js/indicator.ts`, registered
 
 Every builder ships with full a11y wiring:
 
-- **Live region** — auto-injected `<span class="pp-live-region" aria-live="polite" aria-atomic="true">` linked to the input via `aria-describedby`. Screen readers announce state changes ("Password meets all requirements." / "At least 12 characters") as the AJAX response cycles.
-- **`aria-invalid`** — toggled on the input based on the `passed` flag in the validate response.
-- **`aria-busy`** — set to `true` while the JS is debouncing / awaiting the AJAX response.
-- **Strength meter** — `<div role="progressbar" aria-valuemin="0" aria-valuemax="4" aria-valuenow="...">` so the meter is announced as a progress bar with the current score.
-- **Show/hide toggle** — `<button>` with flipping `aria-label="Show password"` ↔ `"Hide password"` and an inner SVG with two stacked paths (open eye + eye-slash) toggled via `style="display:none"`.
+- **Live region**: auto-injected `<span class="pp-live-region" aria-live="polite" aria-atomic="true">` linked to the input via `aria-describedby`. Screen readers announce state changes ("Password meets all requirements." / "At least 12 characters") as the AJAX response cycles.
+- **`aria-invalid`**: toggled on the input based on the `passed` flag in the validate response.
+- **`aria-busy`**: set to `true` while the JS is debouncing / awaiting the AJAX response.
+- **Strength meter**: `<div role="progressbar" aria-valuemin="0" aria-valuemax="4" aria-valuenow="...">` so the meter is announced as a progress bar with the current score.
+- **Show/hide toggle**: `<button>` with flipping `aria-label="Show password"` ↔ `"Hide password"` and an inner SVG with two stacked paths (open eye + eye-slash) toggled via `style="display:none"`.
 
 VoiceOver (macOS) and NVDA (Windows) have been targeted; the user is expected to verify SR behavior end-to-end on their own browser before publishing.
 
 ---
 
-## Lite consumers — data-accessor escape hatch
+## Lite consumers: data-accessor escape hatch
 
 The render builders documented above are Pro-only. Calling `craft.passwordPolicy.passwordField()` (or any of the other seven builders) on Lite throws `craftpulse\passwordpolicy\exceptions\EditionRequiredException` (a `\RuntimeException` subclass), which Twig surfaces in dev mode and renders the friendly error template in production.
 
-Lite consumers who want to ship a policy-aware password form roll their own markup against the universal **data accessors** — these stay open across editions:
+Lite consumers who want to ship a policy-aware password form roll their own markup against the universal **data accessors**: these stay open across editions:
 
-- `requirements(params = [])` — returns the resolved policy as a flat array (keys: `minLength`, `maxLength`, `requireUppercase`, `requireLowercase`, `requireNumbers`, `requireSymbols`, `blocklistEnabled`, `historyCount`, `hibpEnabled`, `complexityMode`, `minimumCharacterTypes`, `sequentialCharsCheck`, `repeatedCharsCheck`, `contextualCheck`).
-- `requirementsText(params = [])` — returns a one-sentence hint string for use under a password input.
-- `requirementRules(params = [])` — returns a list of `{key, label, met}` rows for custom checklist rendering.
+- `requirements(params = [])`: returns the resolved policy as a flat array (keys: `minLength`, `maxLength`, `requireUppercase`, `requireLowercase`, `requireNumbers`, `requireSymbols`, `blocklistEnabled`, `historyCount`, `hibpEnabled`, `complexityMode`, `minimumCharacterTypes`, `sequentialCharsCheck`, `repeatedCharsCheck`, `contextualCheck`).
+- `requirementsText(params = [])`: returns a one-sentence hint string for use under a password input.
+- `requirementRules(params = [])`: returns a list of `{key, label, met}` rows for custom checklist rendering.
 
-The `groups` parameter is silently ignored on Lite — there's no per-group resolution path. The global policy applies regardless. Per-group resolution remains a Pro feature gated inside `PolicyResolverService`.
+The `groups` parameter is silently ignored on Lite, because there's no per-group resolution path. The global policy applies regardless. Per-group resolution remains a Pro feature gated inside `PolicyResolverService`.
 
 A minimal Lite-compatible password form:
 

@@ -4,7 +4,7 @@
 [![Edition: Lite • Pro • Enterprise](https://img.shields.io/badge/Edition-Lite%20%E2%80%A2%20Pro%20%E2%80%A2%20Enterprise-3D8FFF)](./docs/user/editions.md)
 [![License](https://img.shields.io/badge/License-craft-9A6DEF)](./LICENSE.md)
 
-Enforce strong password rules across your Craft site — and prove it. From a simple length requirement on a single-site install to a compliance-grade audit trail with tamper-evident hash chains, breach detection on every login, per-group policy presets, and SIEM forwarding, Password Policy is the combined surface that handles all of it in one plugin.
+Enforce strong password rules across your Craft site, and prove it. From a simple length requirement on a single-site install to a compliance-grade audit trail with tamper-evident hash chains, breach detection on every login, per-group policy presets, and SIEM forwarding, Password Policy is the combined surface that handles all of it in one plugin.
 
 > 📷 *Screenshot: Plugin Store hero with the Compliance Dashboard utility, a policy edit screen showing tri-state rule overrides, and the front-end strength meter.*
 
@@ -17,33 +17,33 @@ Enforce strong password rules across your Craft site — and prove it. From a si
 | Have I Been Pwned (HIBP) at password change | ✅ | ✅ | ✅ |
 | Strength meter (CP + front-end) | ✅ | ✅ | ✅ |
 | Force change on first login | ✅ | ✅ | ✅ |
-| Per-group named policies + compliance presets (NIST, OWASP, PCI-DSS, CIS, Strict) | — | ✅ | ✅ |
+| Per-group named policies + compliance presets (NIST, OWASP, PCI-DSS, CIS, Strict) | - | ✅ | ✅ |
 | Password history (block reuse of last N) | ✅ | ✅ | ✅ |
-| HIBP-on-login (re-check on every sign-in) | — | ✅ | ✅ |
-| Front-end Twig render builders (login / register / change / reset) | — | ✅ | ✅ |
-| Custom blocklist editor | — | ✅ | ✅ |
+| HIBP-on-login (re-check on every sign-in) | - | ✅ | ✅ |
+| Front-end Twig render builders (login / register / change / reset) | - | ✅ | ✅ |
+| Custom blocklist editor | - | ✅ | ✅ |
 | Expiry-reminder emails (cron + queue, stock template) | ✅ | ✅ | ✅ |
-| Notification template editor + activity log + resend | — | ✅ | ✅ |
-| Tamper-evident hash-chained audit log | — | — | ✅ |
-| Independent verifier CLI (auditor-runnable) | — | — | ✅ |
-| Compliance dashboard + HTML/CSV reports | — | — | ✅ |
-| Syslog-over-TLS forwarder (Splunk HEC, Datadog, generic) | — | — | ✅ |
-| HMAC-signed webhook delivery (replay-window protected) | — | — | ✅ |
-| Streaming audit-log export (any Craft filesystem) | — | — | ✅ |
-| Per-policy custom blocklist | — | — | ✅ |
-| Custom Twig email template paths | — | — | ✅ |
+| Notification template editor + activity log + resend | - | ✅ | ✅ |
+| Tamper-evident hash-chained audit log | - | - | ✅ |
+| Independent verifier CLI (auditor-runnable) | - | - | ✅ |
+| Compliance dashboard + HTML/CSV reports | - | - | ✅ |
+| Syslog-over-TLS forwarder (Splunk HEC, Datadog, generic) | - | - | ✅ |
+| HMAC-signed webhook delivery (replay-window protected) | - | - | ✅ |
+| Streaming audit-log export (any Craft filesystem) | - | - | ✅ |
+| Per-policy custom blocklist | - | - | ✅ |
+| Custom Twig email template paths | - | - | ✅ |
 
 [See the full feature matrix →](./docs/user/editions.md)
 
 ## Why this plugin
 
-**Compliance-ready, not just compliance-adjacent.** Pro and Enterprise tiers map directly to specific clauses in NIST 800-63B Rev. 4, NIS2 Article 21, PCI DSS v4.0.1, ISO 27001:2022, SOC 2, and GDPR. The five bundled policy presets — NIST 800-63B, OWASP ASVS L1, PCI-DSS v4.0.1, CIS Controls v8, Strict Enterprise — translate framework requirements into one-click configurations. The audit log is hash-chained from the row level up and verifiable end-to-end via a console command auditors can run from a fresh checkout.
+**Compliance-ready, not just compliance-adjacent.** Pro and Enterprise tiers map directly to specific clauses in NIST 800-63B Rev. 4, NIS2 Article 21, PCI DSS v4.0.1, ISO 27001:2022, SOC 2, and GDPR. The five bundled policy presets (NIST 800-63B, OWASP ASVS L1, PCI-DSS v4.0.1, CIS Controls v8, Strict Enterprise) translate framework requirements into one-click configurations. The audit log is hash-chained from the row level up and verifiable end-to-end via a console command auditors can run from a fresh checkout.
 
-**Privacy by design.** The audit log stores SHA-256 IP hashes, never raw IPs. The userIdentifier column is HMAC-SHA-256 of email, keyed by a dedicated `CRAFT_AUDIT_PII_KEY` env var that's independent of Craft's `securityKey` — rotate it to destroy historical correlation without breaking sessions, CSRF tokens, or asset URLs. The per-event PII allowlist fails closed: an event type not in the registry is dropped rather than silently leaking unintended fields.
+**Privacy by design.** The audit log stores SHA-256 IP hashes, never raw IPs. The userIdentifier column is HMAC-SHA-256 of email, keyed by a dedicated `CRAFT_AUDIT_PII_KEY` env var that's independent of Craft's `securityKey`. Rotate it to destroy historical correlation without breaking sessions, CSRF tokens, or asset URLs. The per-event PII allowlist fails closed: an event type not in the registry is dropped rather than silently leaking unintended fields.
 
-**Built on Craft's grain.** Lockout delegates to Craft core (`maxInvalidLogins`); we don't reinvent it. Audit rows are real Craft elements with sources, sort options, and condition rules. Notification logs are elements too — the activity index uses the native element-index renderer. Permissions follow Craft's view-vs-manage nesting convention. CP forms use Craft macros throughout. Front-end Twig builders are policy-aware and a11y-baked.
+**Built on Craft's grain.** Lockout delegates to Craft core (`maxInvalidLogins`); we don't reinvent it. Audit rows are real Craft elements with sources, sort options, and condition rules. Notification logs are elements too, so the activity index uses the native element-index renderer. Permissions follow Craft's view-vs-manage nesting convention. CP forms use Craft macros throughout. Front-end Twig builders are policy-aware and a11y-baked.
 
-**Front-end first.** A Pro install ships fluent Twig render builders for login, registration, change-password, and reset-password forms — each one policy-aware, AJAX-validated, and accessible by default (live regions, `aria-describedby`, `aria-invalid`, progressbar role on the strength meter, flipping `aria-label` on the show/hide eye toggle). The vanilla-JS client is ~5 KB, framework-free, no build step required on the consumer site.
+**Front-end first.** A Pro install ships fluent Twig render builders for login, registration, change-password, and reset-password forms, each one policy-aware, AJAX-validated, and accessible by default (live regions, `aria-describedby`, `aria-invalid`, progressbar role on the strength meter, flipping `aria-label` on the show/hide eye toggle). The vanilla-JS client is ~5 KB, framework-free, no build step required on the consumer site.
 
 ## Requirements
 
@@ -73,7 +73,7 @@ composer update craftpulse/craft-password-policy
 ./craft up
 ```
 
-For the full migration walkthrough — including the new `CRAFT_AUDIT_PII_KEY` env var for Enterprise installs — see [Upgrade Guide →](./docs/user/operations/upgrade-from-5.1.md).
+For the full migration walkthrough, including the new `CRAFT_AUDIT_PII_KEY` env var for Enterprise installs, see [Upgrade Guide →](./docs/user/operations/upgrade-from-5.1.md).
 
 ## Documentation
 
@@ -102,7 +102,7 @@ For the full migration walkthrough — including the new `CRAFT_AUDIT_PII_KEY` e
 {% endif %}
 ```
 
-Both `craft.passwordPolicy` (camelCase) and `craft.passwordpolicy` (lowercase) work — new code should prefer the camelCase form.
+Both `craft.passwordPolicy` (camelCase) and `craft.passwordpolicy` (lowercase) work; new code should prefer the camelCase form.
 
 ### Render a policy-aware change-password form
 

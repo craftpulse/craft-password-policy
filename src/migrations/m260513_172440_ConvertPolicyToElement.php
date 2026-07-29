@@ -103,7 +103,7 @@ class m260513_172440_ConvertPolicyToElement extends Migration
         // silent no-op that leaves the schema half-converted.
         if ($this->db->getDriverName() !== Connection::DRIVER_MYSQL) {
             throw new \RuntimeException(
-                'm260513_172440_ConvertPolicyToElement requires MySQL — its FK rewrite '
+                'm260513_172440_ConvertPolicyToElement requires MySQL, because its FK rewrite '
                 . 'depends on MySQL-only INFORMATION_SCHEMA extensions. PostgreSQL upgraders '
                 . 'should land on the converted shape via a fresh install (Install.php) instead.',
             );
@@ -310,7 +310,7 @@ class m260513_172440_ConvertPolicyToElement extends Migration
 
         if ($db->getDriverName() !== Connection::DRIVER_MYSQL) {
             throw new \RuntimeException(
-                'm260513_172440_ConvertPolicyToElement requires MySQL — its FK rewrite '
+                'm260513_172440_ConvertPolicyToElement requires MySQL, because its FK rewrite '
                 . 'depends on MySQL-only INFORMATION_SCHEMA extensions.',
             );
         }

@@ -49,7 +49,7 @@
     {# Compose `<code>` HTML via `tag()` rather than injecting through
        the translation source — keeps translation strings plain text. #}
     {% set urlInstructions %}
-        {{ 'The endpoint URL audit-log payloads will be POSTed to. Supports env variables (e.g. {example}). Always uses HTTPS in production — TLS verify is forced on.'|t('password-policy', {
+        {{ 'The endpoint URL audit-log payloads will be POSTed to. Supports env variables (e.g. {example}). Always uses HTTPS in production; TLS verify is forced on.'|t('password-policy', {
             example: tag('code', { text: '$PP_WEBHOOK_URL' }),
         })|raw }}
     {% endset %}
@@ -168,7 +168,7 @@
                 <blockquote class="note tip">
                     <p>
                         <strong>{{ 'Circuit closed.'|t('password-policy') }}</strong>
-                        {{ 'No consecutive failures recorded — endpoint is healthy.'|t('password-policy') }}
+                        {{ 'No consecutive failures recorded; the endpoint is healthy.'|t('password-policy') }}
                     </p>
                 </blockquote>
             {% else %}

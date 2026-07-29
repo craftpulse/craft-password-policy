@@ -50,7 +50,7 @@
            locked/badged upsell row). #}
         {% if isPro %}
             {% set complexityInfo %}
-                <span class="info">{{ "Individual toggles lets you require specific character types independently — best when your policy mandates exact requirements. Minimum character types requires at least X of 4 types, giving users flexibility. This is the NIST-recommended approach as it encourages diversity without overly prescriptive rules."|t('password-policy') }}</span>
+                <span class="info">{{ "Individual toggles lets you require specific character types independently, best when your policy mandates exact requirements. Minimum character types requires at least X of 4 types, giving users flexibility. This is the NIST-recommended approach as it encourages diversity without overly prescriptive rules."|t('password-policy') }}</span>
             {% endset %}
             {{ forms.selectField({
                 label: 'Complexity mode'|t('password-policy'),
@@ -96,7 +96,7 @@
         {% if isPro %}
             <div id="complexity-minimum" {% if settings.complexityMode != 'minimum' %}class="hidden"{% endif %}>
                 {% set charTypesInfo %}
-                    <span class="info">{{ "The 4 character types are: uppercase letters (A–Z), lowercase letters (a–z), numbers (0–9), and symbols (!@#$%^&* etc.). Requiring 3 of 4 is a strong baseline that balances security with usability."|t('password-policy') }}</span>
+                    <span class="info">{{ "The 4 character types are: uppercase letters (A-Z), lowercase letters (a-z), numbers (0-9), and symbols (!@#$%^&* etc.). Requiring 3 of 4 is a strong baseline that balances security with usability."|t('password-policy') }}</span>
                 {% endset %}
                 {{ forms.selectField({
                     label: 'Minimum character types required'|t('password-policy'),

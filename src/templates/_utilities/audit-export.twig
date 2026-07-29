@@ -67,7 +67,7 @@
 
     {{ forms.radioGroupField({
         label: 'Format'|t('password-policy'),
-        instructions: 'CSV is spreadsheet-friendly. JSONL (one canonical-JSON line per row) is the auditor-evidence format — the bytes match the chain-canonical bytes the writer hashed.'|t('password-policy'),
+        instructions: 'CSV is spreadsheet-friendly. JSONL (one canonical-JSON line per row) is the auditor-evidence format, because the bytes match the chain-canonical bytes the writer hashed.'|t('password-policy'),
         id: 'format',
         name: 'format',
         options: [

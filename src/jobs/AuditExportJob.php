@@ -331,7 +331,7 @@ class AuditExportJob extends BaseBatchedJob implements RetryableJobInterface
     {
         if (!PasswordPolicy::$plugin->getIsEnterprise()) {
             Craft::warning(
-                'AuditExportJob skipped — audit-log export requires the Enterprise edition.',
+                'AuditExportJob skipped: audit-log export requires the Enterprise edition.',
                 'password-policy',
             );
 
@@ -769,7 +769,7 @@ class AuditExportJob extends BaseBatchedJob implements RetryableJobInterface
         if ($admin === null || $admin->email === null) {
             Craft::warning(
                 'AuditExportJob completed but the requesting admin (id ' . $this->requestedById
-                . ') has no resolvable email — skipping notification. The export file is still '
+                . ') has no resolvable email, so the notification was skipped. The export file is still '
                 . 'available via the token.',
                 'password-policy',
             );
@@ -871,7 +871,7 @@ class AuditExportJob extends BaseBatchedJob implements RetryableJobInterface
         } catch (Throwable $e) {
             Craft::warning(
                 'AuditExportJob filesystem upload failed (handle ' . $this->filesystemHandle
-                . '): ' . $e->getMessage() . ' — falling back to local-path serve.',
+                . '): ' . $e->getMessage() . '. Falling back to local-path serve.',
                 'password-policy',
             );
 

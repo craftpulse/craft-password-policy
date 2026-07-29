@@ -8,7 +8,7 @@ This guide walks you through the upgrade, the one new environment variable Enter
 
 - Take a database backup. The migration is reversible but reverting after a failure is faster from a backup than a rollback.
 - Note your current 5.1.x edition (Lite is the only option in 5.1.x). 5.2.0 starts Lite by default; you upgrade to Pro or Enterprise after the schema migration lands.
-- If you've customised `config/password-policy.php`, review the [Settings key renames](#settings-key-renames) below — `pwned` → `hibp` is the one breaking change in config-file land.
+- If you've customised `config/password-policy.php`, review the [Settings key renames](#settings-key-renames) below, `pwned` → `hibp` is the one breaking change in config-file land.
 
 ## The basic upgrade
 
@@ -19,7 +19,7 @@ composer update craftpulse/craft-password-policy
 ./craft up
 ```
 
-`composer update` pulls 5.2.0. `./craft up` applies the migration that ships in the new release — your install is now on 5.2.0 in Lite mode with all your existing 5.1.x settings preserved.
+`composer update` pulls 5.2.0. `./craft up` applies the migration that ships in the new release: your install is now on 5.2.0 in Lite mode with all your existing 5.1.x settings preserved.
 
 That's it for the Lite tier upgrade.
 
@@ -31,7 +31,7 @@ Spot-check a few things to confirm the migration applied cleanly:
 # Schema version should be 2.11.0 or later
 ./craft project-config/get plugins.password-policy.schemaVersion
 
-# Settings — the renamed key should resolve under its new name
+# Settings: the renamed key should resolve under its new name
 ./craft project-config/get plugins.password-policy.settings.hibp
 
 # Password history rows from 5.1.x carry forward
@@ -56,7 +56,7 @@ Bump `dateModified` at the top of `project.yaml` (Craft uses this as the project
 ./craft up
 ```
 
-The Pro subnav (Policies, Blocklist, Notifications) appears in the CP under **Password Policy**. None of your Lite settings change — Pro is purely additive.
+The Pro subnav (Policies, Blocklist, Notifications) appears in the CP under **Password Policy**. None of your Lite settings change, Pro is purely additive.
 
 > ::: warning Don't set the edition via `app.php` `pluginConfigs`
 > Edition switching goes through project config, not the runtime `app.php` `pluginConfigs` hash. The `pluginConfigs` approach skips the project-config rebuild and won't surface the new subnav items. Use `project.yaml` + `./craft up`.
@@ -98,7 +98,7 @@ Enterprise adds:
 - Per-policy custom blocklist tab on the policy edit screen.
 - Custom Twig template paths for email notifications.
 
-**The Enterprise tier needs one additional one-time setup step** — provisioning the dedicated audit-PII HMAC key.
+**The Enterprise tier needs one additional one-time setup step**: provisioning the dedicated audit-PII HMAC key.
 
 ### Provisioning `CRAFT_AUDIT_PII_KEY`
 
@@ -112,11 +112,11 @@ Generate the key once:
 
 The command:
 
-- Generates 32 random bytes (64 hex chars — same shape as `securityKey`).
+- Generates 32 random bytes (64 hex chars, same shape as `securityKey`).
 - Writes `CRAFT_AUDIT_PII_KEY` to your local `.env` file.
 - Prints the key to stdout for copy-paste to other environments.
 
-Set the same env var on every environment that runs the plugin — local, staging, production, CI for tests that touch audit-log rows. Rows hashed in one environment with a different key are not correlatable from another.
+Set the same env var on every environment that runs the plugin: local, staging, production, and CI for tests that touch audit-log rows. Rows hashed in one environment with a different key are not correlatable from another.
 
 The default `config/password-policy.php` template wires the env var through:
 
@@ -130,11 +130,11 @@ return [
 ];
 ```
 
-If `CRAFT_AUDIT_PII_KEY` is unset, the plugin falls back to `securityKey` — fresh installs still produce hashable rows. **The privacy property (rotation without site breakage) only applies once you've set the env var explicitly.** Production deployments should always set it.
+If `CRAFT_AUDIT_PII_KEY` is unset, the plugin falls back to `securityKey`, fresh installs still produce hashable rows. **The privacy property (rotation without site breakage) only applies once you've set the env var explicitly.** Production deployments should always set it.
 
 ### Configuring forwarders (optional)
 
-Enterprise adds SIEM + webhook delivery surfaces but doesn't auto-configure any endpoints — that's a deliberate operator decision. See [SIEM forwarders](../features/siem-forwarders.md) and [Webhooks](../features/webhooks.md) for the setup walkthroughs.
+Enterprise adds SIEM + webhook delivery surfaces but doesn't auto-configure any endpoints, that's a deliberate operator decision. See [SIEM forwarders](../features/siem-forwarders.md) and [Webhooks](../features/webhooks.md) for the setup walkthroughs.
 
 ## Settings key renames
 
@@ -151,11 +151,11 @@ The migration handles both `project.yaml` and direct DB rows. If you've also cus
 WARNING: Setting key "pwned" is deprecated; use "hibp" instead. (config/password-policy.php)
 ```
 
-The alias works permanently — there's no timeline for removing it. Migrate the key in your config file when convenient to clear the log warnings.
+The alias works permanently, there's no timeline for removing it. Migrate the key in your config file when convenient to clear the log warnings.
 
 ## Schema changes
 
-The migration `m260429_224908_UpgradeTo520Schema` creates the following tables on the upgrade path. Fresh installs run `Install.php` which produces the same schema. Both code paths are idempotent — re-running them on a tree that already has the tables is a no-op.
+The migration `m260429_224908_UpgradeTo520Schema` creates the following tables on the upgrade path. Fresh installs run `Install.php` which produces the same schema. Both code paths are idempotent, re-running them on a tree that already has the tables is a no-op.
 
 | Table | Purpose |
 |---|---|
@@ -171,7 +171,7 @@ The migration `m260429_224908_UpgradeTo520Schema` creates the following tables o
 | `passwordpolicy_siem_forwarders` | Enterprise: configured SIEM endpoints. |
 | `passwordpolicy_webhook_endpoints` | Enterprise: configured webhook endpoints. |
 
-Three of these tables (`policies`, `notification_log`, `audit_log`) back Craft 5 element types — their `id` columns are foreign keys to `craft_elements.id` with FK CASCADE on element delete.
+Three of these tables (`policies`, `notification_log`, `audit_log`) back Craft 5 element types: their `id` columns are foreign keys to `craft_elements.id` with FK CASCADE on element delete.
 
 For the column-by-column reference, see [Database schema](../reference/database-schema.md).
 
@@ -184,7 +184,7 @@ To roll back to 5.1.x:
 3. Composer-downgrade the plugin: `composer require craftpulse/craft-password-policy:^5.1`.
 4. Restart the application.
 
-The 5.2.0 migration does not have a clean `safeDown()` that produces a 5.1.x-shaped database — there's too much new infrastructure to roll back cleanly via DDL. The supported rollback path is "restore from backup," which is why we recommend taking one before the upgrade.
+The 5.2.0 migration does not have a clean `safeDown()` that produces a 5.1.x-shaped database, there's too much new infrastructure to roll back cleanly via DDL. The supported rollback path is "restore from backup," which is why we recommend taking one before the upgrade.
 
 ## Troubleshooting
 
@@ -197,7 +197,7 @@ Most common cause: existing data in `users` references group IDs that no longer 
 ./craft up
 ```
 
-If that doesn't resolve, inspect the migration's error output for the specific table + constraint name. The migration is idempotent — re-running it after fixing the underlying issue is safe.
+If that doesn't resolve, inspect the migration's error output for the specific table + constraint name. The migration is idempotent, re-running it after fixing the underlying issue is safe.
 
 ### The `hibp` setting reads as `null` after upgrade
 
@@ -224,11 +224,11 @@ It should be `pro` or `enterprise` (lowercase). Re-run `./craft up` if needed.
 
 ### CSRF errors on the front-end after upgrade
 
-5.2.0's front-end Twig builders register a CSRF-required AJAX endpoint at `password-policy/validation/validate`. If your consumer site templates were using the lowercase `craft.passwordpolicy.*` variable handle, the upgrade preserves backward compatibility (both `craft.passwordPolicy` and `craft.passwordpolicy` work). But the new builders ship updated default selectors and may require front-end markup changes — see [Front-end Twig builders](../features/frontend-twig.md).
+5.2.0's front-end Twig builders register a CSRF-required AJAX endpoint at `password-policy/validation/validate`. If your consumer site templates were using the lowercase `craft.passwordpolicy.*` variable handle, the upgrade preserves backward compatibility (both `craft.passwordPolicy` and `craft.passwordpolicy` work). But the new builders ship updated default selectors and may require front-end markup changes, see [Front-end Twig builders](../features/frontend-twig.md).
 
 ## See also
 
-- [Getting Started](../getting-started.md) — first-time install walkthrough.
-- [Edition Matrix](../editions.md) — what each tier ships.
-- [Compliance frameworks](./compliance-frameworks.md) — clause-by-clause framework mapping for the Pro and Enterprise features.
-- [Cron setup](./cron-setup.md) — production cron recipes for GC + audit verification.
+- [Getting Started](../getting-started.md): first-time install walkthrough.
+- [Edition Matrix](../editions.md): what each tier ships.
+- [Compliance frameworks](./compliance-frameworks.md): clause-by-clause framework mapping for the Pro and Enterprise features.
+- [Cron setup](./cron-setup.md): production cron recipes for GC + audit verification.

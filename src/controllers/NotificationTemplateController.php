@@ -457,7 +457,7 @@ class NotificationTemplateController extends Controller
                 'success' => false,
                 'message' => Craft::t(
                     'password-policy',
-                    'Send failed — see the password-policy log for details.',
+                    'Send failed. See the password-policy log for details.',
                 ),
             ]);
         }

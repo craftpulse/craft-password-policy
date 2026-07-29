@@ -123,7 +123,7 @@ class WebhookForwardJob extends BaseBatchedJob implements RetryableJobInterface
     {
         if (!PasswordPolicy::$plugin->getIsEnterprise()) {
             Craft::warning(
-                'WebhookForwardJob skipped — webhook delivery requires the Enterprise edition.',
+                'WebhookForwardJob skipped: webhook delivery requires the Enterprise edition.',
                 'password-policy',
             );
 

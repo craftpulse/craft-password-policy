@@ -340,7 +340,7 @@ class AuditLogElement extends Element
                 'type' => Delete::class,
                 'confirmationMessage' => Craft::t(
                     'password-policy',
-                    'Are you sure you want to delete the selected audit log entries? Audit retention is a compliance requirement — only delete when you have an off-site archive.',
+                    'Are you sure you want to delete the selected audit log entries? Audit retention is a compliance requirement, so only delete when you have an off-site archive.',
                 ),
                 'successMessage' => Craft::t(
                     'password-policy',
@@ -648,7 +648,7 @@ class AuditLogElement extends Element
         $event = $this->event ?? Craft::t('password-policy', 'event');
         $date = $this->dateCreated?->format('Y-m-d H:i') ?? '';
 
-        return trim("{$event} — {$date}");
+        return trim("{$event}, {$date}");
     }
 
     // Protected Methods

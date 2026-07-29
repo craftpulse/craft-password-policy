@@ -2,7 +2,7 @@
 
 Enterprise installs can forward audit events to one or more HTTP webhook endpoints with HMAC-SHA-256 signing, replay-window protection, and idempotency UUIDs. Unlike [SIEM forwarders](./siem-forwarders.md) which are designed for log aggregation (at-least-once-to-one across endpoints), webhooks are designed for per-endpoint integration (every endpoint receives every row independently).
 
-> 📷 *Screenshot: Webhooks index page showing three configured endpoints — "Slack #security alerts" (green-status, 12 successful deliveries today), "Internal SOC API" (green-status, 47 deliveries today), "Vendor compliance webhook" (amber-status, 2 retries in flight). Each row shows endpoint URL, last delivery, signature scheme.*
+> 📷 *Screenshot: Webhooks index page showing three configured endpoints, "Slack #security alerts" (green-status, 12 successful deliveries today), "Internal SOC API" (green-status, 47 deliveries today), "Vendor compliance webhook" (amber-status, 2 retries in flight). Each row shows endpoint URL, last delivery, signature scheme.*
 
 This page covers configuring webhook endpoints, the signature scheme, replay-window verification, secret rotation with grace windows, and the per-endpoint delivery watermark model.
 
@@ -25,7 +25,7 @@ This page covers configuring webhook endpoints, the signature scheme, replay-win
 | Event filter | No (defaults to all) | `password_changed,hibp_breach_detected,policy_changed` |
 | Enabled | Yes (default on) | toggle |
 
-The endpoint URL must be HTTPS — the plugin's Guzzle client enforces TLS verification at the request site (overrides any site-level `config/guzzle.php` `verify => false`).
+The endpoint URL must be HTTPS: the plugin's Guzzle client enforces TLS verification at the request site (overrides any site-level `config/guzzle.php` `verify => false`).
 
 The signing secret is stored encrypted in `passwordpolicy_webhook_endpoints` and never displayed in plain text after creation. Use the **Rotate secret** action if you suspect it's been compromised.
 
@@ -37,7 +37,7 @@ By default, every audit event fires for every webhook endpoint. Configure a comm
 password_changed, hibp_breach_detected, policy_changed
 ```
 
-Only events matching the filter trigger a delivery. The filter is exact-match per event name — see [Audit logging → What's captured](./audit-logging.md#whats-captured) for the canonical event list.
+Only events matching the filter trigger a delivery. The filter is exact-match per event name, see [Audit logging → What's captured](./audit-logging.md#whats-captured) for the canonical event list.
 
 ## HMAC-SHA-256 signing
 
@@ -59,7 +59,7 @@ X-PasswordPolicy-Plugin-Version: 5.2.0
 |---|---|
 | `X-PasswordPolicy-Signature` | HMAC-SHA-256 of the signing envelope. Format: `sha256=<hex>` |
 | `X-PasswordPolicy-Timestamp` | UTC ISO 8601 timestamp of the delivery attempt. Used for replay-window verification. |
-| `X-PasswordPolicy-Event-Id` | UUID v4 unique to this delivery. Receivers should dedup on this — see [Idempotency](#idempotency). |
+| `X-PasswordPolicy-Event-Id` | UUID v4 unique to this delivery. Receivers should dedup on this, see [Idempotency](#idempotency). |
 | `X-PasswordPolicy-Plugin-Version` | The plugin version that produced the delivery. Diagnostics + version-skew handling. |
 
 ### Signing envelope
@@ -78,9 +78,9 @@ Where:
 
 This three-part envelope prevents:
 
-- **Body tampering** — modifying any byte invalidates the signature.
-- **Timestamp tampering** — replaying with a different timestamp invalidates the signature (and the receiver can reject stale timestamps independently).
-- **Cross-event replay** — signing the eventId binds the signature to a specific delivery; it can't be reused for a different event.
+- **Body tampering**: modifying any byte invalidates the signature.
+- **Timestamp tampering**: replaying with a different timestamp invalidates the signature (and the receiver can reject stale timestamps independently).
+- **Cross-event replay**: signing the eventId binds the signature to a specific delivery; it can't be reused for a different event.
 
 ### Receiver verification
 
@@ -106,7 +106,7 @@ def verify(headers, body, secret):
     return hmac.compare_digest(signature[7:], expected)
 ```
 
-`hmac.compare_digest` is essential — string equality (`==`) is timing-sensitive and would leak the signature one byte at a time to a sophisticated attacker.
+`hmac.compare_digest` is essential, string equality (`==`) is timing-sensitive and would leak the signature one byte at a time to a sophisticated attacker.
 
 ### Replay-window verification
 
@@ -173,7 +173,7 @@ The request body is the canonical JSON of the audit row plus a `_meta` envelope:
 }
 ```
 
-The `_meta` envelope is **not** part of the signed body for hash-chain purposes — it's added at delivery time for receiver convenience. The signed envelope is the entire request body (including `_meta`), so signature verification still covers the metadata.
+The `_meta` envelope is **not** part of the signed body for hash-chain purposes, it's added at delivery time for receiver convenience. The signed envelope is the entire request body (including `_meta`), so signature verification still covers the metadata.
 
 ## Per-endpoint watermark
 
@@ -181,9 +181,9 @@ Unlike SIEM forwarders (at-least-once-to-one across endpoints), webhooks use a p
 
 This means:
 
-- **Adding a new endpoint** doesn't retroactively deliver the entire history — it starts from the current row.
-- **An endpoint that's down for a week** catches up the missed rows on recovery (subject to retention — rows pruned by GC are not redelivered).
-- **Two endpoints with different filters** maintain independent watermarks — a Slack channel filtered to `hibp_breach_detected` and a SOC API filtered to all events deliver independently.
+- **Adding a new endpoint** doesn't retroactively deliver the entire history: it starts from the current row.
+- **An endpoint that's down for a week** catches up the missed rows on recovery (subject to retention: rows pruned by GC are not redelivered).
+- **Two endpoints with different filters** maintain independent watermarks: a Slack channel filtered to `hibp_breach_detected` and a SOC API filtered to all events deliver independently.
 
 To **backfill** an endpoint with historical events (e.g. you just added a new compliance webhook and want it to receive everything from the past 90 days), use the bundled command:
 
@@ -191,7 +191,7 @@ To **backfill** an endpoint with historical events (e.g. you just added a new co
 ./craft password-policy/webhook/backfill --endpoint=<id> --from=2026-02-15
 ```
 
-The command resets `lastDeliveredRowId` and queues the backlog for delivery. Use with care — the receiver gets a burst of N events all at once.
+The command resets `lastDeliveredRowId` and queues the backlog for delivery. Use with care: the receiver gets a burst of N events all at once.
 
 ## Secret rotation
 
@@ -201,11 +201,11 @@ Rotate the signing secret without breaking in-flight signatures using the **Rota
 
 1. Click **Rotate secret**.
 2. The plugin generates a new secret + saves it.
-3. Both the **new** and **old** secrets are valid for a 5-minute grace window — every delivery in that window is signed with the new secret but the old secret's HMAC is also published in a `X-PasswordPolicy-Signature-Previous` header so receivers can verify either.
+3. Both the **new** and **old** secrets are valid for a 5-minute grace window: every delivery in that window is signed with the new secret but the old secret's HMAC is also published in a `X-PasswordPolicy-Signature-Previous` header so receivers can verify either.
 4. After 5 minutes, the `RotateWebhookSecretJob` reaper job runs and clears the old secret.
 5. Update your receiver-side stored secret during the grace window.
 
-The grace window prevents the standard "rotation race" — a request signed with the old secret arrives at the receiver after they've already updated to the new one (or vice versa). The dual-secret window covers both directions.
+The grace window prevents the standard "rotation race": a request signed with the old secret arrives at the receiver after they've already updated to the new one (or vice versa). The dual-secret window covers both directions.
 
 If 5 minutes isn't enough (slow infrastructure rollout), schedule the rotation outside business hours or use the longer-window variant:
 
@@ -233,21 +233,21 @@ The dashboard's **Pending forwards** section shows broken-circuit endpoints alon
 
 **Password Policy → Webhooks** lists every endpoint with status pill, last-delivery time, and quick actions:
 
-- **Edit** — configuration screen
-- **Test fire** — sends a synthetic event to the endpoint and surfaces the response
-- **Rotate secret** — generates a new secret with the 5-minute grace window
-- **Reset circuit** — manually closes a broken circuit after fixing the underlying issue
-- **Delete** — removes the endpoint (audit history retained)
+- **Edit**: configuration screen
+- **Test fire**: sends a synthetic event to the endpoint and surfaces the response
+- **Rotate secret**: generates a new secret with the 5-minute grace window
+- **Reset circuit**: manually closes a broken circuit after fixing the underlying issue
+- **Delete**: removes the endpoint (audit history retained)
 
 ### Endpoint edit screen
 
 Three tabs:
 
-- **Configuration** — URL, event filter, enabled toggle
-- **Authentication** — signing secret (read-only after creation), rotate-secret action
-- **Activity** — last 50 deliveries with status code, response body excerpt, timing
+- **Configuration**: URL, event filter, enabled toggle
+- **Authentication**: signing secret (read-only after creation), rotate-secret action
+- **Activity**: last 50 deliveries with status code, response body excerpt, timing
 
-The **Activity** tab is useful for debugging — every delivery is captured with the receiver's response.
+The **Activity** tab is useful for debugging: every delivery is captured with the receiver's response.
 
 ## Console commands
 
@@ -276,15 +276,15 @@ The **Activity** tab is useful for debugging — every delivery is captured with
 
 ## Use cases
 
-- **Slack channel for security alerts** — endpoint filtered to `hibp_breach_detected, account_locked, policy_changed`. POST to Slack's webhook URL. The Slack-side receiver formats the JSON into a readable message.
-- **SOC integration** — internal SOC API receives every event; the receiver classifies events as critical/medium/low and routes to the right on-call channel.
-- **Compliance vendor** — third-party compliance platform (Drata, Vanta, etc.) receives `password_changed`, `policy_changed`, `account_locked` events for evidence collection.
-- **Audit retention archive** — long-term storage of every event in S3 via an API Gateway → Lambda → S3 pipeline. Combine with retention purge on the plugin side — the warehouse keeps the long history; the plugin keeps the operational window.
+- **Slack channel for security alerts**: endpoint filtered to `hibp_breach_detected, account_locked, policy_changed`. POST to Slack's webhook URL. The Slack-side receiver formats the JSON into a readable message.
+- **SOC integration**: internal SOC API receives every event; the receiver classifies events as critical/medium/low and routes to the right on-call channel.
+- **Compliance vendor**: third-party compliance platform (Drata, Vanta, etc.) receives `password_changed`, `policy_changed`, `account_locked` events for evidence collection.
+- **Audit retention archive**: long-term storage of every event in S3 via an API Gateway → Lambda → S3 pipeline. Combine with retention purge on the plugin side: the warehouse keeps the long history; the plugin keeps the operational window.
 
 ## See also
 
-- [Audit logging](./audit-logging.md) — the source of audit events that get delivered.
-- [SIEM forwarders](./siem-forwarders.md) — alternative at-least-once-to-one delivery for log aggregation.
-- [Audit export](./audit-export.md) — batch export to filesystem for offline analysis.
-- [Compliance Dashboard](./compliance-dashboard.md) — pending-deliveries surface for operators.
-- [Events](../reference/events.md) — `EVENT_WEBHOOK_DELIVERY_ATTEMPT` fires on every delivery attempt for custom monitoring integrations.
+- [Audit logging](./audit-logging.md): the source of audit events that get delivered.
+- [SIEM forwarders](./siem-forwarders.md): alternative at-least-once-to-one delivery for log aggregation.
+- [Audit export](./audit-export.md): batch export to filesystem for offline analysis.
+- [Compliance Dashboard](./compliance-dashboard.md): pending-deliveries surface for operators.
+- [Events](../reference/events.md): `EVENT_WEBHOOK_DELIVERY_ATTEMPT` fires on every delivery attempt for custom monitoring integrations.

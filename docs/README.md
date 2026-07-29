@@ -1,6 +1,6 @@
 # Documentation
 
-Password Policy is a Craft CMS 5 plugin that handles password rules, breach detection, and compliance-grade audit logging — all in one plugin. This is the index for everything you can read about it.
+Password Policy is a Craft CMS 5 plugin that handles password rules, breach detection, and compliance-grade audit logging, all in one plugin. This is the index for everything you can read about it.
 
 ## I want to…
 
@@ -69,7 +69,7 @@ Each feature has its own page covering what it does, how to configure it, and ho
 
 ## How the docs are organised
 
-- **`docs/user/`** is for end users and integrators — anything we'd publish on the Plugin Store or hand to a partner. Plain Markdown, no badges, no fancy tooling.
+- **`docs/user/`** is for end users and integrators: anything we'd publish on the Plugin Store or hand to a partner. Plain Markdown, no badges, no fancy tooling.
 - **`docs/internal/`** is for plugin maintainers and AI agents. It carries the handover doc, master plan, manual-test register, ideas log. Skip it unless you're contributing to the plugin itself.
 
 ## See also

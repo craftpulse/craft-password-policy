@@ -19,7 +19,7 @@
 
     <div class="flex-fields">
         {% set historyCountInfo %}
-            <span class="info">{{ "Stores bcrypt hashes of previous passwords. When a user changes their password, it is checked against the last N hashes. PCI-DSS v4.0 (Req 8.3.7) requires at least 4. Enterprise security teams typically use 5–12. Per-group history overrides require the Pro edition."|t('password-policy') }}</span>
+            <span class="info">{{ "Stores bcrypt hashes of previous passwords. When a user changes their password, it is checked against the last N hashes. PCI-DSS v4.0 (Req 8.3.7) requires at least 4. Enterprise security teams typically use 5 to 12. Per-group history overrides require the Pro edition."|t('password-policy') }}</span>
         {% endset %}
         {{ forms.textField({
             label: 'Password history count'|t('password-policy'),
@@ -34,7 +34,7 @@
         }) }}
 
         {% set retentionDaysInfo %}
-            <span class="info">{{ "Controls how long password hashes are kept for GDPR data minimization. The history count always takes priority — old entries are only purged if the user already has enough newer entries to maintain the count. This prevents TTL-based deletion from undermining the reuse check."|t('password-policy') }}</span>
+            <span class="info">{{ "Controls how long password hashes are kept for GDPR data minimization. The history count always takes priority, so old entries are only purged if the user already has enough newer entries to maintain the count. This prevents TTL-based deletion from undermining the reuse check."|t('password-policy') }}</span>
         {% endset %}
         {{ forms.textField({
             label: 'History retention (days)'|t('password-policy'),
@@ -55,7 +55,7 @@
 
         <div class="flex-fields">
             {% set minChangeIntervalInfo %}
-                <span class="info">{{ "Stops a user from re-changing their password again within this window — which would otherwise let them cycle through new passwords to flush the reuse history. Admin-forced, expiry-forced, first-login, and breach-forced resets always bypass this limit. Set to 0 to disable. Per-group overrides require the Pro edition."|t('password-policy') }}</span>
+                <span class="info">{{ "Stops a user from re-changing their password again within this window, which would otherwise let them cycle through new passwords to flush the reuse history. Admin-forced, expiry-forced, first-login, and breach-forced resets always bypass this limit. Set to 0 to disable. Per-group overrides require the Pro edition."|t('password-policy') }}</span>
             {% endset %}
             {{ forms.textField({
                 label: 'Minimum change interval (hours)'|t('password-policy'),

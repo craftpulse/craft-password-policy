@@ -662,7 +662,7 @@ class UserIndexService extends Component
         if (!isset($this->_cache[$userId])) {
             if (!$this->_preloaded) {
                 Craft::warning(
-                    "UserIndexService cell renderer fired for user {$userId} without prior preloadForUsers() — falling back to per-user query.",
+                    "UserIndexService cell renderer fired for user {$userId} without prior preloadForUsers(); falling back to per-user query.",
                     'password-policy',
                 );
             }
@@ -881,7 +881,7 @@ class UserIndexService extends Component
 
         return Cp::statusLabelHtml([
             'color' => Color::Red,
-            'label' => Craft::t('password-policy', 'Yes — {when}', [
+            'label' => Craft::t('password-policy', 'Yes, {when}', [
                 'when' => $this->_relativeTime($detectedAt),
             ]),
         ]) ?? '';

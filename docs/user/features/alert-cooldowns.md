@@ -1,8 +1,8 @@
 # Alert Cooldowns
 
-The plugin's `AlertCooldownService` is a per-(event class, scope) dedup substrate that prevents alert spam — operators don't get 47 identical "password breach detected" emails when 47 users on the same compromised password sign in within a minute. It's used internally by the notifications layer + the audit + the SIEM/webhook forwarders; you typically don't interact with it directly unless you're building custom alerting on top.
+The plugin's `AlertCooldownService` is a per-(event class, scope) dedup substrate that prevents alert spam: operators don't get 47 identical "password breach detected" emails when 47 users on the same compromised password sign in within a minute. It's used internally by the notifications layer + the audit + the SIEM/webhook forwarders; you typically don't interact with it directly unless you're building custom alerting on top.
 
-> 📷 *Screenshot: Compliance Dashboard's "Activity in last 24h" section showing cooldown fires by event class — `breach_detected: 12`, `account_locked: 3`, `force_reset_completed: 19`. The dashboard pulls these numbers from the alert-cooldowns table.*
+> 📷 *Screenshot: Compliance Dashboard's "Activity in last 24h" section showing cooldown fires by event class, `breach_detected: 12`, `account_locked: 3`, `force_reset_completed: 19`. The dashboard pulls these numbers from the alert-cooldowns table.*
 
 This page covers what the service does, how the dedup windows are configured, and how to register a custom alert with cooldown semantics.
 
@@ -17,7 +17,7 @@ $scope = 'event:breach_detected';
 $windowSeconds = 300;
 
 if ($cooldown->shouldFire($alertKey, $scope, $windowSeconds)) {
-    // Send the alert — the service has already recorded the fire.
+    // Send the alert: the service has already recorded the fire.
     sendAdminEmail(...);
 } else {
     // Within the cooldown window. Skip silently.
@@ -30,7 +30,7 @@ The service:
 2. If the fire is within `windowSeconds` of now, returns `false` (skip).
 3. Otherwise records the new fire + returns `true` (fire).
 
-The record happens **on the `true` return** — the caller doesn't need a separate `markSent()` call. This is the auto-record contract: a successful `shouldFire()` is the side-effect of recording the cooldown.
+The record happens **on the `true` return**: the caller doesn't need a separate `markSent()` call. This is the auto-record contract: a successful `shouldFire()` is the side-effect of recording the cooldown.
 
 ## How dedup windows are configured
 
@@ -40,23 +40,23 @@ Each call to `shouldFire()` specifies its own window. The plugin's built-in aler
 |---|---|---|---|
 | `expiry_reminder` | `expiryReminderDays` × 86400 sec (default 14 days) | per user | Don't email the same user about the same expiry twice. |
 | `breach_detected` | 24 hours | per user | Don't email the same user about the same HIBP match more than once a day. |
-| `new_device_alert` | (caller-handled — typically the HIBP-on-login 24h cache) | per user | Defer to caller. |
+| `new_device_alert` | (caller-handled, typically the HIBP-on-login 24h cache) | per user | Defer to caller. |
 | `admin_security_alert` | 5 minutes | per event class | Operators get one digest of "breach detected" per 5 minutes, not one email per user. |
 | `siem_forward_retry` | exponential backoff (1, 5, 25, 125, 625 sec) | per forwarder + event class | Don't hammer a down SIEM. |
 | `webhook_delivery_retry` | exponential backoff | per endpoint + event class | Same. |
 
-`AlertCooldownService::DEFAULT_COOLDOWN_*` constants are the canonical source — see the service source for the current defaults.
+`AlertCooldownService::DEFAULT_COOLDOWN_*` constants are the canonical source; see the service source for the current defaults.
 
 ### Scope semantics
 
 The `scope` parameter is a free-form discriminator. Common shapes:
 
-- **Per-user** — `"user:{userId}"`. Different users have independent cooldowns; the same user is rate-limited.
-- **Per-event-class** — `"event:{eventName}"`. All users get one alert per window for a given event type. Useful for `admin_security_alert` where the operator wants a digest, not per-user emails.
-- **Global** — `"global"`. One alert per window across the whole site. Rare — most alerts have a more specific scope.
-- **Composite** — `"forwarder:{forwarderId}:{eventName}"`. Per-forwarder, per-event-class state. Used by the SIEM forwarder retry logic.
+- **Per-user**: `"user:{userId}"`. Different users have independent cooldowns; the same user is rate-limited.
+- **Per-event-class**: `"event:{eventName}"`. All users get one alert per window for a given event type. Useful for `admin_security_alert` where the operator wants a digest, not per-user emails.
+- **Global**: `"global"`. One alert per window across the whole site. Rare: most alerts have a more specific scope.
+- **Composite**: `"forwarder:{forwarderId}:{eventName}"`. Per-forwarder, per-event-class state. Used by the SIEM forwarder retry logic.
 
-The discriminator is a `VARCHAR(191)` column with a composite index on `(eventClass, cooldownKey, firedAt)` — fast `WHERE eventClass = ? AND cooldownKey = ? AND firedAt >= ?` queries even with millions of rows.
+The discriminator is a `VARCHAR(191)` column with a composite index on `(eventClass, cooldownKey, firedAt)`, fast `WHERE eventClass = ? AND cooldownKey = ? AND firedAt >= ?` queries even with millions of rows.
 
 ## Retention
 
@@ -69,7 +69,7 @@ WHERE firedAt < NOW() - INTERVAL <retentionDays> DAY
 
 Default retention is 30 days. Configure via the `alertCooldownRetentionDays` plugin setting (or leave at the default).
 
-Older rows don't affect correctness — the `shouldFire()` query only looks at the most-recent fire within the window. Retention is purely a table-size guard.
+Older rows don't affect correctness: the `shouldFire()` query only looks at the most-recent fire within the window. Retention is purely a table-size guard.
 
 ## Registering a custom alert
 
@@ -115,7 +115,7 @@ No:
 
 ## Inspecting cooldown state
 
-The compliance dashboard's **Activity in last 24h** section surfaces cooldown fires grouped by event class — see [Compliance Dashboard](./compliance-dashboard.md).
+The compliance dashboard's **Activity in last 24h** section surfaces cooldown fires grouped by event class; see [Compliance Dashboard](./compliance-dashboard.md).
 
 For ad-hoc inspection from the CLI:
 
@@ -146,12 +146,12 @@ Event::on(
 );
 ```
 
-The event captures every fire (`shouldFire() === true`); cooldown skips (`shouldFire() === false`) don't fire an event — the absence of a fire is the signal.
+The event captures every fire (`shouldFire() === true`); cooldown skips (`shouldFire() === false`) don't fire an event: the absence of a fire is the signal.
 
 ## See also
 
-- [Notifications](./notifications.md) — the primary consumer of cooldowns for email dedup.
-- [SIEM forwarders](./siem-forwarders.md) — uses cooldowns for retry backoff.
-- [Webhooks](./webhooks.md) — uses cooldowns for retry backoff.
-- [Compliance Dashboard](./compliance-dashboard.md) — surfaces cooldown activity for operators.
-- [Events](../reference/events.md) — `EVENT_ALERT_COOLDOWN_FIRED` payload and example listeners.
+- [Notifications](./notifications.md): the primary consumer of cooldowns for email dedup.
+- [SIEM forwarders](./siem-forwarders.md): uses cooldowns for retry backoff.
+- [Webhooks](./webhooks.md): uses cooldowns for retry backoff.
+- [Compliance Dashboard](./compliance-dashboard.md): surfaces cooldown activity for operators.
+- [Events](../reference/events.md): `EVENT_ALERT_COOLDOWN_FIRED` payload and example listeners.

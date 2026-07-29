@@ -115,7 +115,7 @@ class ScanInactiveAccountsJob extends BaseBatchedJob implements RetryableJobInte
     {
         if (!PasswordPolicy::$plugin->getIsPro()) {
             PasswordPolicy::$plugin->log(
-                'ScanInactiveAccountsJob skipped — inactive-account handling requires the Pro edition.',
+                'ScanInactiveAccountsJob skipped: inactive-account handling requires the Pro edition.',
             );
 
             return;
@@ -123,7 +123,7 @@ class ScanInactiveAccountsJob extends BaseBatchedJob implements RetryableJobInte
 
         if (!PasswordPolicy::$plugin->getSettings()->inactiveAccountsEnabled) {
             PasswordPolicy::$plugin->log(
-                'ScanInactiveAccountsJob skipped — inactive-account handling is disabled.',
+                'ScanInactiveAccountsJob skipped: inactive-account handling is disabled.',
             );
 
             return;

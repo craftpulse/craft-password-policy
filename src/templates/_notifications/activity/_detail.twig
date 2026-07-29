@@ -72,7 +72,7 @@
                         <th scope="row">{{ 'Re-sent from'|t('password-policy') }}</th>
                         <td>
                             <a href="{{ cpUrl('password-policy/notifications/activity/' ~ resentFrom.id) }}">
-                                #{{ resentFrom.id }} — {{ resentFrom.sentAt|datetime('short') }}
+                                #{{ resentFrom.id }}, {{ resentFrom.sentAt|datetime('short') }}
                             </a>
                         </td>
                     </tr>
@@ -119,7 +119,7 @@
         <div class="pane mt-l">
             <h2>{{ 'Actions'|t('password-policy') }}</h2>
             <p class="light">
-                {{ 'Resend re-renders the template fresh from current state — if the template was edited since the original send, the new copy reflects those edits. The new row links back to this one.'|t('password-policy') }}
+                {{ 'Resend re-renders the template fresh from current state. If the template was edited since the original send, the new copy reflects those edits. The new row links back to this one.'|t('password-policy') }}
             </p>
 
             <form method="post" accept-charset="UTF-8">

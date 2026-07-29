@@ -1114,7 +1114,7 @@ class PasswordPolicy extends Plugin
                     $permissions['pp:audit-export'] = [
                         'label' => Craft::t(
                             'password-policy',
-                            'Trigger audit-log exports (CP utility + CLI). Produces a downloadable file capable of leaving the host — separate from view access.',
+                            'Trigger audit-log exports (CP utility + CLI). Produces a downloadable file capable of leaving the host, separate from view access.',
                         ),
                     ];
 
@@ -1777,7 +1777,7 @@ class PasswordPolicy extends Plugin
                         . "**Format:** {{ format }}\n"
                         . "**Rows:** {{ rowCount }}\n"
                         . "**Expires:** {{ expiresAt|datetime }}\n\n"
-                        . 'The download link is one-time-use — clicking it serves the file '
+                        . 'The download link is one-time-use, so clicking it serves the file '
                         . 'and immediately invalidates the link. Re-export from the CP utility '
                         . 'or `password-policy/audit/export --queue` console command if you '
                         . 'need another copy.',
@@ -2228,7 +2228,7 @@ class PasswordPolicy extends Plugin
             return $label;
         }
 
-        return "{$label} — {$location}";
+        return "{$label}, {$location}";
     }
 
     /**

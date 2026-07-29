@@ -109,7 +109,7 @@ class ResendNotification extends ElementAction
         if ($failedCount > 0) {
             $this->setMessage(Craft::t(
                 'password-policy',
-                'Could not resend all notifications — {failed} failed, {success} succeeded, {skipped} skipped (not resendable).',
+                'Could not resend all notifications: {failed} failed, {success} succeeded, {skipped} skipped (not resendable).',
                 [
                     'failed' => $failedCount,
                     'success' => $successCount,
@@ -123,7 +123,7 @@ class ResendNotification extends ElementAction
         if ($skippedCount > 0 && $successCount === 0) {
             $this->setMessage(Craft::t(
                 'password-policy',
-                'No notifications were resendable — mailer-key sources (new device, admin alerts) need the original event payload.',
+                'No notifications were resendable. Mailer-key sources (new device, admin alerts) need the original event payload.',
             ));
 
             return false;

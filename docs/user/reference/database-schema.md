@@ -2,15 +2,15 @@
 
 Every table the plugin creates, with columns, indexes, foreign keys, and the Craft 5 element-table relationships. Useful for direct SQL access, custom integrations, debugging, and DB-administrator handoff.
 
-The schema is created by `Install.php` on fresh install and by dated migrations on upgrade. Both paths produce the same schema and are idempotent — re-running them on an existing schema is a no-op.
+The schema is created by `Install.php` on fresh install and by dated migrations on upgrade. Both paths produce the same schema and are idempotent, re-running them on an existing schema is a no-op.
 
 Current schema version: `2.11.0`.
 
 ## Element-backed tables
 
-Three tables back Craft 5 element types. Their `id` columns are foreign keys to `craft_elements.id` with FK CASCADE on element delete — Craft's element delete handles the row removal.
+Three tables back Craft 5 element types. Their `id` columns are foreign keys to `craft_elements.id` with FK CASCADE on element delete, Craft's element delete handles the row removal.
 
-### `passwordpolicy_audit_log` (Enterprise — capture is universal, index is gated)
+### `passwordpolicy_audit_log` (Enterprise: capture is universal, index is gated)
 
 Hash-chained audit rows.
 
@@ -33,17 +33,17 @@ Hash-chained audit rows.
 
 **Indexes:**
 
-- `(userId, dateCreated)` — per-user timeline queries.
-- `(event, dateCreated)` — per-event-type filters.
-- `(forwardedAt)` — SIEM forwarder's unforwarded-rows scan.
+- `(userId, dateCreated)`: per-user timeline queries.
+- `(event, dateCreated)`: per-event-type filters.
+- `(forwardedAt)`: SIEM forwarder's unforwarded-rows scan.
 
-**Element type:** `craftpulse\passwordpolicy\elements\AuditLogElement`. `canSave()` returns `false` after the initial insert — rows are append-only. Element delete is allowed (used by retention purge).
+**Element type:** `craftpulse\passwordpolicy\elements\AuditLogElement`. `canSave()` returns `false` after the initial insert: rows are append-only. Element delete is allowed (used by retention purge).
 
 See [Audit logging](../features/audit-logging.md).
 
 ### `passwordpolicy_notification_log` (Pro+; capture is universal)
 
-Activity log of every notification dispatch — success and failure.
+Activity log of every notification dispatch, success and failure.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -62,9 +62,9 @@ Activity log of every notification dispatch — success and failure.
 
 **Indexes:**
 
-- `(userId, sentAt)` — per-user timeline.
-- `(notificationType, sentAt)` — per-type metrics.
-- `(status, sentAt)` — failure investigations.
+- `(userId, sentAt)`: per-user timeline.
+- `(notificationType, sentAt)`: per-type metrics.
+- `(status, sentAt)`: failure investigations.
 
 **Element type:** `craftpulse\passwordpolicy\elements\NotificationLogElement`.
 
@@ -103,7 +103,7 @@ Junction table linking named policies to Craft user groups.
 
 **Unique index:** `(policyId, groupId)`.
 
-The group-delete cascade is intentional — when a Craft user group is deleted, its policy assignments are automatically dropped. A pre-delete observability listener captures which policies lost an assignment for audit purposes.
+The group-delete cascade is intentional, when a Craft user group is deleted, its policy assignments are automatically dropped. A pre-delete observability listener captures which policies lost an assignment for audit purposes.
 
 ### `passwordpolicy_password_history`
 
@@ -115,14 +115,14 @@ Stores bcrypt hashes of previous passwords for reuse prevention. Capture is univ
 | `userId` | int, NOT NULL | FK to `craft_users.id`, CASCADE on user delete |
 | `passwordHash` | varchar(255), NOT NULL | bcrypt (same format as Craft's `users.password`) |
 | `changeReason` | enum, nullable | `UserChange`, `AdminChange`, `AdminForceReset`, `BreachDetectedForceReset`, `ExpiryForceReset` |
-| `changedByUserId` | int, nullable | FK to `craft_users.id`, `SET NULL` — who initiated the change |
-| `changedFromIp` | varchar(45), nullable | The IP the change came from (full address — see privacy note below) |
+| `changedByUserId` | int, nullable | FK to `craft_users.id`, `SET NULL`, who initiated the change |
+| `changedFromIp` | varchar(45), nullable | The IP the change came from (full address, see privacy note below) |
 | `changedFromUserAgent` | text, nullable | UA string at change time |
 | `dateCreated`, `dateUpdated`, `uid` | Craft standard | |
 
 **Indexes:**
 
-- `(userId, dateCreated)` — per-user lookup with the latest-N retention contract.
+- `(userId, dateCreated)`: per-user lookup with the latest-N retention contract.
 
 **Privacy note:** `changedFromIp` stores the full IP because incident-response timelines need it. This is distinct from `passwordpolicy_audit_log.ipHash` which hashes the same value because the audit log is exported to SIEMs and shared with auditors. The password-history table is internal-only.
 
@@ -142,9 +142,9 @@ Common-password blocklist + custom dictionary.
 
 **Indexes:**
 
-- `(word, source)` — primary lookup path for validator queries.
-- `(source)` — bulk operations grouped by source.
-- `(policyId)` — per-policy scoping (Enterprise).
+- `(word, source)`: primary lookup path for validator queries.
+- `(source)`: bulk operations grouped by source.
+- `(policyId)`: per-policy scoping (Enterprise).
 
 The 191-character `word` column matches MySQL's `utf8mb4` index limit. The bundled list contains ~10,000 entries from SecLists.
 
@@ -162,9 +162,9 @@ Per-(notification key, site) editable email templates.
 | `content` | JSON, NOT NULL | `{ subject, body, senderName, senderEmail, replyTo, templatePath }` |
 | `dateCreated`, `dateUpdated`, `uid` | Craft standard | |
 
-**Unique index:** `(notificationKey, siteId)` — one row per key per site.
+**Unique index:** `(notificationKey, siteId)`: one row per key per site.
 
-The `content` column uses the Craft 5 elements-sites JSON-content idiom — race-free per-site editing without separate columns per field. `templatePath` is the G11 Enterprise custom-Twig-template-path key; it's nullable and ignored on non-Enterprise installs.
+The `content` column uses the Craft 5 elements-sites JSON-content idiom, race-free per-site editing without separate columns per field. `templatePath` is the G11 Enterprise custom-Twig-template-path key; it's nullable and ignored on non-Enterprise installs.
 
 See [Notifications](../features/notifications.md).
 
@@ -197,8 +197,8 @@ Per-(eventClass, cooldownKey) dedup substrate for the AlertCooldownService.
 
 **Indexes:**
 
-- `(eventClass)`, `(cooldownKey)`, `(firedAt)` — individual indexes for ad-hoc queries.
-- `(eventClass, cooldownKey, firedAt)` — composite covering the dedup hot path.
+- `(eventClass)`, `(cooldownKey)`, `(firedAt)`, individual indexes for ad-hoc queries.
+- `(eventClass, cooldownKey, firedAt)`: composite covering the dedup hot path.
 
 See [Alert cooldowns](../features/alert-cooldowns.md).
 
@@ -249,10 +249,10 @@ See [Webhooks](../features/webhooks.md).
 
 The plugin reads from Craft core tables without adding columns:
 
-- `craft_users` — `lastPasswordChangeDate`, `passwordResetRequired`, `lastLoginAttemptIp`, `invalidLoginCount`, `lockoutDate`, `admin`, and standard element columns.
-- `craft_sessions` — auth tokens for the `destroyOtherSessions` path.
-- `craft_usergroups` — referenced by `passwordpolicy_policy_groups` and the user-index condition rules.
-- `craft_sites` — referenced by `passwordpolicy_notification_templates` and the per-site template propagation.
+- `craft_users`: `lastPasswordChangeDate`, `passwordResetRequired`, `lastLoginAttemptIp`, `invalidLoginCount`, `lockoutDate`, `admin`, and standard element columns.
+- `craft_sessions`: auth tokens for the `destroyOtherSessions` path.
+- `craft_usergroups`: referenced by `passwordpolicy_policy_groups` and the user-index condition rules.
+- `craft_sites`: referenced by `passwordpolicy_notification_templates` and the per-site template propagation.
 
 ## Foreign-key drop order
 
@@ -274,20 +274,20 @@ When uninstalling the plugin or dropping tables manually, drop in reverse FK-dep
 
 ## Schema-version tracking
 
-`PasswordPolicy::$schemaVersion` is the source of truth — `2.11.0` as of release. Increment on every structural change (column add, table add, index change). Used by Craft to determine "needs craft up" state.
+`PasswordPolicy::$schemaVersion` is the source of truth, `2.11.0` as of release. Increment on every structural change (column add, table add, index change). Used by Craft to determine "needs craft up" state.
 
 ## Migration filenames
 
 Fresh installs run `Install.php` directly and don't apply the dated migrations. Upgraders apply the dated migrations in timestamp order:
 
-- `m260429_224908_UpgradeTo520Schema` — single consolidated migration for the 5.1.x → 5.2.0 baseline.
-- `m26050*` and `m26051*` — Phase G dated migrations (hash chain recompute, element conversions, FK dedup, G12 notification seeds, etc.).
+- `m260429_224908_UpgradeTo520Schema`: single consolidated migration for the 5.1.x → 5.2.0 baseline.
+- `m26050*` and `m26051*`, Phase G dated migrations (hash chain recompute, element conversions, FK dedup, G12 notification seeds, etc.).
 
 ## See also
 
-- [Audit logging](../features/audit-logging.md) — semantic detail on `passwordpolicy_audit_log`.
-- [Notifications](../features/notifications.md) — semantic detail on the notification tables.
-- [Per-Group Policies](../features/per-group-policies.md) — semantic detail on the policies tables.
-- [Blocklist](../features/blocklist.md) — semantic detail on the blocklist table.
-- [Events](./events.md) — events that fire on writes to these tables.
-- [Upgrade Guide](../operations/upgrade-from-5.1.md) — what changes in the schema on 5.1.x → 5.2.0.
+- [Audit logging](../features/audit-logging.md): semantic detail on `passwordpolicy_audit_log`.
+- [Notifications](../features/notifications.md): semantic detail on the notification tables.
+- [Per-Group Policies](../features/per-group-policies.md): semantic detail on the policies tables.
+- [Blocklist](../features/blocklist.md): semantic detail on the blocklist table.
+- [Events](./events.md): events that fire on writes to these tables.
+- [Upgrade Guide](../operations/upgrade-from-5.1.md): what changes in the schema on 5.1.x → 5.2.0.

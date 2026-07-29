@@ -70,9 +70,9 @@ class AuditController extends Controller
 
     /**
      * @var bool overwrite an existing `CRAFT_AUDIT_PII_KEY` value
-     *     during `generate-pii-key`. Without `--force`, the action
-     *     refuses to rotate — accidental rotation orphans every
-     *     historical row's `userIdentifier` correlation.
+     * during `generate-pii-key`. Without `--force`, the action refuses to
+     * rotate, because accidental rotation orphans every historical row's
+     * `userIdentifier` correlation.
      *
      * @since 5.2.0
      */
@@ -80,24 +80,24 @@ class AuditController extends Controller
 
     /**
      * @var string export format: `csv`, `jsonl`, or `json`. `csv` and
-     *     `jsonl` are the streaming-friendly formats — `jsonl` matches
-     *     the queued-job format byte-for-byte. `json` emits a single
-     *     mega-array; preserved for backwards compatibility but emits
-     *     a deprecation hint and may be removed in 5.3.
+     * `jsonl` are the streaming-friendly formats, and `jsonl` matches the
+     * queued-job format byte-for-byte. `json` emits a single mega-array;
+     * preserved for backwards compatibility but emits a deprecation hint
+     * and may be removed in 5.3.
      */
     public string $format = 'csv';
 
     /**
      * @var bool when `true`, `actionExport` enqueues an `AuditExportJob`
-     *     and writes the file to the configured filesystem (or local
-     *     `@runtime` fallback). When `false` (the default — preserved
-     *     for SIEM-piping operators), writes the export to stdout.
+     * and writes the file to the configured filesystem (or local
+     * `@runtime` fallback). When `false` (the default, preserved for
+     * SIEM-piping operators), writes the export to stdout.
      *
      * Console invocation bypasses the PERMISSION gate (shell access is
      * itself a privileged operation; CI pipelines shouldn't have to
      * authenticate as a CP admin). It does NOT bypass the EDITION gate:
      * export is the read-side exposure of the audit log and requires
-     * Enterprise in both modes — see `actionExport()`. The open-source
+     * Enterprise in both modes; see `actionExport()`. The open-source
      * `verify` / `schema` actions are the surfaces that stay fully
      * console-bypassed.
      *
@@ -106,8 +106,8 @@ class AuditController extends Controller
     public bool $queue = false;
 
     /**
-     * @var int|null start row id (inclusive) for `verify`. Unset means
-     * full-table walk from the genesis row onward — the only mode that
+     * @var int|null start row id (inclusive) for `verify`. Unset means a
+     * full-table walk from the genesis row onward, the only mode that
      * activates retention-purged-row tolerance.
      */
     public ?int $from = null;
@@ -126,7 +126,7 @@ class AuditController extends Controller
     public bool $json = false;
 
     /**
-     * @var bool suppress per-row OK lines on a clean `verify` pass — only
+     * @var bool suppress per-row OK lines on a clean `verify` pass, so only
      * the summary emits.
      */
     public bool $quiet = false;
@@ -176,7 +176,7 @@ class AuditController extends Controller
      * Generates a fresh HMAC key for audit-log PII hashing and writes
      * it to the local `.env` as `CRAFT_AUDIT_PII_KEY`.
      *
-     * The key is the HMAC secret behind {@see AuditLogService::_hashUserIdentifier()}.
+     * The key is the HMAC secret behind the audit log's user-identifier hash.
      * Operators rotate it to destroy historical-row correlation without
      * touching `securityKey` (which would also break sessions, CSRF
      * tokens, asset URLs). See `docs/user/features/audit-logging.md`
@@ -186,8 +186,8 @@ class AuditController extends Controller
      *  - Generates 32 cryptographically-random bytes via `random_bytes(32)`,
      *    hex-encoded to a 64-char string (same shape as Craft's
      *    `securityKey`).
-     *  - Writes via `Craft::$app->getConfig()->setDotEnvVar()` —
-     *    Craft's standard `.env`-mutation API.
+     *  - Writes via `Craft::$app->getConfig()->setDotEnvVar()`, Craft's
+     *    standard `.env`-mutation API.
      *  - Refuses to overwrite an existing value unless `--force` is set;
      *    accidental rotation orphans historical correlation.
      *  - Prints the new key to stdout so operators can copy it to
@@ -270,11 +270,11 @@ class AuditController extends Controller
      *
      * Two modes:
      *
-     *  - **stdout** (default) — prints rows in the requested format to
+     *  - **stdout** (default) prints rows in the requested format to
      *    stdout for secure piping to a SIEM or log aggregation system.
      *    Preserved as the default to keep the existing SIEM-piping
      *    contract intact.
-     *  - **`--queue`** — enqueues an `AuditExportJob` (G10) which
+     *  - **`--queue`** enqueues an `AuditExportJob` (G10) which
      *    writes the file to the configured filesystem (or local
      *    `@runtime` fallback) and emits a one-time-use download token
      *    on completion. Surfaces the token on stdout so CI pipelines
@@ -282,22 +282,22 @@ class AuditController extends Controller
      *
      * Format flags:
      *
-     *  - `csv` — default. Spreadsheet-friendly comma-separated rows.
-     *  - `jsonl` — newline-delimited JSON. Matches the queued-job
+     *  - `csv`: the default. Spreadsheet-friendly comma-separated rows.
+     *  - `jsonl`: newline-delimited JSON. Matches the queued-job
      *    format byte-for-byte; downstream tooling (`jq`, `pandas`,
      *    SIEM ingest) parses each line as an independent JSON
      *    document.
-     *  - `json` — single mega-array. Preserved for backwards
+     *  - `json`: a single mega-array. Preserved for backwards
      *    compatibility with the 5.2.0-alpha tooling; emits a
      *    deprecation hint and may be removed in 5.3. Use `jsonl`.
      *
      * Console invocation bypasses the `pp:audit-export` PERMISSION gate
-     * (consistent with `actionVerify` — operators with shell access
+     * (consistent with `actionVerify`, since operators with shell access
      * have already passed any meaningful gate, and CI pipelines need to
      * inspect the table without a CP user identity). It does NOT bypass
      * the EDITION gate: both the stdout and `--queue` modes require
      * Enterprise, because export is the read-side EXPOSURE of the audit
-     * log (capture is universal, exposure is gated — see
+     * log (capture is universal, exposure is gated; see
      * `project_audit_capture_principle.md`).
      *
      * @return int
@@ -392,8 +392,8 @@ class AuditController extends Controller
     }
 
     /**
-     * Emits the per-event PII allowlist registry from
-     * {@see AuditLogService::ALLOWED_DETAILS_BY_EVENT} as auditor-facing
+     * Emits the per-event PII allowlist registry from the audit log
+     * service's `ALLOWED_DETAILS_BY_EVENT` map as auditor-facing
      * static evidence: "this is what every event class is permitted to
      * log, and nothing else can land on disk."
      *
@@ -402,7 +402,7 @@ class AuditController extends Controller
      * the allowed-key arrays. Pipe to `jq` for shaped queries.
      *
      * Console-direct invocation bypasses the `pp:audit-view` permission
-     * gate (consistent with `actionVerify` — operators with shell access
+     * gate (consistent with `actionVerify`, since operators with shell access
      * have already passed any meaningful gate, and CI pipelines need to
      * inspect the registry without a CP user identity).
      *
@@ -453,35 +453,35 @@ class AuditController extends Controller
      * Walks the audit-log hash chain (G1) and reports whether every row
      * verifies against its canonical-payload SHA-256.
      *
-     * Each row's `rowHash` is recomputed via
-     * {@see AuditLogService::canonicalize()} and compared to the stored
+     * Each row's `rowHash` is recomputed via the audit log service's
+     * canonicalizer and compared to the stored
      * `rowHash`; each row's `previousHash` is compared to the prior
      * row's stored `rowHash`. The first break exits non-zero so CI
-     * pipelines can fail builds on tamper detection — the verifier does
+     * pipelines can fail builds on tamper detection. The verifier does
      * not continue past a break.
      *
      * Open-source mandate: this verifier MUST stay in the public repo,
      * fully readable, no paywall, no license check, no build artifact.
      * The credibility multiplier on the audit chain is precisely that
-     * auditors can read and run this code. Future maintainers — do not
+     * auditors can read and run this code. Future maintainers: do not
      * gate this method.
      *
-     * Hash recomputation MUST go through `AuditLogService::canonicalize()`
-     * — sharing the writer's code path is what guarantees bit-identical
-     * output. Don't inline a "fast path" verifier; drift between writer
+     * Hash recomputation MUST go through `AuditLogService::canonicalize()`,
+     * because sharing the writer's code path is what guarantees
+     * bit-identical output. Don't inline a "fast path" verifier; drift between writer
      * and verifier silently invalidates the chain.
      *
      * Permission gating (`pp:audit-verify`) is enforced at the CP-side
      * launcher (a future surface). Console-direct invocation bypasses
-     * the permission check — operators with shell access have already
+     * the permission check, since operators with shell access have already
      * passed any meaningful gate, and CI pipelines need to invoke the
      * verifier without a CP user identity.
      *
      * Exit codes:
      *
-     *  - `0` — chain valid (full or partial-with-acceptable-boundary).
-     *  - `1` — chain break detected. Names the offending row id.
-     *  - `2` — unreadable / schema drift / DB connect failure / malformed
+     *  - `0`: chain valid (full or partial-with-acceptable-boundary).
+     *  - `1`: chain break detected. Names the offending row id.
+     *  - `2`: unreadable / schema drift / DB connect failure / malformed
      *    canonical JSON. Distinct from `1` so CI can route them
      *    differently. Yii's `ExitCode` doesn't expose a `2` constant; the
      *    literal matches Unix convention for "misuse of shell builtins"

@@ -140,7 +140,7 @@ class PasswordResetFormTag extends BaseTag
     {
         if (empty($this->config['code']) || empty($this->config['userUid'])) {
             throw new InvalidArgumentException(
-                'PasswordResetFormTag requires `code` and `id` — pass them from the URL query string '
+                'PasswordResetFormTag requires `code` and `id`. Pass them from the URL query string '
                 . "(e.g. `.code(craft.app.request.queryParam('code')).id(craft.app.request.queryParam('id'))`).",
             );
         }

@@ -329,7 +329,7 @@ class PasswordFieldTag extends BaseTag
     {
         if (empty($this->config['name'])) {
             throw new InvalidArgumentException(
-                'PasswordFieldTag requires a `name` — call ->name(\'password\').',
+                'PasswordFieldTag requires a `name`. Call ->name(\'password\').',
             );
         }
     }

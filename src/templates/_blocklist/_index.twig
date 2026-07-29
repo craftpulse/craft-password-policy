@@ -63,7 +63,7 @@
             <blockquote class="note warning">
                 <p>
                     <strong>{{ "Common passwords have never been seeded on this environment."|t('password-policy') }}</strong>
-                    {{ 'Run “Update common passwords” below to populate the bundled list — until you do, no common-password matches will block password changes.'|t('password-policy') }}
+                    {{ 'Run “Update common passwords” below to populate the bundled list. Until you do, no common-password matches will block password changes.'|t('password-policy') }}
                 </p>
             </blockquote>
         {% endif %}
@@ -136,11 +136,11 @@
                 if (!input || !button || !errorEl || !noticeEl) return;
 
                 const labels = {
-                    blockedCommon: {{ "Blocked — present in the bundled common-password list."|t('password-policy')|json_encode|raw }},
-                    blockedCustom: {{ "Blocked — present in the custom list."|t('password-policy')|json_encode|raw }},
+                    blockedCommon: {{ "Blocked: present in the bundled common-password list."|t('password-policy')|json_encode|raw }},
+                    blockedCustom: {{ "Blocked: present in the custom list."|t('password-policy')|json_encode|raw }},
                     notBlocked: {{ "Not in the blocklist."|t('password-policy')|json_encode|raw }},
                     empty: {{ "Enter a word to check."|t('password-policy')|json_encode|raw }},
-                    error: {{ "Couldn't check that word — please try again."|t('password-policy')|json_encode|raw }},
+                    error: {{ "Couldn't check that word. Please try again."|t('password-policy')|json_encode|raw }},
                 };
 
                 function showError(message) {

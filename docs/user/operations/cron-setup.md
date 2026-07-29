@@ -1,6 +1,6 @@
 # Cron Setup
 
-Password Policy ships three cron-friendly console commands. This page covers the recommended production cron recipes, what each command does, and how to wire them into your existing scheduler — system cron, Laravel-style scheduler, Kubernetes CronJobs, or whatever you already use.
+Password Policy ships three cron-friendly console commands. This page covers the recommended production cron recipes, what each command does, and how to wire them into your existing scheduler, system cron, Laravel-style scheduler, Kubernetes CronJobs, or whatever you already use.
 
 ## Recommended production cron
 
@@ -28,18 +28,18 @@ Adjust the times for your timezone and infrastructure preferences. The order is:
 
 ## Why each command needs cron
 
-### `password-policy/gc/run` — retention enforcement
+### `password-policy/gc/run`: retention enforcement
 
-Without this cron, retention windows are advisory only. The plugin captures rows on every event but doesn't auto-prune — that's a separate cron-driven cleanup step. Compliance frameworks generally treat retention as a documented + enforced policy; running the GC nightly produces the actual enforcement.
+Without this cron, retention windows are advisory only. The plugin captures rows on every event but doesn't auto-prune, that's a separate cron-driven cleanup step. Compliance frameworks generally treat retention as a documented + enforced policy; running the GC nightly produces the actual enforcement.
 
 Tables pruned:
 
-- `passwordpolicy_password_history` — beyond `passwordHistoryCount` per user AND older than `passwordHistoryExpiryDays`.
-- `passwordpolicy_notification_log` — older than `notificationLogRetentionDays`.
-- `passwordpolicy_alert_cooldowns` — older than `alertCooldownRetentionDays` (default 30 days).
-- `passwordpolicy_audit_log` — older than `auditLogRetentionDays` (default 365 days).
+- `passwordpolicy_password_history`: beyond `passwordHistoryCount` per user AND older than `passwordHistoryExpiryDays`.
+- `passwordpolicy_notification_log`: older than `notificationLogRetentionDays`.
+- `passwordpolicy_alert_cooldowns`: older than `alertCooldownRetentionDays` (default 30 days).
+- `passwordpolicy_audit_log`: older than `auditLogRetentionDays` (default 365 days).
 
-The command reports per-table purge counts on stdout — pipe to a log file if you want auditable retention records:
+The command reports per-table purge counts on stdout, pipe to a log file if you want auditable retention records:
 
 ```cron
 0 2 * * * cd /path/to/project && ./craft password-policy/gc/run >> /var/log/pp-gc.log 2>&1
@@ -47,22 +47,22 @@ The command reports per-table purge counts on stdout — pipe to a log file if y
 
 See [GC and retention](./gc-and-retention.md) for the per-table retention configuration.
 
-### `password-policy/notification/send-expiry-reminders` — proactive reminders
+### `password-policy/notification/send-expiry-reminders`: proactive reminders
 
-Sends reminder emails to users whose passwords expire within the configured window (`expiryReminderDays`, default 14). Without this cron, expiry reminders never fire — passwords expire silently, and users see the "your password has expired" prompt only on their next login attempt.
+Sends reminder emails to users whose passwords expire within the configured window (`expiryReminderDays`, default 14). Without this cron, expiry reminders never fire, passwords expire silently, and users see the "your password has expired" prompt only on their next login attempt.
 
 The command enqueues `SendPasswordExpiryRemindersJob` (a `BaseBatchedJob`) which recomputes its recipient set per batch for natural retry idempotency. Runs on every edition since 5.2.0.
 
 For installs with very large user bases (>100k users with expiry enabled), tune the batch size via the `expiryReminderBatchSize` setting.
 
-### `password-policy/audit/verify --from=yesterday` — daily chain check
+### `password-policy/audit/verify --from=yesterday`: daily chain check
 
-Enterprise-only. Walks yesterday's audit rows and recomputes each row's `rowHash`, comparing against the stored value. Non-zero exit code means the chain broke somewhere in yesterday's window — an alertable event.
+Enterprise-only. Walks yesterday's audit rows and recomputes each row's `rowHash`, comparing against the stored value. Non-zero exit code means the chain broke somewhere in yesterday's window: an alertable event.
 
 Daily incremental verification + monthly full-chain verification gives you:
 
-- **Daily detection** — tampering visible within 24 hours.
-- **Monthly attestation** — periodic proof-of-integrity for the entire chain, useful for evidence packages.
+- **Daily detection**: tampering visible within 24 hours.
+- **Monthly attestation**: periodic proof-of-integrity for the entire chain, useful for evidence packages.
 
 See [Audit verifier](../features/audit-verifier.md) for the verifier's output format + JSON shape.
 
@@ -94,7 +94,7 @@ hooks:
     - exec: "echo '0 2 * * * /var/www/html && /var/www/html/craft password-policy/gc/run' | crontab -"
 ```
 
-Most DDEV users don't need cron locally — exercise the commands manually when testing.
+Most DDEV users don't need cron locally, exercise the commands manually when testing.
 
 ### Forge / Ploi / Cleavr
 
@@ -149,9 +149,9 @@ The verifier command's non-zero exit code is an alertable event. Pipe to your lo
 0 3 * * * cd /path/to/project && ./craft password-policy/audit/verify --json --from=$(date -d yesterday +%Y-%m-%d) >> /var/log/pp-audit-verify.log 2>&1
 ```
 
-Forward `/var/log/pp-audit-verify.log` to your monitoring stack. A non-zero exit code is **the** signal — the only normal day-to-day reason for non-zero is chain tampering or a disk error.
+Forward `/var/log/pp-audit-verify.log` to your monitoring stack. A non-zero exit code is **the** signal: the only normal day-to-day reason for non-zero is chain tampering or a disk error.
 
-For the GC command, monitoring is less critical — non-zero usually means a transient DB lock or a misconfigured retention setting. The command logs to `password-policy-*.log` on its own; alerting on that file's content is sufficient.
+For the GC command, monitoring is less critical, non-zero usually means a transient DB lock or a misconfigured retention setting. The command logs to `password-policy-*.log` on its own; alerting on that file's content is sufficient.
 
 For expiry reminders, the queue's own observability (Craft's Utilities → Queue Manager, or whatever queue runner you use) covers the operational visibility.
 
@@ -174,12 +174,12 @@ These commands surface metadata that the compliance dashboard's **Retention** an
 
 ## Crontab vs the GC hook
 
-In addition to the console commands above, the plugin attaches to Craft's `Gc::EVENT_RUN` event — the same hook Craft uses for its own user/session/entry cleanup. This means a Craft-driven GC pass (e.g. via `./craft gc`) also runs the plugin's retention logic.
+In addition to the console commands above, the plugin attaches to Craft's `Gc::EVENT_RUN` event: the same hook Craft uses for its own user/session/entry cleanup. This means a Craft-driven GC pass (e.g. via `./craft gc`) also runs the plugin's retention logic.
 
 That's a backup mechanism, not a primary one. **For production, use the explicit cron**:
 
 - The GC hook fires only when Craft's own GC fires. Low-traffic sites can go days without one.
-- The hook runs on every Craft GC trigger — including ad-hoc CLI runs that the operator might not intend to drive retention.
+- The hook runs on every Craft GC trigger: including ad-hoc CLI runs that the operator might not intend to drive retention.
 - The cron gives you a predictable retention schedule that auditors can verify against.
 
 > ::: warning Don't say "pruning is automatic"
@@ -188,7 +188,7 @@ That's a backup mechanism, not a primary one. **For production, use the explicit
 
 ## See also
 
-- [GC and retention](./gc-and-retention.md) — per-table retention configuration.
-- [Audit verifier](../features/audit-verifier.md) — verifier output + JSON shape.
-- [Notifications](../features/notifications.md) — expiry reminder template + tokens.
-- [Compliance frameworks](./compliance-frameworks.md) — retention requirements per framework.
+- [GC and retention](./gc-and-retention.md): per-table retention configuration.
+- [Audit verifier](../features/audit-verifier.md): verifier output + JSON shape.
+- [Notifications](../features/notifications.md): expiry reminder template + tokens.
+- [Compliance frameworks](./compliance-frameworks.md): retention requirements per framework.

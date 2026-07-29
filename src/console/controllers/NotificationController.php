@@ -20,7 +20,7 @@ use yii\console\ExitCode;
  * Class NotificationController
  *
  * Console commands for queueing notification work. Universal across
- * editions since 5.2.0 — Lite operators wire `send-expiry-reminders`
+ * editions since 5.2.0: Lite operators wire `send-expiry-reminders`
  * to cron and get the seeded `expiry-reminder` template rendered; Pro
  * operators get whatever their Notification Templates editor wrote.
  *
@@ -66,7 +66,7 @@ class NotificationController extends Controller
      * to every eligible user (or just the user passed via `--user=<id>`).
      *
      * The job recomputes its recipient set per batch via the batcher's
-     * `getSlice()` so retries are naturally idempotent — already-notified
+     * `getSlice()` so retries are naturally idempotent, and already-notified
      * users drop out via the dedup subquery.
      *
      * Universal across editions since 5.2.0. Lite operators can wire

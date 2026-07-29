@@ -65,7 +65,7 @@ class RotateWebhookSecretJob extends BaseJob
     {
         if (!PasswordPolicy::$plugin->getIsEnterprise()) {
             Craft::warning(
-                'RotateWebhookSecretJob skipped — webhook secret rotation requires the Enterprise edition.',
+                'RotateWebhookSecretJob skipped: webhook secret rotation requires the Enterprise edition.',
                 'password-policy',
             );
 

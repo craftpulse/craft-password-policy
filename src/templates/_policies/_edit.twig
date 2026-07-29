@@ -203,9 +203,9 @@
 
     {# ----- Boolean override table (off / global / on) ----- #}
 
-    {% set offTitle = 'Override off — this rule will not apply to assigned groups.'|t('password-policy') %}
+    {% set offTitle = 'Override off: this rule will not apply to assigned groups.'|t('password-policy') %}
     {% set globalTitle = 'Inherit from global setting (currently {value}).'|t('password-policy') %}
-    {% set onTitle = 'Override on — this rule will apply to assigned groups.'|t('password-policy') %}
+    {% set onTitle = 'Override on: this rule will apply to assigned groups.'|t('password-policy') %}
 
     {% set rulesTable %}
         <div class="pane" id="pp-rules-pane">

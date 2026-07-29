@@ -110,7 +110,7 @@ class SiemForwardJob extends BaseBatchedJob implements RetryableJobInterface
     {
         if (!PasswordPolicy::$plugin->getIsEnterprise()) {
             Craft::warning(
-                'SiemForwardJob skipped — SIEM forwarding requires the Enterprise edition.',
+                'SiemForwardJob skipped: SIEM forwarding requires the Enterprise edition.',
                 'password-policy',
             );
 

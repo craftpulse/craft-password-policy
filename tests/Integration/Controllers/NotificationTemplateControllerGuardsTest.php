@@ -187,7 +187,7 @@ it('actionTestSend failure path returns a static message, not the exception', fu
     $message = (string)($data['message'] ?? '');
 
     // The static breadcrumb must be present.
-    expect($message)->toContain('see the password-policy log');
+    expect($message)->toContain('See the password-policy log');
 
     // The exception detail (Symfony Mime error string) must NOT leak
     // through. Common phrases from the Symfony Mime stack are excluded

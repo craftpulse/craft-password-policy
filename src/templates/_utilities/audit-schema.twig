@@ -22,7 +22,7 @@
 
 <blockquote class="note">
     <p>
-        {{ 'Every event class fired into the audit log is permitted exactly the detail keys listed below — anything outside this allowlist is stripped before the row is written. An event class without a registry entry drops the row entirely (fail-closed) and emits a warning on the password-policy log channel.'|t('password-policy') }}
+        {{ 'Every event class fired into the audit log is permitted exactly the detail keys listed below, and anything outside this allowlist is stripped before the row is written. An event class without a registry entry drops the row entirely (fail-closed) and emits a warning on the password-policy log channel.'|t('password-policy') }}
     </p>
     <p>
         {{ 'This contract lives in `AuditLogService::ALLOWED_DETAILS_BY_EVENT`. Changes are version-controlled and CI-enforced.'|t('password-policy') }}

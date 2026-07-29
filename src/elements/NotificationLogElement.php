@@ -502,7 +502,7 @@ class NotificationLogElement extends Element
         $type = $this->notificationType ?? Craft::t('password-policy', 'notification');
         $date = $this->sentAt?->format('Y-m-d H:i') ?? '';
 
-        return trim("{$type} — {$date}");
+        return trim("{$type}, {$date}");
     }
 
     /**

@@ -24,7 +24,7 @@ use yii\console\ExitCode;
  * single batched job that flags / notifies / suspends accounts past the
  * inactivity threshold according to the configured `inactiveAction`.
  *
- * The scan is OPERATOR-SCHEDULED, not automatic — wiring
+ * The scan is OPERATOR-SCHEDULED, not automatic. Wiring
  * `password-policy/inactive/scan` to cron is the recommended production
  * setup (see `feedback_retention_gc_framing`). The plugin never runs it
  * implicitly.
@@ -32,8 +32,8 @@ use yii\console\ExitCode;
  * Edition gate (console convention → graceful skip, per
  * `feedback_edition_gate_convention`): on a sub-Pro install the command
  * writes to stderr and returns `ExitCode::UNSPECIFIED_ERROR` WITHOUT
- * throwing — a throw would crash the command rather than surface a clean
- * non-zero exit a cron wrapper can act on.
+ * throwing, because a throw would crash the command rather than surface a
+ * clean non-zero exit a cron wrapper can act on.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -51,9 +51,9 @@ class InactiveController extends Controller
 
     /**
      * @var string|null override the configured `inactiveAction`
-     *     (`report` | `notify` | `suspend`). Exposed as the `--mode` flag
-     *     rather than `--action` because `action` collides with the base
-     *     `yii\base\Controller::$action` property.
+     * (`report` | `notify` | `suspend`). Exposed as the `--mode` flag
+     * rather than `--action` because `action` collides with the base
+     * `yii\base\Controller::$action` property.
      */
     public ?string $mode = null;
 

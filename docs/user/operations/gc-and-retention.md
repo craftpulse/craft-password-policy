@@ -1,6 +1,6 @@
 # Garbage Collection and Retention
 
-Password Policy keeps four retention-managed datasets — password history (every edition), notification log (Pro+), alert cooldowns (every edition), and audit log (Enterprise). This page covers how those tables are pruned, what the recommended production setup is, and which retention windows are configurable.
+Password Policy keeps four retention-managed datasets, password history (every edition), notification log (Pro+), alert cooldowns (every edition), and audit log (Enterprise). This page covers how those tables are pruned, what the recommended production setup is, and which retention windows are configurable.
 
 For production cron recipes including the audit verifier, see [Cron setup](./cron-setup.md).
 
@@ -16,14 +16,14 @@ For production cron recipes including the audit verifier, see [Cron setup](./cro
 The audit log retention default of 365 days satisfies PCI DSS v4.0.1 §10.5.1's "at least 12 months" requirement exactly.
 
 > ::: tip Retention is a hard delete on every table
-> No soft-delete via `dateDeleted`. Compliance frameworks require retention windows actually remove the data, not just hide it. The verifier CLI tolerates this — it walks the surviving rows and verifies the chain among them. See [Audit verifier → Retention-purge tolerance](../features/audit-verifier.md#retention-purge-tolerance).
+> No soft-delete via `dateDeleted`. Compliance frameworks require retention windows actually remove the data, not just hide it. The verifier CLI tolerates this: it walks the surviving rows and verifies the chain among them. See [Audit verifier → Retention-purge tolerance](../features/audit-verifier.md#retention-purge-tolerance).
 > :::
 
 ## Two mechanisms
 
-The plugin offers two retention mechanisms — the cron is **the** recommended production setup; the GC hook is a best-effort fallback.
+The plugin offers two retention mechanisms: the cron is **the** recommended production setup; the GC hook is a best-effort fallback.
 
-### Console command (`password-policy/gc/run`) — recommended
+### Console command (`password-policy/gc/run`): recommended
 
 Deterministic cleanup. Schedule via cron for guaranteed retention compliance:
 
@@ -32,7 +32,7 @@ Deterministic cleanup. Schedule via cron for guaranteed retention compliance:
 0 2 * * * cd /path/to/project && ./craft password-policy/gc/run
 ```
 
-The command reports per-table purge counts on stdout — pipe to a log file for auditable retention records:
+The command reports per-table purge counts on stdout, pipe to a log file for auditable retention records:
 
 ```cron
 0 2 * * * cd /path/to/project && ./craft password-policy/gc/run >> /var/log/pp-gc.log 2>&1
@@ -42,7 +42,7 @@ The command reports per-table purge counts on stdout — pipe to a log file for 
 > The framing "pruning is automatic" implies operator-free retention. The reality: the cron is the enforcement mechanism. Documentation, marketing copy, and compliance attestations should describe the cron as the production setup, not as an edge case.
 > :::
 
-### Craft GC hook (`Gc::EVENT_RUN`) — fallback
+### Craft GC hook (`Gc::EVENT_RUN`): fallback
 
 The plugin attaches to Craft's own GC event so a `./craft gc` invocation (or Craft's probabilistic-trigger GC) also runs the plugin's retention. Useful for dev environments + emergency cleanup; not a substitute for the cron in production.
 
@@ -51,7 +51,7 @@ The hook fires:
 - When Craft's own GC trigger fires (probabilistic, configurable via `gcProbability` in `config/general.php`).
 - When an operator runs `./craft gc` explicitly.
 
-On low-traffic sites — exactly the kind that run compliance-grade password policies — the probabilistic GC may fire weeks apart. Retention periods become approximate when this is the only mechanism. Always configure the cron.
+On low-traffic sites (exactly the kind that run compliance-grade password policies) the probabilistic GC may fire weeks apart. Retention periods become approximate when this is the only mechanism. Always configure the cron.
 
 ## Configuration
 
@@ -82,7 +82,7 @@ return [
 For longer-than-default retention (e.g. a 7-year audit trail for finance-sector compliance):
 
 1. Bump `auditLogRetentionDays` to your target (e.g. `2555` for 7 years).
-2. Provision additional database storage — at 100k events/year on a busy site, 7 years is ~700k rows.
+2. Provision additional database storage: at 100k events/year on a busy site, 7 years is ~700k rows.
 3. Verify the chain stays performant: `./craft password-policy/audit/verify --json` on the full chain at month-end as a benchmark.
 
 For installs needing longer retention than the database can comfortably hold, combine a shorter live retention with periodic archival via [Audit export](../features/audit-export.md):
@@ -100,7 +100,7 @@ Auditors asking "show me that audit data is actually deleted after 365 days":
 3. Show the compliance dashboard's **Retention** section with the projected next-prune date.
 4. Show the `auditLogRetentionDays` value in project config.
 
-Combined, this demonstrates a documented + enforced retention policy — the standard ask under PCI DSS §10.5.1, GDPR Art. 5(1)(e), ISO 27002:2022 A.5.33.
+Combined, this demonstrates a documented + enforced retention policy: the standard ask under PCI DSS §10.5.1, GDPR Art. 5(1)(e), ISO 27002:2022 A.5.33.
 
 ## Migration impact
 
@@ -116,8 +116,8 @@ Reports what *would* be deleted without making changes. Useful for validating th
 
 ## See also
 
-- [Cron setup](./cron-setup.md) — full production cron recipes including audit verification.
-- [Audit logging → Retention](../features/audit-logging.md#retention) — audit-log-specific retention details.
-- [Notifications → Retention](../features/notifications.md#retention) — notification-log retention details.
-- [Compliance frameworks](./compliance-frameworks.md) — per-framework retention clauses.
-- [Audit export](../features/audit-export.md) — archive workflows for longer-than-DB retention.
+- [Cron setup](./cron-setup.md): full production cron recipes including audit verification.
+- [Audit logging → Retention](../features/audit-logging.md#retention): audit-log-specific retention details.
+- [Notifications → Retention](../features/notifications.md#retention): notification-log retention details.
+- [Compliance frameworks](./compliance-frameworks.md): per-framework retention clauses.
+- [Audit export](../features/audit-export.md): archive workflows for longer-than-DB retention.

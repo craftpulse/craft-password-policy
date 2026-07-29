@@ -1,8 +1,8 @@
 # SIEM Forwarders (Enterprise)
 
-Enterprise installs can forward every audit row to one or more SIEM endpoints — Splunk HEC, Datadog Logs, generic syslog-over-TLS receivers (Graylog, IBM QRadar, rsyslog, syslog-ng), or any HTTP-based ingestion path. The forwarder ships TLS by default, an HMAC-signed delivery model, a per-endpoint circuit breaker, and at-least-once delivery semantics.
+Enterprise installs can forward every audit row to one or more SIEM endpoints: Splunk HEC, Datadog Logs, generic syslog-over-TLS receivers (Graylog, IBM QRadar, rsyslog, syslog-ng), or any HTTP-based ingestion path. The forwarder ships TLS by default, an HMAC-signed delivery model, a per-endpoint circuit breaker, and at-least-once delivery semantics.
 
-> 📷 *Screenshot: Forwarders index page showing three configured forwarders — "Splunk Production" (green-status), "Datadog Logs" (green-status), "Graylog Backup" (amber-status with "Circuit open: 3 consecutive failures"). Each row shows endpoint URL, protocol, last-delivery timestamp, and consecutive-failure count.*
+> 📷 *Screenshot: Forwarders index page showing three configured forwarders, "Splunk Production" (green-status), "Datadog Logs" (green-status), "Graylog Backup" (amber-status with "Circuit open: 3 consecutive failures"). Each row shows endpoint URL, protocol, last-delivery timestamp, and consecutive-failure count.*
 
 This page covers configuring forwarders, the supported protocols, the at-least-once delivery model, the circuit breaker, the audit-row format on the wire, and troubleshooting common issues.
 
@@ -13,7 +13,7 @@ This page covers configuring forwarders, the supported protocols, the at-least-o
 3. Configure the destination URL + auth headers (for HTTP) or host + port (for syslog).
 4. Save. The first audit-row write after save triggers a forwarder run that delivers the unforwarded backlog.
 
-The forwarder works on a watermark model — every audit row tracks whether it's been delivered (`forwardedAt` column). New rows are delivered on the next forwarder run; backlogs are caught up automatically.
+The forwarder works on a watermark model: every audit row tracks whether it's been delivered (`forwardedAt` column). New rows are delivered on the next forwarder run; backlogs are caught up automatically.
 
 ## Supported protocols
 
@@ -29,7 +29,7 @@ The native protocol for traditional SIEMs. RFC 5424 framing over a TLS socket on
 | Facility | No (defaults to `local0`) | `local0` … `local7` |
 | Hostname identifier | No (defaults to `gethostname()`) | `craft-prod` |
 
-The TLS connection uses Craft's default trust store unless you set a custom CA bundle. The plugin enforces `verify_peer => true` and `verify_peer_name => true` — disabling peer verification requires editing the service code, intentionally.
+The TLS connection uses Craft's default trust store unless you set a custom CA bundle. The plugin enforces `verify_peer => true` and `verify_peer_name => true`, disabling peer verification requires editing the service code, intentionally.
 
 Compatible with rsyslog, syslog-ng, Graylog (via the GELF TLS input), IBM QRadar, and any SIEM that accepts RFC 5424 messages over TLS.
 
@@ -49,7 +49,7 @@ The HTTP destination uses Guzzle with `verify => true` enforced at the request s
 
 ## Supported destinations
 
-The wire format is the same across destinations — only the transport class (syslog-tls vs HTTP) and the auth/header config differ. Buyers searching by name:
+The wire format is the same across destinations; only the transport class (syslog-tls vs HTTP) and the auth/header config differ. Buyers searching by name:
 
 ### Splunk HEC (HTTP Event Collector)
 
@@ -84,7 +84,7 @@ Any platform that accepts JSON over POST with configurable headers works through
 - Fluentd HTTP input
 - Custom internal ingestion endpoints
 
-Point the URL + configure the headers — the rest is transparent.
+Point the URL + configure the headers: the rest is transparent.
 
 ### Graylog, rsyslog, syslog-ng, IBM QRadar
 
@@ -146,12 +146,12 @@ The plugin uses a watermark model with at-least-once-to-one semantics across mul
 1. The `forwardedAt` column on each audit row is `NULL` when the row hasn't been delivered to any endpoint.
 2. `SiemForwardJob` (a `BaseBatchedJob`) reads unforwarded rows in batches of 100 from `UnforwardedAuditRowBatcher`.
 3. For each row, the job attempts delivery to every configured endpoint in sequence.
-4. The row counts as **forwarded** the moment ONE endpoint returns success — `forwardedAt` is stamped.
+4. The row counts as **forwarded** the moment ONE endpoint returns success, at which point `forwardedAt` is stamped.
 5. Failed endpoints retry on the next forwarder run; the row's `forwardedAt` doesn't roll back.
 
-The trade-off: a SIEM that's slow to come back online will miss some events while it's down. Operators running redundant SIEMs (Splunk + a secondary Graylog as cold backup) accept this — the primary captures everything; the cold backup may have gaps during the primary's downtime windows.
+The trade-off: a SIEM that's slow to come back online will miss some events while it's down. Operators running redundant SIEMs (Splunk + a secondary Graylog as cold backup) accept this: the primary captures everything; the cold backup may have gaps during the primary's downtime windows.
 
-For per-endpoint at-least-once delivery (every endpoint receives every row independently), use [Webhooks](./webhooks.md) instead — webhook endpoints use a per-endpoint watermark via `lastDeliveredRowId`.
+For per-endpoint at-least-once delivery (every endpoint receives every row independently), use [Webhooks](./webhooks.md) instead: webhook endpoints use a per-endpoint watermark via `lastDeliveredRowId`.
 
 ## Circuit breaker
 
@@ -163,7 +163,7 @@ Each forwarder has a per-endpoint circuit breaker to prevent cascading failures 
 
 Circuit state is durably stored in the `siem_forwarders` table (`consecutiveFailures` + `circuitOpenAt` columns) so a cache flush doesn't reset the breaker.
 
-The dashboard's **Pending SIEM forwarding** section surfaces broken circuits with the oldest-pending-row age — operators can spot a stuck forwarder before the backlog grows.
+The dashboard's **Pending SIEM forwarding** section surfaces broken circuits with the oldest-pending-row age: operators can spot a stuck forwarder before the backlog grows.
 
 ## CP management
 
@@ -182,14 +182,14 @@ The dashboard's **Pending SIEM forwarding** section surfaces broken circuits wit
 
 Two tabs:
 
-- **Configuration** — protocol-specific fields (URL, headers for HTTP; host, port, CA bundle for syslog-tls).
-- **Test event** — a button that sends a synthetic audit row to the endpoint and surfaces the response inline. Useful for validating credentials/connectivity without waiting for real audit traffic.
+- **Configuration**: protocol-specific fields (URL, headers for HTTP; host, port, CA bundle for syslog-tls).
+- **Test event**: a button that sends a synthetic audit row to the endpoint and surfaces the response inline. Useful for validating credentials/connectivity without waiting for real audit traffic.
 
-> 📷 *Screenshot: Forwarder edit screen on Configuration tab — Splunk HEC URL field, custom-headers textarea showing the Authorization header, the Test event button at the bottom with an "Awaiting test" state.*
+> 📷 *Screenshot: Forwarder edit screen on Configuration tab, Splunk HEC URL field, custom-headers textarea showing the Authorization header, the Test event button at the bottom with an "Awaiting test" state.*
 
 ### Reset circuit
 
-Each forwarder with an open circuit gets a **Reset circuit** action on the index. Clicking it manually closes the breaker — useful after fixing the underlying issue on the SIEM side.
+Each forwarder with an open circuit gets a **Reset circuit** action on the index. Clicking it manually closes the breaker, which is useful after fixing the underlying issue on the SIEM side.
 
 ## Console commands
 
@@ -216,10 +216,10 @@ Each forwarder with an open circuit gets a **Reset circuit** action on the index
 
 The forwarder is stuck. Check:
 
-1. **Circuit state** on the forwarder index — is the circuit open?
-2. **Endpoint URL** — does the URL still resolve? Manual `curl` from the Craft host.
-3. **Auth credentials** — has the SIEM rotated tokens? Click **Test event** on the edit screen.
-4. **TLS bundle** — for syslog-tls forwarders, has the SIEM rotated its certificate? Update the CA bundle path.
+1. **Circuit state** on the forwarder index: is the circuit open?
+2. **Endpoint URL**: does the URL still resolve? Manual `curl` from the Craft host.
+3. **Auth credentials**: has the SIEM rotated tokens? Click **Test event** on the edit screen.
+4. **TLS bundle**: for syslog-tls forwarders, has the SIEM rotated its certificate? Update the CA bundle path.
 
 After fixing the underlying issue, click **Reset circuit** to resume delivery.
 
@@ -227,9 +227,9 @@ After fixing the underlying issue, click **Reset circuit** to resume delivery.
 
 Network-level issue. Check:
 
-1. **Firewall** — outbound traffic from Craft host to the SIEM endpoint allowed?
-2. **DNS** — does the endpoint hostname resolve from the Craft host?
-3. **Port** — is the SIEM listening on the configured port?
+1. **Firewall**: outbound traffic from Craft host to the SIEM endpoint allowed?
+2. **DNS**: does the endpoint hostname resolve from the Craft host?
+3. **Port**: is the SIEM listening on the configured port?
 
 ### Splunk HEC returns 403 "Token disabled"
 
@@ -237,12 +237,12 @@ HEC token is invalid or disabled. Generate a new token in Splunk and update the 
 
 ### Datadog API returns 413 "Request entity too large"
 
-Audit row payloads should be well under Datadog's per-event size limit (5 MB). If you're hitting this, a row's `details` JSON is likely larger than expected — check what's being captured. This is rare but worth flagging as a defensive check.
+Audit row payloads should be well under Datadog's per-event size limit (5 MB). If you're hitting this, a row's `details` JSON is likely larger than expected; check what's being captured. This is rare but worth flagging as a defensive check.
 
 ## See also
 
-- [Audit logging](./audit-logging.md) — the source of the audit rows that get forwarded.
-- [Webhooks](./webhooks.md) — alternative HMAC-signed delivery with per-endpoint at-least-once semantics.
-- [Compliance Dashboard](./compliance-dashboard.md) — Pending SIEM forwarding section + status drilldown.
-- [Audit export](./audit-export.md) — batch export to filesystem for offline analysis.
-- [Events](../reference/events.md) — `EVENT_SIEM_FORWARD_ATTEMPT` fires on every forwarder attempt for custom monitoring integrations.
+- [Audit logging](./audit-logging.md): the source of the audit rows that get forwarded.
+- [Webhooks](./webhooks.md): alternative HMAC-signed delivery with per-endpoint at-least-once semantics.
+- [Compliance Dashboard](./compliance-dashboard.md): Pending SIEM forwarding section + status drilldown.
+- [Audit export](./audit-export.md): batch export to filesystem for offline analysis.
+- [Events](../reference/events.md): `EVENT_SIEM_FORWARD_ATTEMPT` fires on every forwarder attempt for custom monitoring integrations.

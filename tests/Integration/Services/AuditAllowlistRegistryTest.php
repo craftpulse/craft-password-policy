@@ -156,7 +156,7 @@ it('logs a warning on the password-policy channel for an unregistered event', fu
 
     expect($warnings)->not->toBeEmpty();
     expect($warnings[0][0])->toContain('totally_made_up_event');
-    expect($warnings[0][0])->toContain('row dropped');
+    expect($warnings[0][0])->toContain('the row was dropped');
 });
 
 it('fires the fail-closed warning even when enableAuditLog is off', function() {
