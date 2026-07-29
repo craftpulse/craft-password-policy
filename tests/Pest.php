@@ -53,4 +53,5 @@ uses(TestCase::class)->in(
     'Integration/UserIndex',
     'Integration/Validators',
     'Integration/CraftBootstrapTest.php',
+    'Integration/TemplateSyntaxTest.php',
 );
