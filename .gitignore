@@ -5,6 +5,11 @@
 
 # COMPOSER
 /vendor
+# A plugin is a library: consumers resolve against their own project's lock, so
+# ours would only pin the author's dev tree. Tracking it also feeds every
+# transitive CVE in that tree to Dependabot as if it were the plugin's
+# dependency surface. Reproducibility lives in composer.json's constraints.
+/composer.lock
 
 # BUILD FILES
 /bower_components/*
