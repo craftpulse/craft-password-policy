@@ -13,6 +13,7 @@ namespace craftpulse\passwordpolicy\jobs;
 use Craft;
 use craft\helpers\Queue;
 use craft\queue\BaseJob;
+use craftpulse\auditkit\errors\ChainWriteRetriesExhaustedException;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use Throwable;
 
@@ -33,20 +34,10 @@ use Throwable;
  * level with the full event payload and requeued with a jittered backoff
  * delay, up to {@see MAX_REQUEUE_ATTEMPTS} times, before the event is
  * finally given up on, loudly, with the last attempt's failure in the log.
- * This is the outer layer against a chain write that still fails after
- * whatever in-transaction handling the kit's
- * {@see \craftpulse\auditkit\engine\ChainWriter} provides at the
- * currently-installed version.
- *
- * Deliberately catches `Throwable` generically rather than distinguishing a
- * specific chain-engine exception type — `craftpulse\auditkit\errors\ChainWriteRetriesExhaustedException`
- * exists only on the kit's unreleased `develop-v5` working tree, not the
- * tagged `1.0.0` this plugin's composer constraint (`^1.0.0-beta.2`)
- * actually resolves in CI. Referencing it here would pass locally against a
- * sibling checkout and fail PHPStan against the real installed version.
- * Recouple to that exception type, for a more specific log message only —
- * the requeue-with-backoff behavior is identical either way — once the kit
- * ships it in a tagged release this plugin can depend on.
+ * This is on top of {@see \craftpulse\auditkit\engine\ChainWriter}'s own
+ * bounded in-transaction retry against transient lock contention; this
+ * job's requeue is the outer layer for whatever ChainWriter's own retry
+ * budget couldn't absorb.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -129,7 +120,9 @@ class WriteAuditChainEntryJob extends BaseJob
 
     /**
      * Handles a chain-write failure: logs it at error level with the full
-     * event payload, then requeues with a jittered backoff delay, unless
+     * event payload — distinguishing a {@see ChainWriteRetriesExhaustedException}
+     * (ChainWriter's own retry budget exhausted) from any other throwable in
+     * the message — then requeues with a jittered backoff delay, unless
      * this event's requeue budget is already exhausted, in which case the
      * loss is logged loudly and final.
      *
@@ -141,13 +134,17 @@ class WriteAuditChainEntryJob extends BaseJob
      */
     private function _handleFailure(Throwable $e): void
     {
+        $reason = $e instanceof ChainWriteRetriesExhaustedException
+            ? sprintf('ChainWriter exhausted its own %d-attempt retry budget', $e->attempts)
+            : $e->getMessage();
+
         if ($this->requeueAttempt >= self::MAX_REQUEUE_ATTEMPTS) {
             Craft::error(
                 sprintf(
                     'Audit log chain write permanently failed for event "%s" after %d requeue attempt(s): %s. Payload: %s',
                     $this->data['event'] ?? 'unknown',
                     $this->requeueAttempt,
-                    $e->getMessage(),
+                    $reason,
                     json_encode($this->data),
                 ),
                 'password-policy',
@@ -164,7 +161,7 @@ class WriteAuditChainEntryJob extends BaseJob
                 $this->data['event'] ?? 'unknown',
                 $nextAttempt,
                 self::MAX_REQUEUE_ATTEMPTS,
-                $e->getMessage(),
+                $reason,
                 json_encode($this->data),
             ),
             'password-policy',

@@ -18,6 +18,7 @@
  */
 
 use craft\db\Query;
+use craftpulse\auditkit\errors\ChainWriteRetriesExhaustedException;
 use craftpulse\passwordpolicy\jobs\WriteAuditChainEntryJob;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\services\AuditLogService;
@@ -39,6 +40,52 @@ function ppPushedJobAfter(int $afterId): ?object
         ->one();
 
     return $row === false || $row === null ? null : unserialize($row['job']);
+}
+
+/**
+ * A stand-in `auditLog` component whose `writePrepared()` always fails with
+ * the given throwable, so tests can exercise the requeue-with-backoff path
+ * deterministically without needing to reproduce a genuine MySQL deadlock.
+ * Defaults to the kit's own {@see ChainWriteRetriesExhaustedException} — the
+ * real, currently-installed exception class the chain writer throws once its
+ * in-transaction retry budget is exhausted.
+ */
+function ppThrowingAuditLogService(?Throwable $throwable = null): AuditLogService
+{
+    $throwable ??= new ChainWriteRetriesExhaustedException(3, new RuntimeException('simulated deadlock'));
+
+    return new class($throwable) extends AuditLogService {
+        public function __construct(private readonly Throwable $throwable)
+        {
+            parent::__construct();
+        }
+
+        public function writePrepared(array $data): int
+        {
+            throw $this->throwable;
+        }
+    };
+}
+
+/**
+ * Returns the most recently logged message under the `password-policy`
+ * category, or null when nothing has been logged yet. Filtered by category
+ * (rather than just the last entry on the shared logger) because unrelated
+ * messages, such as the DB query a subsequent `Queue::push()` call logs, can
+ * land after the failure message this path writes.
+ */
+function ppLastLoggedMessage(): ?string
+{
+    $ppMessages = array_values(array_filter(
+        Craft::$app->getLog()->getLogger()->messages,
+        static fn(array $message): bool => $message[2] === 'password-policy',
+    ));
+
+    if ($ppMessages === []) {
+        return null;
+    }
+
+    return (string)end($ppMessages)[0];
 }
 
 // =============================================================================
@@ -79,14 +126,7 @@ it('requeues through WriteAuditChainEntryJob when an inline chain write fails, n
     $plugin = $this->plugin;
     $originalService = $plugin->getAuditLog();
 
-    $throwingService = new class extends AuditLogService {
-        public function writePrepared(array $data): int
-        {
-            throw new RuntimeException('simulated chain-write failure');
-        }
-    };
-
-    $plugin->set('auditLog', $throwingService);
+    $plugin->set('auditLog', ppThrowingAuditLogService());
 
     try {
         $id = $plugin->getAuditLog()->logEvent(
@@ -122,14 +162,7 @@ it('requeues itself with backoff when the deferred job\'s own write attempt fail
     $plugin = $this->plugin;
     $originalService = $plugin->getAuditLog();
 
-    $throwingService = new class extends AuditLogService {
-        public function writePrepared(array $data): int
-        {
-            throw new RuntimeException('simulated chain-write failure');
-        }
-    };
-
-    $plugin->set('auditLog', $throwingService);
+    $plugin->set('auditLog', ppThrowingAuditLogService());
 
     $job = new WriteAuditChainEntryJob([
         'data' => ['event' => 'test.deferred-failure', 'outcome' => 'success'],
@@ -153,14 +186,7 @@ it('increments the requeue attempt on each subsequent failure', function() {
     $plugin = $this->plugin;
     $originalService = $plugin->getAuditLog();
 
-    $throwingService = new class extends AuditLogService {
-        public function writePrepared(array $data): int
-        {
-            throw new RuntimeException('simulated chain-write failure');
-        }
-    };
-
-    $plugin->set('auditLog', $throwingService);
+    $plugin->set('auditLog', ppThrowingAuditLogService());
 
     $job = new WriteAuditChainEntryJob([
         'data' => ['event' => 'test.deferred-failure-2', 'outcome' => 'success'],
@@ -184,14 +210,7 @@ it('gives up loudly after the max requeue attempts, without requeuing again', fu
     $plugin = $this->plugin;
     $originalService = $plugin->getAuditLog();
 
-    $throwingService = new class extends AuditLogService {
-        public function writePrepared(array $data): int
-        {
-            throw new RuntimeException('simulated chain-write failure');
-        }
-    };
-
-    $plugin->set('auditLog', $throwingService);
+    $plugin->set('auditLog', ppThrowingAuditLogService());
 
     $job = new WriteAuditChainEntryJob([
         'data' => ['event' => 'test.exhausted', 'outcome' => 'success'],
@@ -205,6 +224,45 @@ it('gives up loudly after the max requeue attempts, without requeuing again', fu
     }
 
     expect(ppPushedJobAfter($this->queueHighWaterMark))->toBeNull();
+});
+
+it('distinguishes ChainWriter\'s own exhausted-retry budget in the failure log message', function() {
+    $plugin = $this->plugin;
+    $originalService = $plugin->getAuditLog();
+
+    $plugin->set('auditLog', ppThrowingAuditLogService(new ChainWriteRetriesExhaustedException(3, new RuntimeException('deadlock'))));
+
+    $job = new WriteAuditChainEntryJob([
+        'data' => ['event' => 'test.exhausted-reason', 'outcome' => 'success'],
+    ]);
+
+    try {
+        $job->execute(Craft::$app->getQueue());
+    } finally {
+        $plugin->set('auditLog', $originalService);
+    }
+
+    expect(ppLastLoggedMessage())->toContain('ChainWriter exhausted its own 3-attempt retry budget');
+});
+
+it('falls back to the raw message for a generic throwable, not the exhausted-retries wording', function() {
+    $plugin = $this->plugin;
+    $originalService = $plugin->getAuditLog();
+
+    $plugin->set('auditLog', ppThrowingAuditLogService(new RuntimeException('a plain, non-kit failure')));
+
+    $job = new WriteAuditChainEntryJob([
+        'data' => ['event' => 'test.generic-failure', 'outcome' => 'success'],
+    ]);
+
+    try {
+        $job->execute(Craft::$app->getQueue());
+    } finally {
+        $plugin->set('auditLog', $originalService);
+    }
+
+    expect(ppLastLoggedMessage())->toContain('a plain, non-kit failure');
+    expect(ppLastLoggedMessage())->not->toContain('exhausted its own');
 });
 
 it('lands the row normally through the job when the retried write eventually succeeds', function() {
