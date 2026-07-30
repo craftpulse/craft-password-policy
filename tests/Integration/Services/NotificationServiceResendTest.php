@@ -32,6 +32,7 @@ use craftpulse\passwordpolicy\elements\NotificationLogElement;
 use craftpulse\passwordpolicy\enums\NotificationStatus;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
+use craftpulse\passwordpolicy\tests\Support\MailerFixture;
 
 // =============================================================================
 // Setup
@@ -41,9 +42,15 @@ beforeEach(function() {
     $this->plugin = PasswordPolicy::$plugin;
     $this->originalEdition = $this->plugin->edition;
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
+
+    // Both the original send and the resend have to reach `status = sent`,
+    // which needs a working mailer — the test install ships none.
+    MailerFixture::pin();
 });
 
 afterEach(function() {
+    MailerFixture::restore();
+
     $this->plugin->edition = $this->originalEdition;
 });
 

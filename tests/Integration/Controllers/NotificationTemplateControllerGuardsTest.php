@@ -27,6 +27,7 @@ use craft\web\Response;
 use craftpulse\passwordpolicy\controllers\NotificationTemplateController;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
+use craftpulse\passwordpolicy\tests\Support\MailerFixture;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
 use craftpulse\passwordpolicy\tests\Support\WebRequestStub;
 use yii\web\ForbiddenHttpException;
@@ -43,11 +44,11 @@ beforeEach(function() {
     $this->originalUser = Craft::$app->getUser();
     $this->originalResponse = Craft::$app->getResponse();
 
-    // Stash mailer state so test-send tests can restore after setting up
-    // file transport + a valid `from` address for the send path.
-    $mailer = Craft::$app->getMailer();
-    $this->originalMailerFrom = $mailer->from;
-    $this->originalMailerUseFileTransport = $mailer->useFileTransport;
+    // Pin a sendable mailer for the whole file: the test install carries no
+    // `email` project config, so `Mailer::$from` is `['' => null]` and
+    // composing any message throws inside Symfony Mime. The fixture also
+    // snapshots the original state for `afterEach`.
+    MailerFixture::pin();
 
     // Pro edition — the controller's beforeAction rejects Lite outright,
     // so every test runs at Pro+ to reach the inner guards.
@@ -75,10 +76,7 @@ afterEach(function() {
     Craft::$app->set('user', $this->originalUser);
     Craft::$app->set('response', $this->originalResponse);
 
-    $mailer = Craft::$app->getMailer();
-    /** @phpstan-ignore-next-line — PHPStan narrows the property type */
-    $mailer->from = $this->originalMailerFrom;
-    $mailer->useFileTransport = $this->originalMailerUseFileTransport;
+    MailerFixture::restore();
 });
 
 // =============================================================================
@@ -156,23 +154,14 @@ it('actionTestSend failure path returns a static message, not the exception', fu
     ];
     $this->request->stubAcceptsJson = true;
 
-    // Break the mailer's `from` by clearing it AND setting useFileTransport
-    // — Symfony Mime requires a valid `from` address. The compose path
-    // throws when the test-send tries to set the recipient with no
-    // configured From.
-    $mailer = Craft::$app->getMailer();
-    $originalFrom = $mailer->from;
-    $originalUseFile = $mailer->useFileTransport;
-    $mailer->from = null;
-    $mailer->useFileTransport = true;
+    // Deliberately break the `from` the fixture pinned: Symfony Mime
+    // requires a valid sender, so the compose path throws when the
+    // test-send sets the recipient. `afterEach`'s `MailerFixture::restore()`
+    // puts the sendable state back for the next test.
+    Craft::$app->getMailer()->from = null;
 
-    try {
-        /** @var Response $response */
-        $response = runNotificationTemplateAction('test-send');
-    } finally {
-        $mailer->from = $originalFrom;
-        $mailer->useFileTransport = $originalUseFile;
-    }
+    /** @var Response $response */
+    $response = runNotificationTemplateAction('test-send');
 
     expect($response)->toBeInstanceOf(Response::class);
 
@@ -213,15 +202,6 @@ it('actionTestSend failure path returns a static message, not the exception', fu
 // distinct tokens.
 
 it('test-sends the breach-detected template (detectedAt token) without a strict-variable error', function() {
-    // Capture outgoing mail with file transport so no SMTP infrastructure is
-    // required. Pin a valid `from` address — Symfony Mime requires one when
-    // composing a message; the project config's system email may be unset in
-    // the test DB, which would cause the send to throw before the render.
-    $mailer = Craft::$app->getMailer();
-    $mailer->useFileTransport = true;
-    /** @phpstan-ignore-next-line — PHPStan narrows the property type */
-    $mailer->from = ['tests@craftpulse.test' => 'Password Policy Tests'];
-
     $this->request->stubBodyParams = [
         'notificationKey' => 'breach-detected',
         'siteId' => $this->primarySiteId,
@@ -239,12 +219,6 @@ it('test-sends the breach-detected template (detectedAt token) without a strict-
 });
 
 it('test-sends the new-device-alert template (deviceLabel / maskedIp tokens) without a strict-variable error', function() {
-    // Same file-transport + from setup as the breach-detected test.
-    $mailer = Craft::$app->getMailer();
-    $mailer->useFileTransport = true;
-    /** @phpstan-ignore-next-line — PHPStan narrows the property type */
-    $mailer->from = ['tests@craftpulse.test' => 'Password Policy Tests'];
-
     $this->request->stubBodyParams = [
         'notificationKey' => 'new-device-alert',
         'siteId' => $this->primarySiteId,
@@ -261,12 +235,6 @@ it('test-sends the new-device-alert template (deviceLabel / maskedIp tokens) wit
 });
 
 it('test-sends the admin-security-alert template (event / context tokens, no user) without a strict-variable error', function() {
-    // Same file-transport + from setup as the breach-detected test.
-    $mailer = Craft::$app->getMailer();
-    $mailer->useFileTransport = true;
-    /** @phpstan-ignore-next-line — PHPStan narrows the property type */
-    $mailer->from = ['tests@craftpulse.test' => 'Password Policy Tests'];
-
     $this->request->stubBodyParams = [
         'notificationKey' => 'admin-security-alert',
         'siteId' => $this->primarySiteId,

@@ -25,6 +25,7 @@ use craftpulse\passwordpolicy\enums\NotificationStatus;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\records\NotificationLogRecord;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
+use craftpulse\passwordpolicy\tests\Support\MailerFixture;
 
 // =============================================================================
 // Setup
@@ -34,9 +35,15 @@ beforeEach(function() {
     $this->plugin = PasswordPolicy::$plugin;
     $this->originalEdition = $this->plugin->edition;
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
+
+    // Success-path assertions need a mailer that can actually send; the
+    // test install has no `email` project config, so this is on the test.
+    MailerFixture::pin();
 });
 
 afterEach(function() {
+    MailerFixture::restore();
+
     $this->plugin->edition = $this->originalEdition;
 });
 

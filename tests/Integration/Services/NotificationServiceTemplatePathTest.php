@@ -37,6 +37,7 @@ use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\records\NotificationLogRecord;
 use craftpulse\passwordpolicy\records\NotificationTemplateRecord;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
+use craftpulse\passwordpolicy\tests\Support\MailerFixture;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
 use craftpulse\passwordpolicy\tests\Support\WebRequestStub;
 
@@ -53,9 +54,16 @@ beforeEach(function() {
 
     $this->primarySiteId = Craft::$app->getSites()->getPrimarySite()->id;
     $this->service = $this->plugin->getNotificationTemplates();
+
+    // The renderer-side tests assert `status = sent` to prove the body came
+    // from the right source, so the send itself has to succeed. The test
+    // install has no `email` project config — the fixture supplies one.
+    MailerFixture::pin();
 });
 
 afterEach(function() {
+    MailerFixture::restore();
+
     $this->plugin->edition = $this->originalEdition;
 });
 

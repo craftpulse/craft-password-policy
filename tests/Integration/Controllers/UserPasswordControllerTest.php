@@ -42,6 +42,7 @@ use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\records\UserStateRecord;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
+use craftpulse\passwordpolicy\tests\Support\MailerFixture;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
 use craftpulse\passwordpolicy\tests\Support\WebRequestStub;
 use yii\web\ForbiddenHttpException;
@@ -90,6 +91,8 @@ beforeEach(function() {
 });
 
 afterEach(function() {
+    MailerFixture::restore();
+
     Craft::$app->set('request', $this->originalRequest);
     Craft::$app->set('user', $this->originalUser);
     $this->plugin->edition = $this->originalEdition;
@@ -511,21 +514,11 @@ it('rejects when allowAdminChanges is false', function() {
 it('pins AdminForceReset pending reason on send', function() {
     $target = UserFactory::nonAdmin();
 
-    // Buffer outgoing mail so `sendPasswordResetEmail()` returns true
-    // without an SMTP transport. Mailer write target depends on the
-    // bootstrap; the test only cares about the user_state side effect
-    // and that the controller didn't 4xx.
-    $mailer = Craft::$app->getMailer();
-    $mailer->useFileTransport = true;
-    // Pin a non-null `from` name — the test bootstrap doesn't seed
-    // email config into project config, so the default `from` array
-    // can have a null `fromName` value that crashes Symfony Mime's
-    // Address constructor (typed string). The Mailer's `$from`
-    // property is documented as `User|string|array|null`; PHPStan
-    // narrows to the generic so we set via the parent BaseMailer
-    // setter to avoid re-typing the property.
-    /** @phpstan-ignore-next-line — PHPStan narrows the property type */
-    $mailer->from = ['tests@craftpulse.test' => 'Password Policy Tests'];
+    // Buffer outgoing mail and pin a valid sender so
+    // `sendPasswordResetEmail()` returns true without an SMTP transport.
+    // The fixture snapshots the previous state; `afterEach` restores it, so
+    // this test can no longer hand a working mailer to whatever runs next.
+    MailerFixture::pin();
 
     $this->request->stubBodyParams = [
         'userId' => $target->id,

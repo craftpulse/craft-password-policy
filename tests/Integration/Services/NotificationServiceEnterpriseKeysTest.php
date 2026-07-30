@@ -42,6 +42,7 @@ use craftpulse\passwordpolicy\exceptions\EditionRequiredException;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\records\NotificationLogRecord;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
+use craftpulse\passwordpolicy\tests\Support\MailerFixture;
 
 // =============================================================================
 // Setup
@@ -55,9 +56,16 @@ beforeEach(function() {
     $this->settings = $this->plugin->getSettings();
     $this->originalAdminAlertEmail = $this->settings->adminAlertEmail;
     $this->originalAdminAlertEvents = $this->settings->adminAlertEvents;
+
+    // Both dispatch paths assert `status = sent`, which needs a mailer that
+    // can send. The test install has no `email` project config, so the
+    // fixture supplies the sender + a buffered transport.
+    MailerFixture::pin();
 });
 
 afterEach(function() {
+    MailerFixture::restore();
+
     $this->plugin->edition = $this->originalEdition;
     $this->settings->adminAlertEmail = $this->originalAdminAlertEmail;
     $this->settings->adminAlertEvents = $this->originalAdminAlertEvents;
