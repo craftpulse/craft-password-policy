@@ -17,6 +17,7 @@ use craft\db\Table;
 use craft\helpers\DateTimeHelper;
 use craft\web\Controller;
 use craft\web\CpScreenResponseBehavior;
+use craftpulse\passwordpolicy\base\RequiresEditionTrait;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use Throwable;
 use yii\web\BadRequestHttpException;
@@ -56,6 +57,13 @@ use yii\web\Response;
  * summary) is fine to show. The template itself is responsible for
  * the `readOnlyNotice()` banner + disabling form controls.
  *
+ * Edition: the screen itself is universal (status and resolved policy
+ * are Lite data), but force reset is Pro. `actionIndex()` therefore
+ * carries no edition gate and instead hands the template a
+ * `showForceReset` flag, while `actionForceReset()` gates on Pro before
+ * it gates on permission — a Lite POST 404s rather than 403s, matching
+ * the hidden button.
+ *
  * @author      CraftPulse
  * @package     PasswordPolicy
  * @since       5.2.0
@@ -63,6 +71,7 @@ use yii\web\Response;
 class UserSecurityController extends Controller
 {
     use EditUserTrait;
+    use RequiresEditionTrait;
 
     // Public Properties
     // =========================================================================
@@ -122,6 +131,13 @@ class UserSecurityController extends Controller
      * Exposed as a static helper so the registration listener can gate
      * the sidebar link with the same predicate the controller's
      * `beforeAction()` enforces — single source of truth.
+     *
+     * No edition gate here: the screen is universal. Note that
+     * `pp:force-reset-passwords` only registers on Pro, so on Lite this
+     * predicate is effectively `pp:change-user-passwords` for anyone but an
+     * admin (who clears every `can()` check) and anyone holding a grant that
+     * predates a downgrade (Craft never prunes `userpermissions` rows for
+     * unregistered names).
      *
      * @return bool
      *
@@ -205,6 +221,16 @@ class UserSecurityController extends Controller
             ? $plugin->getNotificationActivity()->recentForUser($user->id)
             : [];
 
+        // Force reset is a Pro surface. Below Pro the whole Actions pane is
+        // absent (hide, never badge) — no disabled button, no upsell copy.
+        // The flag also carries the permission and the "already requested"
+        // check so the template holds no policy of its own.
+        $currentUser = Craft::$app->getUser()->getIdentity();
+        $showForceReset = $plugin->getIsPro()
+            && $currentUser !== null
+            && $currentUser->can('pp:force-reset-passwords')
+            && !$user->passwordResetRequired;
+
         /** @var Response|CpScreenResponseBehavior $response */
         $response = $this->asEditUserScreen($user, 'password-security');
 
@@ -216,6 +242,7 @@ class UserSecurityController extends Controller
             'neverChanged' => $lastChange === null,
             'notifications' => $notifications,
             'showNotifications' => $showNotifications,
+            'showForceReset' => $showForceReset,
         ]);
 
         return $response;
@@ -236,9 +263,17 @@ class UserSecurityController extends Controller
      * `password-policy/user-security/force-reset`.
      *
      * Self-gated: enforces `requirePostRequest()` +
-     * `requirePermission('pp:force-reset-passwords')` independent of
-     * the controller-wide `beforeAction()` (which only checks the
-     * union-of-permissions for tab visibility).
+     * `requireProEdition()` + `requirePermission('pp:force-reset-passwords')`
+     * independent of the controller-wide `beforeAction()` (which only
+     * checks the union-of-permissions for tab visibility).
+     *
+     * Edition before permission, deliberately. Force reset is Pro, the
+     * button that drives this POST doesn't render below Pro, and
+     * `pp:force-reset-passwords` isn't even registered there — so a Lite
+     * POST has to look like a nonexistent route (404), not like a route
+     * that exists but is denied (403). A 403 would confirm the surface
+     * the hidden button withholds. An admin on Lite hits the same 404:
+     * admins bypass permissions, never editions.
      *
      * @return Response|null
      *
@@ -253,6 +288,7 @@ class UserSecurityController extends Controller
     public function actionForceReset(): ?Response
     {
         $this->requirePostRequest();
+        $this->requireProEdition();
         $this->requirePermission('pp:force-reset-passwords');
 
         $plugin = PasswordPolicy::$plugin;

@@ -110,7 +110,6 @@ it('registers the universal permissions on Lite', function() {
     expect(ppRegisteredPermissionHandles())->toContain(
         PasswordPolicy::PERMISSION_MANAGE_SETTINGS,
         'pp:change-user-passwords',
-        'pp:force-reset-passwords',
     );
 });
 
@@ -127,7 +126,11 @@ it('does not register the Pro permissions on Lite', function() {
         ->and($handles)->not->toContain('pp:blocklist-manage')
         ->and($handles)->not->toContain('pp:notification-templates-manage')
         ->and($handles)->not->toContain('pp:notification-log-view')
-        ->and($handles)->not->toContain('pp:inactive-view');
+        ->and($handles)->not->toContain('pp:inactive-view')
+        // Force reset is Pro on every surface it has (bulk element action,
+        // user-edit action menu, Password Security pane), so offering the
+        // grant on Lite would point at nothing.
+        ->and($handles)->not->toContain('pp:force-reset-passwords');
 });
 
 it('registers the Pro permissions on Pro, nested child included', function() {
@@ -139,6 +142,7 @@ it('registers the Pro permissions on Pro, nested child included', function() {
         'pp:notification-templates-manage',
         'pp:notification-log-view',
         'pp:inactive-view',
+        'pp:force-reset-passwords',
     );
 });
 

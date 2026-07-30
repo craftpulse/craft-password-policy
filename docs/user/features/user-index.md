@@ -71,7 +71,7 @@ Three plugin-owned actions register on `User::EVENT_REGISTER_ACTIONS`. All three
 
 ## User edit screen: Password Security tab
 
-The User edit screen ships a **Password Security** tab via `UsersController::EVENT_DEFINE_EDIT_SCREENS`. The tab is gated on either `pp:force-reset-passwords` or `pp:change-user-passwords` permission and is visible on every edition (gating is permission-based, not edition-based).
+The User edit screen ships a **Password Security** tab via `UsersController::EVENT_DEFINE_EDIT_SCREENS`. The tab is gated on either `pp:force-reset-passwords` or `pp:change-user-passwords` permission and is visible on every edition (the tab itself is permission-gated, not edition-gated). Individual panes inside it are edition-gated: the force-reset Actions pane and the notification activity panel are Pro+, and below Pro they are absent rather than disabled.
 
 > 📷 *Screenshot: User edit screen with the Password Security tab selected, showing the resolved policy panel, status indicators (last change date, days until expiry, force-reset state), and three action buttons (Change password…, Send reset email, Force password reset on next sign-in).*
 
@@ -79,7 +79,7 @@ The tab renders:
 
 - **Current status**: colour-coded status pills via `Cp::statusLabelHtml()`: green for current, red for expired or breached recently, orange for reset-required, yellow for expiring soon, grey for never-changed.
 - **Resolved policy**: the effective rules for this user with the source attribution (which named policies contributed, or "global settings").
-- **Per-user action buttons**: Change password… (opens the `ChangeUserPassword` modal with elevated-session protection), Send reset email, Force password reset on next sign-in.
+- **Per-user action buttons**: Change password… (opens the `ChangeUserPassword` modal with elevated-session protection), Send reset email, Force password reset on next sign-in (Pro+).
 - **Notification activity panel**: the user's last 10 notification log entries with Resend buttons (Pro+, requires `pp:notification-log-view`).
 - **Force-reset history**: last 5 history rows with `changeReason` labels.
 
@@ -89,7 +89,7 @@ Read-only mode (`allowAdminChanges = false`) keeps the tab visible but disables 
 
 | Handle | Notes |
 |--------|-------|
-| `pp:force-reset-passwords` | Required to use the `ForcePasswordReset` action and the force-reset button on the user-edit Password Security page. |
+| `pp:force-reset-passwords` | Pro+. Required to use the `ForcePasswordReset` action, the user-edit action-menu item, and the force-reset button on the user-edit Password Security page. Registers on Pro+ only, so a Lite permissions screen doesn't list it. |
 | `pp:change-user-passwords` | Required to use `ChangeUserPassword` and `SendPasswordResetEmail` actions. |
 
 Either permission also unlocks the Password Security sidebar link on the user edit screen. Defense-in-depth: the permission predicate runs both at sidebar render time AND in `UserSecurityController::beforeAction()`.

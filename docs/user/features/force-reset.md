@@ -27,7 +27,8 @@ This page covers the three actions, their permission requirements, the underlyin
 | Permission | What it grants |
 |---|---|
 | `pp:change-user-passwords` | Single-user `ChangeUserPassword` action + the `UserPasswordController` POST handler. |
-| Craft's `editUsers` permission | `SendPasswordResetEmail` and `ForcePasswordReset` actions. |
+| `pp:force-reset-passwords` | The `ForcePasswordReset` bulk action, the "Force password reset" user-edit action-menu item, the Actions pane on the Password Security screen, and the `UserSecurityController::actionForceReset()` POST handler. **Pro+ only**: the handle isn't registered on Lite, and the POST handler answers 404 there. |
+| Craft's `editUsers` permission | Prerequisite for reaching the Users index and the user-edit screen these actions live on. |
 
 `pp:change-user-passwords` is registered separately because setting another user's password directly is a higher-privilege operation than triggering a reset email: the latter requires the user to authenticate via email, the former bypasses that step.
 

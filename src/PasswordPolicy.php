@@ -1025,9 +1025,6 @@ class PasswordPolicy extends Plugin
                     self::PERMISSION_MANAGE_SETTINGS => [
                         'label' => Craft::t('password-policy', 'Manage plugin settings.'),
                     ],
-                    'pp:force-reset-passwords' => [
-                        'label' => Craft::t('password-policy', 'Force reset passwords retention access.'),
-                    ],
                     'pp:change-user-passwords' => [
                         'label' => Craft::t(
                             'password-policy',
@@ -1038,10 +1035,19 @@ class PasswordPolicy extends Plugin
 
                 // Pro-only surfaces. Every permission below gates a screen
                 // that doesn't exist on Lite (blocklist editor, notification
-                // template editor, notification activity log), so a Lite
-                // admin's permissions screen never lists a grant that leads
-                // nowhere. Hide, never badge.
+                // template editor, notification activity log, force reset), so
+                // a Lite admin's permissions screen never lists a grant that
+                // leads nowhere. Hide, never badge.
                 if ($this->getIsPro()) {
+                    // Force reset is Pro across every surface it has: the
+                    // `ForcePasswordReset` bulk element action, the user-edit
+                    // action-menu item, and the Password Security screen's
+                    // button. Registering the handle on Lite would offer a
+                    // grant with nothing behind it.
+                    $permissions['pp:force-reset-passwords'] = [
+                        'label' => Craft::t('password-policy', 'Force reset passwords retention access.'),
+                    ];
+
                     $permissions['pp:blocklist-view'] = [
                         'label' => Craft::t('password-policy', 'View password blocklist.'),
                         'nested' => [

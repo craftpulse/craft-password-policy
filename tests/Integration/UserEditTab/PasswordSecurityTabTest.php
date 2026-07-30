@@ -47,9 +47,15 @@ use yii\base\Event;
 
 beforeEach(function() {
     $this->plugin = PasswordPolicy::$plugin;
+    $this->originalEdition = $this->plugin->edition;
     $this->originalRequest = Craft::$app->getRequest();
     $this->originalUser = Craft::$app->getUser();
     $this->originalAllowAdminChanges = Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
+
+    // Pro baseline: the screen is universal but two of its panes (force-reset
+    // Actions, notification activity) are Pro. Tests that care about the Lite
+    // shape flip the edition explicitly.
+    $this->plugin->edition = PasswordPolicy::EDITION_PRO;
 
     $this->request = new WebRequestStub();
     $this->request->stubIsCpRequest = true;
@@ -63,6 +69,7 @@ beforeEach(function() {
 });
 
 afterEach(function() {
+    $this->plugin->edition = $this->originalEdition;
     Craft::$app->set('request', $this->originalRequest);
     Craft::$app->set('user', $this->originalUser);
     Craft::$app->getConfig()->getGeneral()->allowAdminChanges = $this->originalAllowAdminChanges;
@@ -109,14 +116,16 @@ function fireDefineEditScreens(User $editedUser, ?User $currentUser): array
  * Variables that the controller sets at render time (`isExpired`,
  * `neverChanged`, `policySource`) are pinned to deterministic values
  * here so the read-only assertions stay independent of the user's
- * actual password-change state. `showNotifications` mirrors the
- * controller's edition gate so the Pro notifications panel renders here
- * exactly when it would in the CP.
+ * actual password-change state. `showNotifications` and
+ * `showForceReset` mirror the controller's edition gates so the Pro
+ * panes render here exactly when they would in the CP — the template
+ * holds no edition policy of its own, it only consumes the flags.
  */
 function renderPasswordSecurityContent(User $user): string
 {
     $plugin = PasswordPolicy::$plugin;
     $policy = $plugin->getPolicyResolver()->resolveForUser($user);
+    $currentUser = Craft::$app->getUser()->getIdentity();
 
     $view = Craft::$app->getView();
     $oldMode = $view->getTemplateMode();
@@ -130,7 +139,11 @@ function renderPasswordSecurityContent(User $user): string
             'isExpired' => false,
             'neverChanged' => $user->lastPasswordChangeDate === null,
             'showNotifications' => $plugin->getIsPro(),
-            'currentUser' => Craft::$app->getUser()->getIdentity(),
+            'showForceReset' => $plugin->getIsPro()
+                && $currentUser !== null
+                && $currentUser->can('pp:force-reset-passwords')
+                && !$user->passwordResetRequired,
+            'currentUser' => $currentUser,
         ]);
     } finally {
         $view->setTemplateMode($oldMode);
@@ -248,6 +261,90 @@ it('keeps the force-reset button enabled when admin changes are allowed', functi
         ->toBeString()
         ->and($body)->toContain('Force Password Reset')
         ->and($body)->not->toMatch('/<button[^>]*\bdisabled\b/');
+});
+
+// =============================================================================
+// Edition gate — the force-reset pane is Pro, hidden below it
+// =============================================================================
+
+it('omits the force-reset Actions pane on Lite', function() {
+    $this->plugin->edition = PasswordPolicy::EDITION_LITE;
+    $this->userStub->setIdentity(UserFactory::admin());
+
+    $target = UserFactory::nonAdmin();
+    $body = renderPasswordSecurityContent($target);
+
+    // Hide, never badge: no button, no disabled control, no upsell copy, and
+    // no POST target to discover. An admin identity clears every permission
+    // check, so the edition is the only thing that can remove the pane here.
+    expect($body)
+        ->toBeString()
+        ->and($body)->not->toContain('Force Password Reset')
+        ->and($body)->not->toContain('password-policy/user-security/force-reset')
+        ->and($body)->not->toContain('Pro');
+
+    // The rest of the screen is universal and must still render.
+    expect($body)
+        ->toContain('Password Status')
+        ->and($body)->toContain('Active Policy');
+});
+
+it('renders the force-reset Actions pane on Pro', function() {
+    $this->plugin->edition = PasswordPolicy::EDITION_PRO;
+    $this->userStub->setIdentity(UserFactory::admin());
+
+    $target = UserFactory::nonAdmin();
+    $body = renderPasswordSecurityContent($target);
+
+    expect($body)
+        ->toBeString()
+        ->and($body)->toContain('Force Password Reset');
+});
+
+it('omits the force-reset Actions pane on Pro without the permission', function() {
+    // The pane's flag folds the permission in alongside the edition, so a Pro
+    // caller lacking `pp:force-reset-passwords` sees the same absence a Lite
+    // admin does.
+    $this->plugin->edition = PasswordPolicy::EDITION_PRO;
+    $this->userStub->setIdentity(UserFactory::nonAdmin());
+
+    $target = UserFactory::nonAdmin();
+    $body = renderPasswordSecurityContent($target);
+
+    expect($body)
+        ->toBeString()
+        ->and($body)->not->toContain('Force Password Reset');
+});
+
+it('hides the pane rather than leaking it when showForceReset is missing', function() {
+    // The template reads `showForceReset ?? false`, so a caller that forgets
+    // the variable fails closed. Rendering without it is the regression this
+    // pins: a bare `{% if showForceReset %}` would throw under devMode's
+    // strict_variables instead, and a truthy default would leak the pane.
+    $this->userStub->setIdentity(UserFactory::admin());
+
+    $target = UserFactory::nonAdmin();
+    $policy = $this->plugin->getPolicyResolver()->resolveForUser($target);
+
+    $view = Craft::$app->getView();
+    $oldMode = $view->getTemplateMode();
+    $view->setTemplateMode($view::TEMPLATE_MODE_CP);
+
+    try {
+        $body = $view->renderTemplate('password-policy/_users/password-security', [
+            'user' => $target,
+            'policy' => $policy,
+            'policySource' => 'Global',
+            'isExpired' => false,
+            'neverChanged' => true,
+        ]);
+    } finally {
+        $view->setTemplateMode($oldMode);
+    }
+
+    expect($body)
+        ->toBeString()
+        ->and($body)->not->toContain('Force Password Reset');
 });
 
 // =============================================================================

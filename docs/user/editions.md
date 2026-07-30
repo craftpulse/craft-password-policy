@@ -30,7 +30,7 @@ PasswordPolicy::$plugin->isCraftTeamOrBetter();  // Team / Pro / Enterprise
 | CP strength meter (zxcvbn) | ✓ | ✓ | ✓ |
 | Front-end Twig render builders (consumer-site forms) | | ✓ | ✓ |
 | Force change on first login | ✓ | ✓ | ✓ |
-| Force-reset element action | | ✓ | ✓ |
+| Force password reset (bulk element action, user-edit action menu, Password Security button) | | ✓ | ✓ |
 | Change-password element action | ✓ | ✓ | ✓ |
 | Send-reset-email element action | ✓ | ✓ | ✓ |
 | Password history (global, 0-24) | ✓ | ✓ | ✓ |
@@ -164,3 +164,4 @@ The plugin layers those gates as defense-in-depth: the UI hides; the controller 
 - **Service-layer gates** apply to features whose execution would change behavior, not data capture. Audit log writes go through `AuditLogService::logEvent()` which gates on Enterprise. Per-group policy resolution runs only when `enablePerGroupPolicies = true` AND `getIsPro()` returns true.
 - **Front-end Twig render builders** (`passwordField`, `requirementList`, `strengthMeter`, `requirementsHint`, `passwordWidget`, `loginForm`, `passwordChangeForm`, `passwordResetForm`) throw `craftpulse\passwordpolicy\exceptions\EditionRequiredException` (extends `\RuntimeException`) on Lite via `PasswordPolicyVariable::_assertProForBuilders()`, Twig surfaces the exception in dev mode and renders the friendly error template in production. The friendly consumer-form rendering surface is a Pro upgrade lever; Lite consumers roll their own markup against the universal data accessors (`requirements`, `requirementsText`, `requirementRules`). Per-group resolution gates separately inside `PolicyResolverService`.
 - **HIBP-on-login** registers its `User::EVENT_BEFORE_AUTHENTICATE` listener only on Pro+ installs. Lite installs simply don't fire it.
+- **Force password reset** is Pro across every surface: the `ForcePasswordReset` bulk element action on the Users index, the "Force password reset" item in the user-edit action menu, and the Actions pane on the user-edit Password Security screen. The `pp:force-reset-passwords` permission registers on Pro+ only, and `UserSecurityController::actionForceReset()` gates on edition before permission, so a POST on Lite answers 404. The Password Security screen itself stays universal, it just omits the pane.
