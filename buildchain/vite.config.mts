@@ -1,6 +1,6 @@
 import {defineConfig} from 'vite'
 import {visualizer} from 'rollup-plugin-visualizer'
-import viteEslintPlugin from 'vite-plugin-eslint'
+import viteEslintPlugin from 'vite-plugin-eslint2'
 import viteCompressionPlugin from 'vite-plugin-compression'
 import viteRestartPlugin from 'vite-plugin-restart'
 import viteStylelintPlugin from 'vite-plugin-stylelint'
@@ -17,10 +17,8 @@ export default defineConfig(({command}) => ({
       input: {
         strengthIndicator: 'src/js/indicator.ts',
       },
-      output: {
-        sourcemap: true
-      },
-    }
+    },
+    sourcemap: true,
   },
   plugins: [
     viteRestartPlugin({

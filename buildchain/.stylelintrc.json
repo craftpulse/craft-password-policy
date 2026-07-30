@@ -1,8 +1,7 @@
 {
   "extends": [
     "stylelint-config-recommended",
-    "stylelint-config-standard-scss",
-    "stylelint-config-recommended-vue"
+    "stylelint-config-standard-scss"
   ],
   "rules": {
     "at-rule-no-unknown": null,
