@@ -35,18 +35,28 @@ use craftpulse\passwordpolicy\tests\TestCase;
 // rename touches no plugin table and no DDL — only `userpermissions*` rows
 // and project-config group lists — so it wants the standard transaction
 // wrap, not the schema drop/restore cycle.
+//
+// Because the enumeration below is hand-maintained, an unlisted folder
+// silently falls back to a bare `PHPUnit\Framework\TestCase` — Craft is
+// still booted by the bootstrap, so the tests pass, but nothing wraps
+// them in a transaction and every write COMMITS to `db_test`.
+// `tests/Unit/PestBindingCoverageTest.php` pins the enumeration against
+// the real directory listing so the next folder can't be forgotten.
 uses(MigrationTestCase::class)->in('Integration/Migrations');
 uses(MultiSiteTestCase::class)->in('Integration/MultiSite');
 uses(TestCase::class)->in(
     'Integration/ConditionRules',
     'Integration/Console',
     'Integration/Controllers',
+    'Integration/Elements',
     'Integration/Events',
+    'Integration/Helpers',
     'Integration/Integrations',
     'Integration/Jobs',
     'Integration/Models',
     'Integration/Permissions',
     'Integration/Records',
+    'Integration/Rules',
     'Integration/Services',
     'Integration/TwigTags',
     'Integration/UserEditTab',

@@ -15,7 +15,12 @@
  * one.
  *
  * Edition + global settings mutate during tests — `beforeEach` snapshots and
- * `afterEach` restores. The DB transaction wrapper isolates policy/group rows.
+ * `afterEach` restores. The DB transaction wrapper isolates policy/group rows,
+ * and the fixtures this file creates are additionally torn down by hand: user
+ * groups are project-config entities, so an explicit `deleteGroupById()` keeps
+ * Craft's in-memory project config in step with the rolled-back `usergroups`
+ * table, and the users are hard-deleted rather than left in the trash. Fixture
+ * ownership belongs to the test, not to the transaction.
  *
  * @link      https://craftpulse.com
  * @copyright Copyright (c) 2024 CraftPulse
@@ -24,6 +29,8 @@
  * @since     5.2.0
  */
 
+use craft\elements\User;
+use craft\models\UserGroup;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\rules\UserRules;
 use craftpulse\passwordpolicy\tests\Support\Factories\GroupFactory;
@@ -37,12 +44,34 @@ use yii\validators\Validator;
 // =============================================================================
 
 /**
+ * Creates a user group and registers it for teardown in `afterEach`.
+ */
+function trackedGroup(object $ctx): UserGroup
+{
+    $group = GroupFactory::create();
+    $ctx->createdGroups[] = $group;
+
+    return $group;
+}
+
+/**
+ * Creates a non-admin user and registers it for teardown in `afterEach`.
+ */
+function trackedUser(object $ctx): User
+{
+    $user = UserFactory::nonAdmin();
+    $ctx->createdUsers[] = $user;
+
+    return $user;
+}
+
+/**
  * Runs every rule produced by `UserRules::defineRules($user)` against the
  * user's `newPassword`, returning the accumulated attribute errors. Mirrors
  * Yii's `Model::validate()` loop: each rule config becomes a Validator and
  * validates the named attributes on the model.
  */
-function runUserPasswordRules(\craft\elements\User $user, string $password): array
+function runUserPasswordRules(User $user, string $password): array
 {
     $user->newPassword = $password;
     $user->clearErrors('newPassword');
@@ -66,6 +95,9 @@ beforeEach(function() {
     $this->plugin = PasswordPolicy::$plugin;
     $this->settings = $this->plugin->getSettings();
 
+    $this->createdGroups = [];
+    $this->createdUsers = [];
+
     $this->originalEdition = $this->plugin->edition;
     $this->originalEnablePerGroup = $this->settings->enablePerGroupPolicies;
     $this->originalMinLength = $this->settings->minLength;
@@ -82,6 +114,23 @@ beforeEach(function() {
 });
 
 afterEach(function() {
+    // Users first — `usergroups_users` rows reference both sides, and a
+    // hard delete takes the paired password-history rows with it.
+    foreach ($this->createdUsers as $user) {
+        Craft::$app->getElements()->deleteElement($user, true);
+    }
+
+    // Groups are project-config entities: `saveGroup()` routes through
+    // `ProjectConfig::set()`, so rolling back the transaction restores the
+    // `usergroups` table but leaves the group in the process's in-memory
+    // project config. Deleting explicitly removes both.
+    foreach ($this->createdGroups as $group) {
+        Craft::$app->getUserGroups()->deleteGroupById($group->id);
+    }
+
+    $this->createdUsers = [];
+    $this->createdGroups = [];
+
     $this->plugin->edition = $this->originalEdition;
     $this->settings->enablePerGroupPolicies = $this->originalEnablePerGroup;
     $this->settings->minLength = $this->originalMinLength;
@@ -106,7 +155,7 @@ it('enforces a per-group complexity override the global policy does not require'
     $this->settings->numbers = false;
     $this->settings->symbols = false;
 
-    $group = GroupFactory::create();
+    $group = trackedGroup($this);
     PolicyFactory::custom([
         'complexityMode' => 'individual',
         'cases' => false,
@@ -114,13 +163,13 @@ it('enforces a per-group complexity override the global policy does not require'
         'symbols' => false,
     ], [$group]);
 
-    $user = UserFactory::nonAdmin();
+    $user = trackedUser($this);
     $user->setGroups([$group]);
 
     expect(runUserPasswordRules($user, 'abcdefgh'))->not->toBeEmpty();
 
     // A digit satisfies the resolved requirement.
-    $user2 = UserFactory::nonAdmin();
+    $user2 = trackedUser($this);
     $user2->setGroups([$group]);
     expect(runUserPasswordRules($user2, 'abcdefg1'))->toBeEmpty();
 });
@@ -136,20 +185,20 @@ it('enforces a per-group minimum-character-types override', function() {
     $this->settings->complexityMode = 'minimum';
     $this->settings->minimumCharacterTypes = 1;
 
-    $group = GroupFactory::create();
+    $group = trackedGroup($this);
     PolicyFactory::custom([
         'complexityMode' => 'minimum',
         'minimumCharacterTypes' => 3,
     ], [$group]);
 
-    $user = UserFactory::nonAdmin();
+    $user = trackedUser($this);
     $user->setGroups([$group]);
 
     // Lowercase + digit = 2 of 4 < 3.
     expect(runUserPasswordRules($user, 'abcd1234'))->not->toBeEmpty();
 
     // Lowercase + uppercase + digit = 3 of 4.
-    $user2 = UserFactory::nonAdmin();
+    $user2 = trackedUser($this);
     $user2->setGroups([$group]);
     expect(runUserPasswordRules($user2, 'Abcd1234'))->toBeEmpty();
 });
@@ -166,10 +215,10 @@ it('enforces a per-group history-depth override beyond the global window', funct
     $this->settings->minLength = 4;
     $this->settings->passwordHistoryCount = 1;
 
-    $group = GroupFactory::create();
+    $group = trackedGroup($this);
     PolicyFactory::custom(['passwordHistoryCount' => 5], [$group]);
 
-    $user = UserFactory::nonAdmin();
+    $user = trackedUser($this);
     $user->setGroups([$group]);
 
     PasswordHistoryFactory::seedFor($user, [
