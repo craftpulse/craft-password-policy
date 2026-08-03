@@ -18,7 +18,7 @@ use craftpulse\passwordpolicy\PasswordPolicy;
 use yii\console\ExitCode;
 
 /**
- * Class InactiveController
+ * Scans for dormant user accounts and reports, notifies, or suspends them.
  *
  * Console command for the Feature 5 (Pro) inactive-account scan. Enqueues a
  * single batched job that flags / notifies / suspends accounts past the

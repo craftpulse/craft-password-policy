@@ -16,9 +16,14 @@ use yii\console\ExitCode;
 use yii\db\Exception;
 
 /**
- * Class BlocklistController
+ * Reseeds the bundled common-password list, imports custom words, and reports totals.
  *
- * Console commands for managing the password blocklist.
+ * The blocklist has two halves. `update` refreshes the bundled common-password
+ * list from the data file that ships with the plugin, which is what you run
+ * after a plugin update. `import` loads a newline-delimited word list into the
+ * custom half, the same store the control panel blocklist editor writes to, and
+ * requires the Pro edition. `stats` reports the size of both halves and when the
+ * common list was last seeded.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy

@@ -15,7 +15,7 @@ use craftpulse\passwordpolicy\PasswordPolicy;
 use yii\console\ExitCode;
 
 /**
- * Class GcController
+ * Purges expired rows from every Password Policy table on a schedule you control.
  *
  * Deterministic garbage collection for all plugin tables. For guaranteed
  * retention compliance, schedule this command via cron rather than relying
@@ -52,7 +52,7 @@ class GcController extends Controller
         $settings = $plugin->getSettings();
         $results = $plugin->runGc();
 
-        $this->stdout("Password Policy — Garbage Collection\n");
+        $this->stdout("Password Policy: garbage collection\n");
         $this->stdout(str_repeat('-', 40) . "\n");
 
         if (isset($results['passwordHistory'])) {

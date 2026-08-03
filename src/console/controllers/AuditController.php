@@ -24,9 +24,20 @@ use yii\console\ExitCode;
 use yii\helpers\Console;
 
 /**
- * Class AuditController
+ * Verifies, exports, purges, and inspects the audit log, and rotates its PII key.
  *
- * Console commands for audit log management and export.
+ * `verify` walks the hash chain and is the surface an auditor runs; it stays
+ * open source and ungated on every edition. `schema` prints the per-event
+ * allowlist of detail keys the log is permitted to store, as static evidence of
+ * what can ever land on disk. `export` and `purge` are the read side and the
+ * retention side of the same table, and `export` requires the Enterprise
+ * edition. `generate-pii-key` mints the HMAC secret behind the log's
+ * user-identifier hash.
+ *
+ * Every action here is console-direct: shell access is itself a privileged
+ * operation, so none of them asks for a control panel permission. The
+ * Enterprise gate on `export` is an edition gate, not a permission gate, and it
+ * still applies.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -173,8 +184,9 @@ class AuditController extends Controller
     }
 
     /**
-     * Generates a fresh HMAC key for audit-log PII hashing and writes
-     * it to the local `.env` as `CRAFT_AUDIT_PII_KEY`.
+     * Generates a fresh audit-log PII hashing key and writes it to the local .env file.
+     *
+     * The value lands in `.env` as `CRAFT_AUDIT_PII_KEY`.
      *
      * The key is the HMAC secret behind the audit log's user-identifier hash.
      * Operators rotate it to destroy historical-row correlation without
@@ -240,7 +252,7 @@ class AuditController extends Controller
             "Add $envName=$key to your production environment.\n"
             . "New audit-log rows will hash userIdentifier with this key.\n"
             . "Existing rows (hashed with the previous key) become uncorrelatable\n"
-            . "against the new key — this is the intentional rotation behaviour.\n",
+            . "against the new key. That is the intentional rotation behaviour.\n",
         );
 
         return ExitCode::OK;
@@ -266,7 +278,7 @@ class AuditController extends Controller
     }
 
     /**
-     * Exports audit log entries.
+     * Exports audit log rows to stdout, or to a file on the queue with --queue.
      *
      * Two modes:
      *
@@ -392,10 +404,12 @@ class AuditController extends Controller
     }
 
     /**
-     * Emits the per-event PII allowlist registry from the audit log
-     * service's `ALLOWED_DETAILS_BY_EVENT` map as auditor-facing
-     * static evidence: "this is what every event class is permitted to
-     * log, and nothing else can land on disk."
+     * Prints the per-event allowlist of detail keys the audit log may ever store.
+     *
+     * The registry comes from the audit log service's
+     * `ALLOWED_DETAILS_BY_EVENT` map, and it is auditor-facing static
+     * evidence: "this is what every event class is permitted to log, and
+     * nothing else can land on disk."
      *
      * Default output is a human-readable table; `--json` emits a single
      * JSON object whose keys are event class strings and values are
@@ -450,8 +464,9 @@ class AuditController extends Controller
     }
 
     /**
-     * Walks the audit-log hash chain (G1) and reports whether every row
-     * verifies against its canonical-payload SHA-256.
+     * Walks the audit-log hash chain and reports whether every row still verifies.
+     *
+     * Each row is checked against its canonical-payload SHA-256.
      *
      * Each row's `rowHash` is recomputed via the audit log service's
      * canonicalizer and compared to the stored
@@ -606,7 +621,7 @@ class AuditController extends Controller
         }
 
         $this->stderr(sprintf(
-            "BREAK: row %d (uid %s, dateCreated %s) — %s\n  expected: %s\n  stored:   %s\n",
+            "BREAK: row %d (uid %s, dateCreated %s): %s\n  expected: %s\n  stored:   %s\n",
             (int)$row['id'],
             (string)$row['uid'],
             (string)$row['dateCreated'],

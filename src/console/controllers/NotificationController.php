@@ -17,7 +17,7 @@ use craftpulse\passwordpolicy\PasswordPolicy;
 use yii\console\ExitCode;
 
 /**
- * Class NotificationController
+ * Queues the emails that warn users before their password expires.
  *
  * Console commands for queueing notification work. Universal across
  * editions since 5.2.0: Lite operators wire `send-expiry-reminders`
@@ -62,8 +62,10 @@ class NotificationController extends Controller
     }
 
     /**
-     * Enqueues a single batched job that sends password-expiry reminders
-     * to every eligible user (or just the user passed via `--user=<id>`).
+     * Enqueues one batched job that emails every user whose password is about to expire.
+     *
+     * Pass `--user=<id>` to target a single account instead of every
+     * eligible user.
      *
      * The job recomputes its recipient set per batch via the batcher's
      * `getSlice()` so retries are naturally idempotent, and already-notified

@@ -95,9 +95,10 @@ class WebhookController extends Controller
     }
 
     /**
-     * Creates a new webhook endpoint and prints the generated secret to
-     * stdout exactly once. The plaintext is gone from the controller
-     * layer immediately afterward; the database stores ciphertext only.
+     * Creates a webhook endpoint and prints its generated secret to stdout exactly once.
+     *
+     * The plaintext is gone from the controller layer immediately
+     * afterward; the database stores ciphertext only.
      *
      * Usage:
      *
@@ -145,7 +146,7 @@ class WebhookController extends Controller
         }
 
         $this->stdout("Webhook endpoint created (id={$endpoint->id}).\n");
-        $this->stdout("Secret (shown ONCE — capture this for your consumer config):\n");
+        $this->stdout("Secret (shown ONCE, capture this for your consumer config):\n");
         $this->stdout($endpoint->secretCurrent . "\n");
 
         return ExitCode::OK;
@@ -197,8 +198,7 @@ class WebhookController extends Controller
     }
 
     /**
-     * Rotates a webhook endpoint's HMAC secret and prints the new
-     * plaintext to stdout exactly once.
+     * Rotates a webhook endpoint's HMAC secret and prints the new one exactly once.
      *
      * Usage:
      *
