@@ -40,6 +40,7 @@
  * @since     5.2.0
  */
 
+use craft\db\Connection;
 use craft\db\Query;
 use craft\db\Table as CraftTable;
 use craftpulse\passwordpolicy\enums\ChangeReason;
@@ -108,6 +109,86 @@ function plantLegacyProjectConfig(array $legacyKeys): void
 function readPluginProjectConfig(): array
 {
     return Craft::$app->getProjectConfig()->get('plugins.password-policy.settings') ?? [];
+}
+
+/**
+ * Returns the value that scopes an information_schema lookup to the current
+ * connection: the database name on MySQL, the namespace on PostgreSQL. Mirrors
+ * `m260513_142613_DeduplicateElementTableForeignKeys::_informationSchemaScope()`.
+ */
+function migrationSchemaScope(): string
+{
+    $db = Craft::$app->getDb();
+
+    return $db->getDriverName() === Connection::DRIVER_PGSQL
+        ? (string)$db->createCommand('SELECT current_schema()')->queryScalar()
+        : (string)$db->createCommand('SELECT DATABASE()')->queryScalar();
+}
+
+/**
+ * Returns the `ON DELETE` rule of the foreign key on `$table.$column`.
+ *
+ * Reads the ANSI `referential_constraints` and `key_column_usage` views, both
+ * present on MySQL and PostgreSQL, in lowercase: PostgreSQL's catalog columns
+ * are genuinely lowercase and Yii quotes whatever it is handed, so the
+ * uppercase form this replaced was a hard error there rather than a
+ * case-insensitive match. `delete_rule` spells the rules identically on both
+ * engines ("CASCADE", "SET NULL", "NO ACTION").
+ */
+function foreignKeyDeleteRule(string $table, string $column): ?string
+{
+    $rule = (new Query())
+        ->select(['rc.delete_rule'])
+        ->from(['rc' => 'information_schema.referential_constraints'])
+        ->innerJoin(
+            ['kcu' => 'information_schema.key_column_usage'],
+            '[[rc.constraint_name]] = [[kcu.constraint_name]]'
+            . ' AND [[rc.constraint_schema]] = [[kcu.constraint_schema]]',
+        )
+        ->where([
+            'rc.constraint_schema' => migrationSchemaScope(),
+            'kcu.table_name' => Craft::$app->getDb()->getSchema()->getRawTableName($table),
+            'kcu.column_name' => $column,
+        ])
+        ->scalar();
+
+    return $rule === false ? null : (string)$rule;
+}
+
+/**
+ * Returns whichever schema definition encodes `changeReason`'s closed list on
+ * the current engine.
+ *
+ * Craft's `enum()` column builder lands a native `ENUM` type on MySQL and a
+ * `varchar` plus a CHECK constraint on PostgreSQL. Both enforce the same closed
+ * list, so a test that asserts the list should not care which mechanism carries
+ * it; it reads the values out of the definition text either way.
+ */
+function changeReasonClosedListDefinition(): string
+{
+    $db = Craft::$app->getDb();
+    $table = $db->getSchema()->getRawTableName('{{%passwordpolicy_password_history}}');
+
+    if ($db->getDriverName() === Connection::DRIVER_PGSQL) {
+        return (string)(new Query())
+            ->select(['cc.check_clause'])
+            ->from(['cc' => 'information_schema.check_constraints'])
+            ->innerJoin(
+                ['ccu' => 'information_schema.constraint_column_usage'],
+                '[[cc.constraint_name]] = [[ccu.constraint_name]]'
+                . ' AND [[cc.constraint_schema]] = [[ccu.constraint_schema]]',
+            )
+            ->where([
+                'ccu.table_name' => $table,
+                'ccu.column_name' => 'changeReason',
+            ])
+            ->scalar();
+    }
+
+    return (string)$db->getSchema()
+        ->getTableSchema('{{%passwordpolicy_password_history}}', true)
+        ->columns['changeReason']
+        ->dbType;
 }
 
 /**
@@ -544,9 +625,12 @@ it('adds the five audit columns to password_history during upgrade', function() 
     // CLI runs and migration seeds have no acting admin.
     expect($columns['changedByUserId']->allowNull)->toBeTrue();
 
-    // changeReason carries every enum case; the column type is the
-    // canonical place to surface the closed list.
-    expect($columns['changeReason']->dbType)
+    // changeReason carries every enum case, enforced by the database rather
+    // than only by the enum class. Where that enforcement LIVES is
+    // driver-specific — a MySQL `enum` column type, a PostgreSQL `varchar`
+    // plus a CHECK constraint — so the helper resolves whichever definition
+    // the current engine uses and the assertion stays single.
+    expect(changeReasonClosedListDefinition())
         ->toContain('self_service')
         ->toContain('admin_change')
         ->toContain('admin_force_reset')
@@ -623,39 +707,13 @@ it('leaves changedByUserId null on migration-seeded password history rows', func
 it('configures the changedByUserId FK as SET NULL on delete', function() {
     runPendingPluginMigrations();
 
-    $rule = (new Query())
-        ->select(['DELETE_RULE'])
-        ->from('information_schema.REFERENTIAL_CONSTRAINTS rc')
-        ->innerJoin(
-            'information_schema.KEY_COLUMN_USAGE kcu',
-            'rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME AND rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA',
-        )
-        ->where([
-            'rc.CONSTRAINT_SCHEMA' => Craft::$app->getDb()->createCommand('SELECT DATABASE()')->queryScalar(),
-            'kcu.TABLE_NAME' => Craft::$app->getDb()->getSchema()->getRawTableName('{{%passwordpolicy_password_history}}'),
-            'kcu.COLUMN_NAME' => 'changedByUserId',
-        ])
-        ->scalar();
-
-    expect($rule)->toBe('SET NULL');
+    expect(foreignKeyDeleteRule('{{%passwordpolicy_password_history}}', 'changedByUserId'))
+        ->toBe('SET NULL');
 });
 
 it('configures the user_state.userId FK as CASCADE on delete', function() {
     runPendingPluginMigrations();
 
-    $rule = (new Query())
-        ->select(['DELETE_RULE'])
-        ->from('information_schema.REFERENTIAL_CONSTRAINTS rc')
-        ->innerJoin(
-            'information_schema.KEY_COLUMN_USAGE kcu',
-            'rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME AND rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA',
-        )
-        ->where([
-            'rc.CONSTRAINT_SCHEMA' => Craft::$app->getDb()->createCommand('SELECT DATABASE()')->queryScalar(),
-            'kcu.TABLE_NAME' => Craft::$app->getDb()->getSchema()->getRawTableName('{{%passwordpolicy_user_state}}'),
-            'kcu.COLUMN_NAME' => 'userId',
-        ])
-        ->scalar();
-
-    expect($rule)->toBe('CASCADE');
+    expect(foreignKeyDeleteRule('{{%passwordpolicy_user_state}}', 'userId'))
+        ->toBe('CASCADE');
 });

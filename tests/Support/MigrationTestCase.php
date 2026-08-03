@@ -11,6 +11,7 @@
 namespace craftpulse\passwordpolicy\tests\Support;
 
 use Craft;
+use craft\db\Connection;
 use craft\db\Query;
 use craft\db\Table as CraftTable;
 use craft\elements\User;
@@ -213,7 +214,16 @@ abstract class MigrationTestCase extends TestCase
         // safe. MySQL would normally let us drop in reverse-FK order, but
         // some test orders may leave orphan rows referencing deleted
         // policies, etc. The next migration replay rebuilds clean state.
-        $db->createCommand('SET FOREIGN_KEY_CHECKS = 0')->execute();
+        //
+        // MySQL only: `SET FOREIGN_KEY_CHECKS` is a MySQL session variable and
+        // PostgreSQL has no equivalent. It doesn't need one here, because the
+        // drop list below is already in reverse-FK order and PostgreSQL
+        // enforces constraints per statement rather than deferring them.
+        $isMysql = $db->getDriverName() === Connection::DRIVER_MYSQL;
+
+        if ($isMysql) {
+            $db->createCommand('SET FOREIGN_KEY_CHECKS = 0')->execute();
+        }
 
         try {
             foreach ([
@@ -231,7 +241,9 @@ abstract class MigrationTestCase extends TestCase
                 $db->createCommand()->dropTableIfExists($table)->execute();
             }
         } finally {
-            $db->createCommand('SET FOREIGN_KEY_CHECKS = 1')->execute();
+            if ($isMysql) {
+                $db->createCommand('SET FOREIGN_KEY_CHECKS = 1')->execute();
+            }
         }
 
         // Wipe migration history so `getNewMigrations()` re-discovers them.

@@ -53,17 +53,29 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 //
 // Without this, Integration tests that touch the DB hit the playground's
 // production schema — DESTRUCTIVE.
+//
+// The connection COORDINATES (driver, host, port) are overridable through
+// `PP_TEST_DB_*` process env vars, defaulting to the DDEV MySQL container. The
+// prefix is deliberately distinct from `CRAFT_DB_*`: those are the vars DDEV
+// injects and that this block exists to defeat, so reading a default from them
+// would reintroduce the bug. The schema NAME stays hard-pinned, because
+// `db_test` is what makes the suite non-destructive and that must not depend on
+// the environment being set correctly.
+//
+// The override exists so the same suite can run against PostgreSQL in CI:
+// `README.md` advertises PostgreSQL 13+, and the absence of a PostgreSQL leg is
+// why two migrations that abort on that driver shipped unnoticed.
 // =============================================================================
 
 $dbEnvPins = [
-    'CRAFT_DB_DRIVER' => 'mysql',
-    'CRAFT_DB_SERVER' => 'db',
-    'CRAFT_DB_PORT' => '3306',
+    'CRAFT_DB_DRIVER' => getenv('PP_TEST_DB_DRIVER') ?: 'mysql',
+    'CRAFT_DB_SERVER' => getenv('PP_TEST_DB_SERVER') ?: 'db',
+    'CRAFT_DB_PORT' => getenv('PP_TEST_DB_PORT') ?: '3306',
     'CRAFT_DB_DATABASE' => 'db_test',
-    'CRAFT_DB_USER' => 'db',
-    'CRAFT_DB_PASSWORD' => 'db',
+    'CRAFT_DB_USER' => getenv('PP_TEST_DB_USER') ?: 'db',
+    'CRAFT_DB_PASSWORD' => getenv('PP_TEST_DB_PASSWORD') ?: 'db',
     'CRAFT_DB_TABLE_PREFIX' => '',
-    'CRAFT_DB_SCHEMA' => 'public',
+    'CRAFT_DB_SCHEMA' => getenv('PP_TEST_DB_SCHEMA') ?: 'public',
 ];
 
 foreach ($dbEnvPins as $envKey => $envValue) {

@@ -71,6 +71,14 @@ use craft\db\Table;
  * (the FK-to-`craft_elements.id` check matches the new shape and
  * returns early).
  *
+ * **MySQL-only, checked after the guards.** The FK rewrite needs MySQL-only
+ * INFORMATION_SCHEMA extensions, so a non-MySQL driver throws — but only once
+ * both idempotency guards have found actual work to do. Checking first meant
+ * every PostgreSQL install aborted its whole `migrate/all` run here even
+ * though this migration is a guaranteed no-op on the 5.1.2 to 5.2.0 path:
+ * `m260429_224908_UpgradeTo520Schema` runs `Install::safeUp()` first, and that
+ * creates the table already converted.
+ *
  * Pairs with `Install.php::_createPoliciesTable()` — fresh installs land
  * directly on the new shape without running this migration. Schema
  * version bump: 2.10.0 → 2.11.0.
@@ -96,19 +104,6 @@ class m260513_172440_ConvertPolicyToElement extends Migration
         $junction = '{{%passwordpolicy_policy_groups}}';
         $blocklist = '{{%passwordpolicy_blocklist}}';
 
-        // Fail fast on non-MySQL before any partial DDL runs. This
-        // conversion's FK-rewrite machinery relies on MySQL-only
-        // INFORMATION_SCHEMA extensions (`KEY_COLUMN_USAGE.REFERENCED_*`).
-        // A clear early throw beats a cryptic mid-migration SQL error or a
-        // silent no-op that leaves the schema half-converted.
-        if ($this->db->getDriverName() !== Connection::DRIVER_MYSQL) {
-            throw new \RuntimeException(
-                'm260513_172440_ConvertPolicyToElement requires MySQL, because its FK rewrite '
-                . 'depends on MySQL-only INFORMATION_SCHEMA extensions. PostgreSQL upgraders '
-                . 'should land on the converted shape via a fresh install (Install.php) instead.',
-            );
-        }
-
         if (!$this->db->tableExists($table)) {
             // Fresh install path — `Install.php` creates the converted
             // shape directly; nothing for this migration to do.
@@ -117,8 +112,34 @@ class m260513_172440_ConvertPolicyToElement extends Migration
 
         // Idempotent guard. If the FK from `passwordpolicy_policies.id`
         // to `craft_elements.id` already exists, we've already run.
+        //
+        // Driver-agnostic: it reads Yii's `TableSchema::foreignKeys`, which
+        // every driver populates, so it answers correctly on PostgreSQL too.
+        // That matters for the ordering below.
         if ($this->_idHasElementForeignKey($table)) {
             return true;
+        }
+
+        // Fail fast on non-MySQL before any partial DDL runs. The conversion
+        // below relies on MySQL-only INFORMATION_SCHEMA extensions
+        // (`KEY_COLUMN_USAGE.REFERENCED_*`), so a clear throw beats a cryptic
+        // mid-migration SQL error or a half-converted schema.
+        //
+        // The check sits BELOW both guards deliberately. Above them it fired
+        // on every PostgreSQL install regardless of whether there was any work
+        // to do, and on the real 5.1.2 to 5.2.0 path there never is: the first
+        // dated migration (`m260429_224908_UpgradeTo520Schema`) runs
+        // `Install::safeUp()`, which creates `passwordpolicy_policies` already
+        // carrying the FK to `craft_elements.id`. So this migration had nothing
+        // to convert and threw anyway, `migrate/all` aborted, and the whole run
+        // rolled back to the pre-update backup. A no-op has to stay a no-op on
+        // every driver, or the README's PostgreSQL 13+ support claim is a lie.
+        if ($this->db->getDriverName() !== Connection::DRIVER_MYSQL) {
+            throw new \RuntimeException(
+                'm260513_172440_ConvertPolicyToElement requires MySQL, because its FK rewrite '
+                . 'depends on MySQL-only INFORMATION_SCHEMA extensions. PostgreSQL upgraders '
+                . 'should land on the converted shape via a fresh install (Install.php) instead.',
+            );
         }
 
         // Truncate junction first (FK order matters even though CASCADE

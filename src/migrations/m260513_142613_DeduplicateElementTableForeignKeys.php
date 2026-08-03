@@ -34,15 +34,20 @@ use craft\db\Table;
  * on a post-Step-5 install shows two FK entries per column on both
  * tables (8 redundant constraints total).
  *
- * Why this migration uses raw INFORMATION_SCHEMA enumeration instead
+ * Why this migration uses raw information_schema enumeration instead
  * of `MigrationHelper::dropAllForeignKeysOnTable()`: Yii's
  * `TableSchema::foreignKeys` array dedupes by column-and-referenced-
  * table, so when two FK constraints reference the same column on the
  * same target table, the schema cache only exposes one of them.
  * `dropAllForeignKeysOnTable` walks that deduped collection and only
- * drops one of each pair. The raw INFORMATION_SCHEMA query sees every
+ * drops one of each pair. The raw information_schema query sees every
  * physical constraint independently and lets us drop them all
  * unambiguously.
+ *
+ * Runs on MySQL and PostgreSQL alike. The enumeration reads the ANSI
+ * `information_schema.table_constraints` view rather than MySQL's extended
+ * `referential_constraints`; see `_dropAllForeignKeysByName()` for why the
+ * distinction is load-bearing.
  *
  * Functional impact of the duplicates: cosmetic on read; minor
  * write-path overhead from MySQL evaluating redundant constraints
@@ -119,18 +124,38 @@ class m260513_142613_DeduplicateElementTableForeignKeys extends Migration
     // =========================================================================
 
     /**
-     * Enumerates every physical foreign key on `$table` via
-     * `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` and drops each by
-     * name. Necessary because Yii's `TableSchema::foreignKeys` cache
-     * dedupes by column-and-target-table; duplicate FKs are invisible
-     * to `MigrationHelper::dropAllForeignKeysOnTable()`.
+     * Enumerates every physical foreign key on `$table` and drops each by
+     * name. Necessary because Yii's `TableSchema::foreignKeys` cache dedupes
+     * by column-and-target-table; duplicate FKs are invisible to
+     * `MigrationHelper::dropAllForeignKeysOnTable()`, which walks that
+     * deduped collection and so drops only one of each pair.
+     *
+     * Reads `information_schema.table_constraints`, filtered to
+     * `constraint_type = 'FOREIGN KEY'`. That view is ANSI, present and
+     * identically shaped on both MySQL and PostgreSQL, and it carries one row
+     * per physical constraint, which is exactly the property this migration
+     * needs.
+     *
+     * It replaced `information_schema.referential_constraints`, which looked
+     * equivalent and was not: `TABLE_NAME` there is a MySQL EXTENSION and does
+     * not exist in the ANSI view, so on PostgreSQL the query referenced a
+     * missing column and the migration threw. The uppercase identifiers were a
+     * second, independent break, because PostgreSQL's catalog columns are
+     * genuinely lowercase and Yii quotes what it is given. Between them they
+     * made this migration a guaranteed abort on PostgreSQL, and made
+     * {@see self::_informationSchemaScope()}'s carefully written PostgreSQL
+     * branch unreachable. Everything here is lowercase for that reason: MySQL
+     * treats INFORMATION_SCHEMA identifiers case-insensitively, PostgreSQL does
+     * not.
      *
      * `$table` is the Yii-bracketed table name (e.g.
-     * `{{%passwordpolicy_audit_log}}`). The prefix is resolved before
-     * the INFORMATION_SCHEMA lookup.
+     * `{{%passwordpolicy_audit_log}}`). The prefix is resolved before the
+     * lookup.
      *
      * @param string $table the bracketed table reference
      * @return void
+     *
+     * @throws \RuntimeException on an unsupported driver
      *
      * @author CraftPulse
      */
@@ -140,11 +165,12 @@ class m260513_142613_DeduplicateElementTableForeignKeys extends Migration
         $resolvedTable = $db->getSchema()->getRawTableName($table);
 
         $constraints = (new Query())
-            ->select('CONSTRAINT_NAME')
-            ->from('INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS')
+            ->select(['constraint_name'])
+            ->from(['information_schema.table_constraints'])
             ->where([
-                'CONSTRAINT_SCHEMA' => $this->_informationSchemaScope(),
-                'TABLE_NAME' => $resolvedTable,
+                'table_schema' => $this->_informationSchemaScope(),
+                'table_name' => $resolvedTable,
+                'constraint_type' => 'FOREIGN KEY',
             ])
             ->column();
 
@@ -154,13 +180,13 @@ class m260513_142613_DeduplicateElementTableForeignKeys extends Migration
     }
 
     /**
-     * Returns the value that scopes INFORMATION_SCHEMA lookups to the
+     * Returns the value that scopes information_schema lookups to the
      * current connection.
      *
-     * On MySQL, INFORMATION_SCHEMA's `*_SCHEMA` columns hold the database
+     * On MySQL, information_schema's `*_schema` columns hold the database
      * name (`DATABASE()`) — MySQL has no separate namespace concept. On
      * PostgreSQL, the same columns hold the namespace (`current_schema()`,
-     * typically `public`); the database name lives in the `*_CATALOG`
+     * typically `public`); the database name lives in the `*_catalog`
      * columns instead. Scoping by the wrong value matches no rows and turns
      * the FK enumeration into a silent no-op.
      *

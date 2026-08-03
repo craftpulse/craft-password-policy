@@ -23,6 +23,7 @@
  */
 
 use Carbon\Carbon;
+use craft\db\Query;
 use craft\db\Table;
 use craft\helpers\StringHelper;
 use craft\web\Response;
@@ -210,14 +211,18 @@ it('enqueues the export job for a large range and redirects', function() {
     $now = Carbon::now('UTC')->format('Y-m-d H:i:s');
 
     $elementRows = [];
+    $elementUids = [];
+
     for ($i = 0; $i < 1001; $i++) {
+        $uid = StringHelper::UUID();
+        $elementUids[] = $uid;
         $elementRows[] = [
             AuditLogElement::class, // type
             1, // enabled
             0, // archived
             $now,
             $now,
-            StringHelper::UUID(),
+            $uid,
         ];
     }
     Craft::$app->getDb()->createCommand()->batchInsert(
@@ -226,12 +231,25 @@ it('enqueues the export job for a large range and redirects', function() {
         $elementRows,
     )->execute();
 
-    $firstElementId = (int)Craft::$app->getDb()->getLastInsertID(Table::ELEMENTS);
+    // Read the allocated ids back by uid rather than deriving them from
+    // `getLastInsertID()`. After a multi-row insert MySQL's `LAST_INSERT_ID()`
+    // returns the FIRST id while PostgreSQL's sequence sits on the LAST, so
+    // `$first + $i` walks off the end of the range on PostgreSQL and every
+    // paired audit row fails its foreign key. The uids are generated here, so
+    // matching on them is exact on either engine.
+    $elementIds = array_map('intval', (new Query())
+        ->select(['id'])
+        ->from(Table::ELEMENTS)
+        ->where(['uid' => $elementUids])
+        ->orderBy(['id' => SORT_ASC])
+        ->column());
+
+    expect($elementIds)->toHaveCount(1001);
 
     $rows = [];
     for ($i = 0; $i < 1001; $i++) {
         $rows[] = [
-            $firstElementId + $i, // id — paired craft_elements row
+            $elementIds[$i], // id — paired craft_elements row
             null, // userId
             null, // changedByUserId
             'password_changed',

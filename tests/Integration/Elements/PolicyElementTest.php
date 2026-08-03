@@ -14,6 +14,7 @@
  * @since     5.2.0
  */
 
+use craft\db\Connection;
 use craft\db\Query;
 use craftpulse\passwordpolicy\elements\PolicyElement;
 use craftpulse\passwordpolicy\enums\PolicyPreset;
@@ -171,36 +172,41 @@ it('registers PolicyElement as a Craft element type', function() {
 // no duplicates from any of the prior element conversions
 // =============================================================================
 
-it('leaves exactly one FK on passwordpolicy_policies after the migration', function() {
+/**
+ * Counts the physical foreign-key constraints on `$table`.
+ *
+ * Reads the ANSI `information_schema.table_constraints` view, filtered to
+ * `constraint_type = 'FOREIGN KEY'`, in lowercase. The earlier form leaned on
+ * `key_column_usage.REFERENCED_TABLE_NAME`, which is a MySQL extension absent
+ * from the ANSI view, and on `SELECT DATABASE()`, which PostgreSQL has no
+ * function for. Neither the suite nor CI ran on PostgreSQL, so neither showed
+ * up. Same view and same reasoning as
+ * `m260513_142613_DeduplicateElementTableForeignKeys`.
+ */
+function policyForeignKeyCount(string $table): int
+{
     $db = Craft::$app->getDb();
-    $currentDatabase = $db->createCommand('SELECT DATABASE()')->queryScalar();
 
-    $fkCount = (new Query())
-        ->from('INFORMATION_SCHEMA.KEY_COLUMN_USAGE')
+    $scope = $db->getDriverName() === Connection::DRIVER_PGSQL
+        ? $db->createCommand('SELECT current_schema()')->queryScalar()
+        : $db->createCommand('SELECT DATABASE()')->queryScalar();
+
+    return (int)(new Query())
+        ->from(['tc' => 'information_schema.table_constraints'])
         ->where([
-            'TABLE_SCHEMA' => $currentDatabase,
-            'TABLE_NAME' => $db->getSchema()->getRawTableName('{{%passwordpolicy_policies}}'),
+            'tc.table_schema' => $scope,
+            'tc.table_name' => $db->getSchema()->getRawTableName($table),
+            'tc.constraint_type' => 'FOREIGN KEY',
         ])
-        ->andWhere(['is not', 'REFERENCED_TABLE_NAME', null])
         ->count();
+}
 
-    expect((int)$fkCount)->toBe(1);
+it('leaves exactly one FK on passwordpolicy_policies after the migration', function() {
+    expect(policyForeignKeyCount('{{%passwordpolicy_policies}}'))->toBe(1);
 });
 
 it('leaves two FKs on the policy_groups junction after the migration', function() {
-    $db = Craft::$app->getDb();
-    $currentDatabase = $db->createCommand('SELECT DATABASE()')->queryScalar();
-
-    $fkCount = (new Query())
-        ->from('INFORMATION_SCHEMA.KEY_COLUMN_USAGE')
-        ->where([
-            'TABLE_SCHEMA' => $currentDatabase,
-            'TABLE_NAME' => $db->getSchema()->getRawTableName('{{%passwordpolicy_policy_groups}}'),
-        ])
-        ->andWhere(['is not', 'REFERENCED_TABLE_NAME', null])
-        ->count();
-
-    expect((int)$fkCount)->toBe(2);
+    expect(policyForeignKeyCount('{{%passwordpolicy_policy_groups}}'))->toBe(2);
 });
 
 // =============================================================================

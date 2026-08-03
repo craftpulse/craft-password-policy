@@ -35,6 +35,13 @@
             into the container shell — without the override, `App::env()` reads the
             playground's primary DB and Integration tests run against production
             data. force="true" pins the suite to the dedicated `db_test` schema.
+
+            `tests/bootstrap.php` re-pins the same keys into `$_SERVER`, which
+            `App::env()` reads first, so the bootstrap has the final say. These
+            entries are the belt to its braces. The bootstrap also honours
+            `PP_TEST_DB_DRIVER` / `_SERVER` / `_PORT` / `_USER` / `_PASSWORD` from
+            the process environment, which is how the PostgreSQL CI leg points the
+            suite at a different engine; the values below are the MySQL default.
         -->
         <env name="CRAFT_DB_DRIVER" value="mysql" force="true"/>
         <env name="CRAFT_DB_SERVER" value="db" force="true"/>

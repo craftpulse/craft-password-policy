@@ -41,7 +41,7 @@ jobs:
               run: composer install --no-interaction --no-ansi --no-progress
             - run: ${{ matrix.actions.run }}
     pest:
-        name: Pest
+        name: Pest (MySQL)
         runs-on: ubuntu-latest
         services:
             mysql:
@@ -86,5 +86,59 @@ jobs:
             # `$this->plugin->edition = ...` in each test file's setup, so
             # no CI-side edition configuration is needed beyond the DB pins
             # above.
+            - name: Run Pest
+              run: composer pest
+
+    # README.md advertises PostgreSQL 13+, and nothing verified it. Two
+    # migrations aborted the whole `migrate/all` run on that driver — one threw
+    # on a non-MySQL driver above its own idempotency guards, the other
+    # enumerated foreign keys through a MySQL-only INFORMATION_SCHEMA column —
+    # and both were invisible because every automated run was MySQL. This leg is
+    # the thing that would have caught them.
+    #
+    # It runs the SAME suite as the MySQL leg, redirected with `PP_TEST_DB_*`
+    # (see tests/bootstrap.php). Keeping one suite across both engines is the
+    # point: a PostgreSQL-only subset would drift out of step with whatever the
+    # MySQL leg grew.
+    pest_pgsql:
+        name: Pest (PostgreSQL)
+        runs-on: ubuntu-latest
+        services:
+            postgres:
+                image: postgres:16
+                env:
+                    POSTGRES_DB: db_test
+                    POSTGRES_USER: db
+                    POSTGRES_PASSWORD: db
+                ports:
+                    - 5432:5432
+                options: >-
+                    --health-cmd="pg_isready -U db"
+                    --health-interval=10s
+                    --health-timeout=5s
+                    --health-retries=5
+        env:
+            PP_TEST_DB_DRIVER: pgsql
+            PP_TEST_DB_SERVER: 127.0.0.1
+            PP_TEST_DB_PORT: '5432'
+        steps:
+            - uses: actions/checkout@v4
+            - name: Cache Composer dependencies
+              uses: actions/cache@v4
+              with:
+                  path: /tmp/composer-cache
+                  key: ${{ runner.os }}-${{ hashFiles('composer.json') }}
+            # pdo_pgsql + pgsql on top of the MySQL leg's extension set, so the
+            # same bootstrap can open either connection.
+            - name: Setup PHP
+              id: setup-php
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: 8.3
+                  extensions: 'ctype,curl,dom,iconv,imagick,intl,json,mbstring,openssl,pcre,pdo,pdo_pgsql,pgsql,reflection,spl,zip'
+                  ini-values: post_max_size=256M, max_execution_time=180, memory_limit=512M
+                  tools: composer:v2
+            - name: Install Composer dependencies
+              run: composer install --no-interaction --no-ansi --no-progress
             - name: Run Pest
               run: composer pest

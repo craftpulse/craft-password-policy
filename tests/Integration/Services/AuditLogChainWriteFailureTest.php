@@ -30,6 +30,10 @@ use craftpulse\passwordpolicy\services\AuditLogService;
 /**
  * Returns the most recently pushed job on the queue table that lands after
  * `$afterId`, unserialized, or `null` when nothing new landed.
+ *
+ * `queue.job` is a binary column, and PDO hands binary columns back as a stream
+ * resource on PostgreSQL and as a string on MySQL. Normalising here keeps the
+ * assertion driver-agnostic.
  */
 function ppPushedJobAfter(int $afterId): ?object
 {
@@ -39,7 +43,13 @@ function ppPushedJobAfter(int $afterId): ?object
         ->orderBy(['id' => SORT_DESC])
         ->one();
 
-    return $row === false || $row === null ? null : unserialize($row['job']);
+    if ($row === false || $row === null) {
+        return null;
+    }
+
+    $job = is_resource($row['job']) ? stream_get_contents($row['job']) : $row['job'];
+
+    return unserialize((string)$job);
 }
 
 /**

@@ -491,6 +491,14 @@ it('refuses a caller that exhausts its per-IP burst', function() {
     // Driven through `runAction()` rather than `actionValidate()` because the
     // limiter is an action filter on `behaviors()`: calling the action method
     // directly bypasses `beforeAction()` and would never meter anything.
+    //
+    // An identity is set for a harness reason, not a behavioural one:
+    // `craft\web\Controller::beforeAction()` refuses an anonymous request when
+    // the system isn't live, and whether a given test database happens to be
+    // live is ambient, and an offline site additionally demands
+    // `accessSiteWhenSystemIsOff`. An admin clears both states, and the limit
+    // is not an anonymous-only feature, so an admin is a valid subject for it.
+    $this->userStub->setIdentity(UserFactory::admin());
     Craft::$app->getCache()->flush();
     $this->request->stubUserIp = '198.51.100.10';
     $this->request->stubBodyParams = ['password' => 'aB3!xY9z'];
@@ -520,6 +528,9 @@ it('refuses a caller that exhausts its per-IP burst', function() {
 it('meters each IP separately', function() {
     // A shared limit across all callers would let one attacker lock every
     // visitor out of live validation.
+    //
+    // Identity set for the same harness reason as the test above.
+    $this->userStub->setIdentity(UserFactory::admin());
     Craft::$app->getCache()->flush();
     $this->request->stubBodyParams = ['password' => 'aB3!xY9z'];
 
