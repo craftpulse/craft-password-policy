@@ -41,6 +41,7 @@ use craftpulse\passwordpolicy\controllers\UserPasswordController;
 use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\records\UserStateRecord;
+use craftpulse\passwordpolicy\tests\Support\Factories\PermissionFactory;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 use craftpulse\passwordpolicy\tests\Support\MailerFixture;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
@@ -119,6 +120,24 @@ function runUserPasswordAction(string $actionId): mixed
     $controller = new UserPasswordController('user-password', PasswordPolicy::$plugin);
 
     return $controller->runAction($actionId);
+}
+
+/**
+ * Reads a user's bcrypt hash straight out of the users table.
+ * `craft\elements\db\UserQuery` doesn't select the `password` column, so a
+ * re-fetched element reports `null` regardless of what is stored. The peer-admin
+ * tests compare the hash across the request to prove the credential either was
+ * or wasn't replaced.
+ */
+function userPasswordHashFor(int $userId): ?string
+{
+    $hash = (new Query())
+        ->select(['password'])
+        ->from(Table::USERS)
+        ->where(['id' => $userId])
+        ->scalar();
+
+    return $hash === false ? null : (string)$hash;
 }
 
 // =============================================================================
@@ -447,6 +466,94 @@ it('returns 404 when target user does not exist', function() {
 
     expect(fn() => runUserPasswordAction('change'))
         ->toThrow(\yii\web\NotFoundHttpException::class);
+});
+
+// =============================================================================
+// actionChange — peer-admin guard
+// =============================================================================
+//
+// Setting a password outright is account takeover, so the permission alone must
+// not carry it across a privilege boundary: `pp:change-user-passwords` is
+// grantable to any group, and the elevated-session requirement is no obstacle to
+// an attacker who re-enters their OWN password. Craft core applies the same rule
+// to every admin-on-admin write it ships ("Only admins can unlock other admins",
+// `UsersController::actionUnlockUser()`).
+//
+// The hash comparison is the assertion that matters. A throw alone would still
+// pass if the save had already happened before the guard ran.
+
+it('refuses a non-admin holding the permission when the target is an admin', function() {
+    $actor = PermissionFactory::nonAdminWith(['pp:change-user-passwords']);
+    $this->userStub->setIdentity($actor);
+
+    $target = UserFactory::admin(['newPassword' => 'AdminOwnP@ssw0rd1!']);
+    $before = userPasswordHashFor((int)$target->id);
+
+    expect($before)->not->toBeNull();
+
+    $this->request->stubBodyParams = [
+        'userId' => $target->id,
+        'newPassword' => 'Attacker0wnsY0u!',
+        'newPasswordConfirm' => 'Attacker0wnsY0u!',
+    ];
+
+    expect(fn() => runUserPasswordAction('change'))
+        ->toThrow(ForbiddenHttpException::class);
+
+    $after = userPasswordHashFor((int)$target->id);
+
+    expect($after)->toBe($before)
+        ->and(Craft::$app->getSecurity()->validatePassword('Attacker0wnsY0u!', (string)$after))->toBeFalse();
+});
+
+it('lets an admin set another admin’s password', function() {
+    // Co-administrators are peers and Craft already treats them as mutually
+    // trusted, so the guard is about crossing a privilege boundary rather than
+    // about admin accounts being untouchable.
+    $target = UserFactory::admin(['newPassword' => 'AdminOwnP@ssw0rd1!']);
+    $before = userPasswordHashFor((int)$target->id);
+
+    $this->request->stubBodyParams = [
+        'userId' => $target->id,
+        'newPassword' => 'PeerAdminSet1!',
+        'newPasswordConfirm' => 'PeerAdminSet1!',
+    ];
+
+    $response = runUserPasswordAction('change');
+
+    expect($response)->toBeInstanceOf(Response::class)
+        ->and($response->getStatusCode())->toBe(200);
+
+    $after = userPasswordHashFor((int)$target->id);
+
+    expect($after)->not->toBe($before)
+        ->and(Craft::$app->getSecurity()->validatePassword('PeerAdminSet1!', (string)$after))->toBeTrue();
+});
+
+it('lets a non-admin holding the permission set a non-admin’s password', function() {
+    // The guard closes one boundary and must not narrow the capability the
+    // permission is for.
+    $actor = PermissionFactory::nonAdminWith(['pp:change-user-passwords']);
+    $this->userStub->setIdentity($actor);
+
+    $target = UserFactory::nonAdmin(['newPassword' => 'UserOwnP@ssw0rd1!']);
+    $before = userPasswordHashFor((int)$target->id);
+
+    $this->request->stubBodyParams = [
+        'userId' => $target->id,
+        'newPassword' => 'DelegateSet1!',
+        'newPasswordConfirm' => 'DelegateSet1!',
+    ];
+
+    $response = runUserPasswordAction('change');
+
+    expect($response)->toBeInstanceOf(Response::class)
+        ->and($response->getStatusCode())->toBe(200);
+
+    $after = userPasswordHashFor((int)$target->id);
+
+    expect($after)->not->toBe($before)
+        ->and(Craft::$app->getSecurity()->validatePassword('DelegateSet1!', (string)$after))->toBeTrue();
 });
 
 // =============================================================================

@@ -18,6 +18,7 @@ use craft\web\Controller;
 use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\models\AuditContext;
 use craftpulse\passwordpolicy\PasswordPolicy;
+use craftpulse\passwordpolicy\services\SecurityService;
 use Throwable;
 use yii\base\InvalidConfigException;
 use yii\web\BadRequestHttpException;
@@ -47,7 +48,14 @@ use yii\web\Response;
  * elevated session required (defense-in-depth — `$user->newPassword`
  * is a sensitive operation regardless of the surface that triggered
  * it). `actionChange()` rejects bulk POSTs (`userId[]`) per the
- * single-user-only contract.
+ * single-user-only contract, and refuses a non-admin actor aiming at
+ * an admin target via {@see SecurityService::canManageUserCredentials()}.
+ *
+ * `actionSendResetEmail()` carries no peer-admin guard, deliberately.
+ * It mails a reset link to the target's own address rather than
+ * replacing their credential, so it crosses no privilege boundary,
+ * and Craft core lets any holder of `editUsers` send one to an admin
+ * (`UsersController::actionSendPasswordResetEmail()`).
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -111,6 +119,10 @@ class UserPasswordController extends Controller
      *    service their own password through Craft's standard account
      *    screen, not this admin-on-user surface.
      *  - 403 if `allowAdminChanges = false`.
+     *  - 403 if a non-admin aims this at an admin
+     *    ({@see SecurityService::canManageUserCredentials()}) — setting an
+     *    administrator's password outright is account takeover, and
+     *    `pp:change-user-passwords` is grantable to any group.
      *  - 404 if the target user doesn't exist.
      *  - Re-renders with errors when the new password fails policy
      *    validation (`User::EVENT_DEFINE_RULES`).
@@ -165,6 +177,22 @@ class UserPasswordController extends Controller
         if ($currentUser !== null && $currentUser->id === $user->id) {
             throw new BadRequestHttpException(
                 'Use the standard account password screen to change your own password.',
+            );
+        }
+
+        // Peer-admin guard, before anything reads the submitted password.
+        // `pp:change-user-passwords` is grantable to any group, and setting an
+        // account's password outright is takeover of that account, so the
+        // permission cannot be allowed to carry "become an administrator" with
+        // it. The elevated-session requirement is no obstacle here either: the
+        // attacker re-enters their OWN password to elevate.
+        //
+        // Re-checked in the controller rather than only where the action menu
+        // renders, because the target id arrives in the POST body and can name a
+        // user no rendered screen ever offered.
+        if (!PasswordPolicy::$plugin->getSecurity()->canManageUserCredentials($user, $currentUser)) {
+            throw new ForbiddenHttpException(
+                Craft::t('password-policy', 'Only an admin can change another admin’s password.'),
             );
         }
 

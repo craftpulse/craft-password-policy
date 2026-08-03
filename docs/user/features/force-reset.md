@@ -80,15 +80,17 @@ POST `password-policy/user-password/change` with `{userId, newPassword, newPassw
 
 Validates the new password against the user's resolved policy (Pro: per-group; Lite: global), rejects matches against the password history, captures `changeReason = AdminChange` in the audit context, then saves through `Craft::$app->elements->saveElement()`.
 
-### `RetentionService::canForceResetUser(User $target, ?User $actor): bool`
+Returns 403 when a non-admin aims it at an admin. Setting a password outright is takeover of that account, and `pp:change-user-passwords` is grantable to any group, so only an admin may point this at another admin.
 
-The peer-admin guard, and the single gate every per-user force-reset surface consults. Returns `false` when there is no acting user, or when the target is an admin and the actor isn't. Call it before `forceResetForUser()` in any custom path, and reject on `false`.
+### `SecurityService::canManageUserCredentials(User $target, ?User $actor): bool`
+
+The peer-admin gate, and the single predicate every admin-on-user credential write consults: the direct password change above, and all three per-user force-reset surfaces. Returns `false` when there is no acting user, or when the target is an admin and the actor isn't. Call it before `forceResetForUser()` or any custom credential write, and reject on `false`.
 
 ### `RetentionService::forceResetForUser(User $target): bool`
 
 The per-user write. Sets `passwordResetRequired = true`, pins `pendingReason = AdminForceReset`, and writes a `password_reset_forced` audit event. Returns `false` when the user was already flagged, which is a no-op rather than a failure: re-pinning would overwrite an in-flight reason such as `BreachForced`.
 
-Performs no authorization of its own, so admin targets stay reachable to admin actors. Clear `canForceResetUser()` first.
+Performs no authorization of its own, so admin targets stay reachable to admin actors. Clear `canManageUserCredentials()` first.
 
 ### `RetentionService::requirePasswordReset(User $user): void`
 

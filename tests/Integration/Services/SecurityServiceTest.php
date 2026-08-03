@@ -1,9 +1,17 @@
 <?php
 /**
- * Pest coverage for `SecurityService` — the plugin's CSP-nonce source.
+ * Pest coverage for `SecurityService` — the plugin's cross-cutting security
+ * primitives.
  *
- * Pins two contracts:
+ * Pins three contracts:
  *
+ *  - `canManageUserCredentials()` is the single peer-admin gate every
+ *    admin-on-user credential write clears first. Asserted here as a predicate
+ *    rather than only through the four surfaces that call it (the Password
+ *    Security pane's Actions flag, the force-reset POST handler, the
+ *    `ForcePasswordReset` bulk element action, and the direct password-set
+ *    handler on `UserPasswordController`), because a duplicated authorization
+ *    check drifts and the copy that drifts is the one nobody tests.
  *  - `getNonce()` returns a stable, non-empty per-request nonce. The plugin
  *    hands this to the indicator script's asset registration when `cspNonce`
  *    is enabled, so it must be memoized (same value across calls within a
@@ -24,6 +32,49 @@
 
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\services\SecurityService;
+use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
+
+// =============================================================================
+// canManageUserCredentials() — the one shared peer-admin gate
+// =============================================================================
+
+it('refuses a non-admin actor aiming at an admin target', function() {
+    // The escalation the gate closes. Both `pp:user-force-reset` and
+    // `pp:change-user-passwords` are grantable to non-admins, so neither
+    // permission may carry "replace an administrator's password" or "lock an
+    // administrator out of their own account" with it.
+    $actor = UserFactory::nonAdmin();
+    $target = UserFactory::admin();
+
+    expect(PasswordPolicy::$plugin->getSecurity()->canManageUserCredentials($target, $actor))
+        ->toBeFalse();
+});
+
+it('allows a non-admin actor aiming at a non-admin target', function() {
+    $actor = UserFactory::nonAdmin();
+    $target = UserFactory::nonAdmin();
+
+    expect(PasswordPolicy::$plugin->getSecurity()->canManageUserCredentials($target, $actor))
+        ->toBeTrue();
+});
+
+it('allows an admin actor aiming at an admin target', function() {
+    // Co-administrators are peers and Craft already treats them as mutually
+    // trusted, so the gate is about crossing a privilege boundary rather than
+    // about admin accounts being untouchable.
+    $actor = UserFactory::admin();
+    $target = UserFactory::admin();
+
+    expect(PasswordPolicy::$plugin->getSecurity()->canManageUserCredentials($target, $actor))
+        ->toBeTrue();
+});
+
+it('refuses when there is no identified actor', function() {
+    $target = UserFactory::nonAdmin();
+
+    expect(PasswordPolicy::$plugin->getSecurity()->canManageUserCredentials($target, null))
+        ->toBeFalse();
+});
 
 // =============================================================================
 // getNonce()

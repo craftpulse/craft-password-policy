@@ -1,21 +1,19 @@
 <?php
 /**
- * Pest coverage for the PER-USER force-reset seam on `RetentionService`:
- * `canForceResetUser()` (the peer-admin guard) and `forceResetForUser()` (the
- * write). Together they are the Pro capability that the universal mass path in
- * `requirePasswordReset()` does not cover: a named account, expired or not.
+ * Pest coverage for the PER-USER force-reset write on `RetentionService`:
+ * `forceResetForUser()`, the Pro capability that the universal mass path in
+ * `requirePasswordReset()` does not cover — a named account, expired or not.
  *
- * The guard is asserted here as a predicate rather than only through the
- * surfaces that call it, because it is deliberately one shared gate. Three
- * surfaces consume it (the Password Security pane's flag, the POST handler on
- * `UserSecurityController`, and the `ForcePasswordReset` bulk element action) and
- * a duplicated authorization check drifts, with the copy that drifts being the
- * one nobody tests.
+ * The peer-admin guard that callers must clear first is asserted in
+ * `SecurityServiceTest`, where the predicate lives. It moved off this service in
+ * 5.2.0 once it started gating the direct password-set controller as well as the
+ * force-reset paths: retention stopped being the shared concern between its
+ * consumers.
  *
- * The two paths differ in the pending reason they pin, and that difference is
- * load-bearing for the audit trail: the mass path says `ExpiryForced` because a
- * retention sweep reached the account, the per-user path says `AdminForceReset`
- * because an operator pointed at it.
+ * The two write paths differ in the pending reason they pin, and that difference
+ * is load-bearing for the audit trail: the mass path says `ExpiryForced` because
+ * a retention sweep reached the account, the per-user path says
+ * `AdminForceReset` because an operator pointed at it.
  *
  * @link      https://craftpulse.com
  * @copyright Copyright (c) 2024 CraftPulse
@@ -68,43 +66,6 @@ function perUserResetFlagFor(int $userId): bool
         ->where(['id' => $userId])
         ->scalar();
 }
-
-// =============================================================================
-// Peer-admin guard — the one shared gate
-// =============================================================================
-
-it('refuses a non-admin actor aiming at an admin target', function() {
-    // The escalation the guard closes. `pp:user-force-reset` is grantable to
-    // non-admins, so the permission alone must not carry "flag an
-    // administrator's account and force a credential change on it".
-    $actor = UserFactory::nonAdmin();
-    $target = UserFactory::admin();
-
-    expect($this->service->canForceResetUser($target, $actor))->toBeFalse();
-});
-
-it('allows a non-admin actor aiming at a non-admin target', function() {
-    $actor = UserFactory::nonAdmin();
-    $target = UserFactory::nonAdmin();
-
-    expect($this->service->canForceResetUser($target, $actor))->toBeTrue();
-});
-
-it('allows an admin actor aiming at an admin target', function() {
-    // Co-administrators are peers and Craft already treats them as mutually
-    // trusted, so the guard is about crossing a privilege boundary rather than
-    // about admin accounts being untouchable.
-    $actor = UserFactory::admin();
-    $target = UserFactory::admin();
-
-    expect($this->service->canForceResetUser($target, $actor))->toBeTrue();
-});
-
-it('refuses when there is no identified actor', function() {
-    $target = UserFactory::nonAdmin();
-
-    expect($this->service->canForceResetUser($target, null))->toBeFalse();
-});
 
 // =============================================================================
 // The write — flag, pending reason, audit event

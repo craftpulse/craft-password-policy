@@ -151,7 +151,7 @@ class ForcePasswordReset extends ElementAction
             // Peer-admin guard, per target. A non-admin holding the grant may
             // not force a reset on an admin, so an admin swept into the
             // selection is refused rather than quietly skipped.
-            if (!$retention->canForceResetUser($user, $currentUser)) {
+            if (!$plugin->getSecurity()->canManageUserCredentials($user, $currentUser)) {
                 $deniedCount++;
                 continue;
             }

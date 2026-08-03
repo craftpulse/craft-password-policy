@@ -236,7 +236,7 @@ class UserSecurityController extends Controller
         $showForceReset = $plugin->getIsPro()
             && $currentUser !== null
             && $currentUser->can(PasswordPolicy::PERMISSION_USER_FORCE_RESET)
-            && $plugin->retention->canForceResetUser($user, $currentUser)
+            && $plugin->getSecurity()->canManageUserCredentials($user, $currentUser)
             && !$user->passwordResetRequired;
 
         /** @var Response|CpScreenResponseBehavior $response */
@@ -289,7 +289,7 @@ class UserSecurityController extends Controller
      * rather than 404, because on Pro the endpoint genuinely exists and
      * the caller genuinely holds the permission — the denial is about who
      * the target is, which is the permission axis, not the edition axis.
-     * See `RetentionService::canForceResetUser()`.
+     * See `SecurityService::canManageUserCredentials()`.
      *
      * @return Response|null
      *
@@ -327,7 +327,7 @@ class UserSecurityController extends Controller
         // a user the rendered screen never offered.
         $currentUser = Craft::$app->getUser()->getIdentity();
 
-        if (!$plugin->retention->canForceResetUser($user, $currentUser)) {
+        if (!$plugin->getSecurity()->canManageUserCredentials($user, $currentUser)) {
             throw new ForbiddenHttpException(
                 Craft::t('password-policy', 'Only an admin can force a password reset on another admin.')
             );

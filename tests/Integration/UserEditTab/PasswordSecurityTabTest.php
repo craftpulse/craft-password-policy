@@ -143,7 +143,7 @@ function renderPasswordSecurityContent(User $user): string
             'showForceReset' => $plugin->getIsPro()
                 && $currentUser !== null
                 && $currentUser->can(PasswordPolicy::PERMISSION_USER_FORCE_RESET)
-                && $plugin->getRetention()->canForceResetUser($user, $currentUser)
+                && $plugin->getSecurity()->canManageUserCredentials($user, $currentUser)
                 && !$user->passwordResetRequired,
             'currentUser' => $currentUser,
         ]);

@@ -74,7 +74,7 @@ class RetentionService extends Component
      * failure mode worth introducing. The Pro per-user path handles named
      * targets, admins included, through
      * {@see self::forceResetForUser()} behind
-     * {@see self::canForceResetUser()}.
+     * {@see SecurityService::canManageUserCredentials()}.
      *
      * @param UserElement $user
      * @return void
@@ -112,43 +112,6 @@ class RetentionService extends Component
     }
 
     /**
-     * Returns whether `$actor` is allowed to force a password reset on
-     * `$target` — the peer-admin guard shared by every per-user
-     * force-reset surface (the Password Security POST handler and the
-     * `ForcePasswordReset` bulk element action).
-     *
-     * Two rules, in order:
-     *
-     *  1. No identified actor, no write. Callers that reach a write path
-     *     without a session are rejected outright.
-     *  2. A non-admin may never force a reset on an admin. Locking an
-     *     administrator out of their own account is an escalation
-     *     primitive, and `pp:user-force-reset` is grantable to
-     *     non-admins by design, so the permission alone must not carry
-     *     it. Admin-on-admin stays allowed: co-administrators are peers
-     *     and Craft already treats them as mutually trusted.
-     *
-     * Deliberately a single predicate rather than one check per surface:
-     * duplicated authorization drifts, and the copy that drifts is the
-     * one nobody tests.
-     *
-     * @param UserElement $target the account that would be flagged
-     * @param UserElement|null $actor the acting CP session's identity
-     * @return bool
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    public function canForceResetUser(UserElement $target, ?UserElement $actor): bool
-    {
-        if ($actor === null) {
-            return false;
-        }
-
-        return !$target->admin || $actor->admin;
-    }
-
-    /**
      * Forces a password reset on one named user — the Pro per-user path,
      * additive to the universal mass path in
      * {@see self::requirePasswordReset()}.
@@ -161,9 +124,9 @@ class RetentionService extends Component
      *    `ChangeReason::ExpiryForced`, because an operator pointed at
      *    this account rather than a retention sweep reaching it.
      *
-     * Callers MUST clear {@see self::canForceResetUser()} first — this
-     * method performs no authorization of its own, so that admin targets
-     * remain reachable to admin actors.
+     * Callers MUST clear {@see SecurityService::canManageUserCredentials()}
+     * first — this method performs no authorization of its own, so that admin
+     * targets remain reachable to admin actors.
      *
      * Audit parity with the mass path: the same `password_reset_forced`
      * event is written to the audit chain. Capture is universal across

@@ -112,9 +112,9 @@
 - Element actions: `ChangeUserPassword` (single-user; opens an elevated-session modal), `SendPasswordResetEmail` (bulk), `ForcePasswordReset` (bulk).
 - Force a password reset on one named user (Pro), whether or not their password has expired, from three surfaces: the `ForcePasswordReset` bulk element action on the Users index, the "Force password reset" item in the user-edit action menu, and the Actions pane on the user-edit **Password Security** screen. Additive to the mass expired-only reset that runs on every edition.
 - Added `craftpulse\passwordpolicy\services\RetentionService::forceResetForUser()`: the per-user write, which flags the account, pins a `ChangeReason::AdminForceReset` pending reason, and records a `password_reset_forced` audit event.
-- Added `craftpulse\passwordpolicy\services\RetentionService::canForceResetUser()`: the peer-admin guard consulted by every per-user force-reset surface. Call it before `forceResetForUser()` in any custom path.
+- Added `craftpulse\passwordpolicy\services\SecurityService::canManageUserCredentials()`: the peer-admin gate consulted by every admin-on-user credential write, both the direct password change and all three per-user force-reset surfaces. Call it before `craftpulse\passwordpolicy\services\RetentionService::forceResetForUser()`, or before any custom credential write, and reject on `false`.
 - User-index columns and condition rules: Last Password Change, Days Until Expiry, Expired, Reset Required, Status (composite seven-state pill), Last Change Reason; Pro adds Breached Recently, Policy Drift, Applied Policies. Sort options + condition rules expose every column to the user index.
-- `pp:change-user-passwords` permission: gates `ChangeUserPassword` action + `UserPasswordController` (CP POST, elevated session required).
+- `pp:change-user-passwords` permission: gates `ChangeUserPassword` action + `UserPasswordController` (CP POST, elevated session required). Only an admin can set another admin's password, whoever holds the permission.
 - User-state capture: `passwordpolicy_user_state` table records each user's last breach-check time, breached-recently flag, pending change reason. Captured on every edition per the audit-capture principle; Pro/Enterprise expose more of it through the user-index columns.
 
 #### Strength engine

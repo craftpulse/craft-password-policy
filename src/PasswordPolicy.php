@@ -84,6 +84,7 @@ use craftpulse\passwordpolicy\models\AuditContext;
 use craftpulse\passwordpolicy\models\SettingsModel;
 use craftpulse\passwordpolicy\rules\UserRules;
 use craftpulse\passwordpolicy\services\AlertCooldownService;
+use craftpulse\passwordpolicy\services\SecurityService;
 use craftpulse\passwordpolicy\services\ServicesTrait;
 use craftpulse\passwordpolicy\utilities\AuditExportUtility;
 use craftpulse\passwordpolicy\utilities\AuditSchemaUtility;
@@ -2679,11 +2680,13 @@ class PasswordPolicy extends Plugin
      *    elevated session required (the controller's `beforeAction()`
      *    enforces this; declaring it on the menu item lets Craft
      *    pre-prompt for re-auth before firing the action).
-     *  - **Change password…** (gated on `pp:change-user-passwords`) —
-     *    JS-driven Garnish modal (the same modal the index trigger
-     *    used to surface; see {@see ChangeUserPassword::registerModalHelper()}).
+     *  - **Change password…** (gated on `pp:change-user-passwords` plus
+     *    {@see SecurityService::canManageUserCredentials()}) — JS-driven
+     *    Garnish modal (the same modal the index trigger used to surface;
+     *    see {@see ChangeUserPassword::registerModalHelper()}).
      *    Single-user only — bulk same-password changes are a security
-     *    anti-pattern.
+     *    anti-pattern. A non-admin never sees it on an admin's screen:
+     *    setting a password outright is takeover of that account.
      *
      * Read-only mode (`allowAdminChanges = false`) suppresses every
      * item — admins can still navigate to the Password Security screen
@@ -2745,6 +2748,17 @@ class PasswordPolicy extends Plugin
                         'redirect' => $editScreenUrl,
                         'requireElevatedSession' => true,
                     ];
+
+                    // Peer-admin guard on the modal item only. Setting a
+                    // password outright is takeover of the target account, so a
+                    // non-admin never gets the affordance against an admin — the
+                    // controller answers 403 either way, and a pane that offers a
+                    // button its own POST refuses is a defect. The reset-email
+                    // item above stays ungated: it mails the target's own
+                    // address rather than replacing the credential.
+                    if (!$this->getSecurity()->canManageUserCredentials($user, $currentUser)) {
+                        return;
+                    }
 
                     $changeId = sprintf('pp-change-password-%s', mt_rand());
                     $event->items[] = [
