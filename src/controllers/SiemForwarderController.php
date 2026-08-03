@@ -180,6 +180,13 @@ class SiemForwarderController extends Controller
     /**
      * Index — list all forwarders.
      *
+     * Also carries the sweep-health verdict for the cron warning. The
+     * `password-policy/siem/run` sweep is operator-scheduled, and an
+     * install that never wired it up looks identical to a healthy one from
+     * this screen: an enabled forwarder, a closed circuit, and no
+     * deliveries. {@see \craftpulse\passwordpolicy\services\ComplianceAggregateService::getSiemSweepHealth()}
+     * turns that silence into something the operator can see.
+     *
      * @return Response
      *
      * @author CraftPulse
@@ -192,6 +199,7 @@ class SiemForwarderController extends Controller
         return $this->renderTemplate('password-policy/_siem/_index', [
             'forwarders' => $forwarders,
             'readOnly' => $this->_readOnly,
+            'sweepHealth' => PasswordPolicy::$plugin->getComplianceAggregates()->getSiemSweepHealth(),
         ]);
     }
 

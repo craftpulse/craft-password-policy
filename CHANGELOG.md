@@ -95,6 +95,7 @@
 - Added webhook secret rotation with a grace window during which both the old and the new signature verify (Enterprise).
 - Added the `password-policy/webhook/create`, `password-policy/webhook/list`, and `password-policy/webhook/rotate-secret` console commands (Enterprise).
 - Added the `password-policy/webhook/run` console command, which enqueues the batched job that delivers pending audit rows to every active webhook endpoint and needs a cron entry to deliver on a schedule (Enterprise).
+- Added a sweep warning to the SIEM forwarders index and the webhooks index, which appears when an audit row has been waiting more than two hours for a first delivery attempt and names the console command that has to be scheduled, so a forward sweep that was never added to cron stops failing silently (Enterprise).
 - Added audit log export, returned inline for up to 1,000 rows and queued behind a one-time download link beyond that, writing to any Craft filesystem named by `auditExportFilesystem` (Enterprise).
 - Added the `passwordpolicy_siem_forwarders` and `passwordpolicy_webhook_endpoints` tables.
 - Added the `pp:audit-view`, `pp:audit-verify`, `pp:audit-export`, `pp:siem-manage`, and `pp:webhooks-manage` permissions.

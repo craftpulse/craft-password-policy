@@ -24,9 +24,16 @@ use yii\base\Component;
  * Class ComplianceAggregateService
  *
  * Read-only aggregates over the Phase G audit infrastructure for the G3
- * compliance dashboard + report exports. Each public method returns a
- * fixed-shape array consumed by the dashboard template and the report
- * controller — see per-method docblocks for the contract.
+ * compliance dashboard + report exports, plus the sweep-health verdicts
+ * the SIEM forwarder and webhook endpoint indexes warn on. Each public
+ * method returns a fixed-shape array consumed by a CP template or the
+ * report controller — see per-method docblocks for the contract.
+ *
+ * The forwarder pending-forward query lives here rather than in
+ * `SiemService` / `WebhookService` on purpose: the dashboard's pending
+ * count and the indexes' sweep warning read the same watermark columns,
+ * and two implementations of "rows still awaiting delivery" would drift.
+ * The delivery services stay delivery services.
  *
  * Capture is universal (per `project_audit_capture_principle.md`), so
  * the aggregate service runs the same shape across editions and does
@@ -42,7 +49,10 @@ use yii\base\Component;
  * trade-off is bounded query cost on a CP page that may render on every
  * request to `/admin/utilities/...`. The chain-health aggregate carries
  * the longest TTL (300s) because it walks the entire audit table —
- * verifier-style — and we explicitly don't want that on every render.
+ * verifier-style — and we explicitly don't want that on every render. The
+ * two sweep-health methods are the exception and cache nothing: they are
+ * index reads on a screen an operator opens by hand, and an operator who
+ * has just fixed their cron should see the warning clear on reload.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -108,6 +118,38 @@ class ComplianceAggregateService extends Component
      * @var int seconds
      */
     public const TTL_PENDING_FORWARDS = 60;
+
+    /**
+     * How old the oldest never-attempted outbound row may get before the
+     * forwarder screens call the sweep cron missing.
+     *
+     * Two hours. The documented cadence for both
+     * `password-policy/siem/run` and `password-policy/webhook/run` is
+     * every five minutes (see `docs/user/operations/cron-setup.md`), so
+     * two hours is roughly twenty-four consecutive missed sweeps: far
+     * outside anything a working schedule produces, and still inside the
+     * operator's working session for the failure this detects (a sweep
+     * that was never wired up, which otherwise stays silent forever).
+     *
+     * The window is deliberately generous rather than tight. Cost is
+     * asymmetric: a warning that fires on a healthy install teaches the
+     * operator to ignore the warning, while detection latency costs
+     * nothing on a condition that persists until someone edits a
+     * crontab. Two hours absorbs an operator running the sweep hourly
+     * instead of every five minutes, a queue that is only drained by
+     * Craft's web-request-triggered runner on a quiet site, and a long
+     * catch-up campaign on a deep backlog.
+     *
+     * Hardcoded rather than a setting on purpose. It tunes a diagnostic,
+     * not delivery: no value changes what gets forwarded or when. A
+     * setting would need project-config sync, an Enterprise gate, a
+     * strip entry in `SettingsController::actionSave`, and a CP field, to
+     * let operators adjust a number whose correct value is identical on
+     * every install.
+     *
+     * @var int minutes
+     */
+    public const SWEEP_STALE_THRESHOLD_MINUTES = 120;
 
     /**
      * Genesis sentinel for the audit chain. Sixty-four zero hex chars —
@@ -393,6 +435,90 @@ class ComplianceAggregateService extends Component
     }
 
     /**
+     * Returns whether the SIEM forward sweep looks like it has stopped
+     * running, for the warning on the SIEM forwarders index.
+     *
+     * The signal is a never-attempted row: `SiemForwardJob` bumps
+     * `forwardAttempts` on every pending row it offers to a forwarder, so
+     * a row with `forwardedAt IS NULL` AND `forwardAttempts = 0` has not
+     * been handed to anyone. One of those older than
+     * {@see self::SWEEP_STALE_THRESHOLD_MINUTES} means nothing has swept
+     * for that long, which is what a missing `password-policy/siem/run`
+     * cron entry looks like from the database. Rows that were attempted
+     * and refused are excluded on purpose: those are a forwarder problem,
+     * already visible in the index's Circuit column and the forwarder's
+     * failure counter, and telling the operator to check cron there would
+     * send them after the wrong thing.
+     *
+     * Returns the idle shape (no warning) when:
+     *
+     *  - not one forwarder is enabled with a closed circuit and an
+     *    allowlist covering `audit_log`. Without such a forwarder the job
+     *    never marks anything forwarded, so `forwardedAt IS NULL` is the
+     *    correct steady state of a deliberately idle install rather than
+     *    a symptom. An enabled forwarder sitting on an open circuit is
+     *    excluded for the same reason as an attempted row: the pile-up
+     *    has a visible cause on screen, and its cooldown window can
+     *    legitimately exceed the staleness threshold.
+     *  - nothing is pending a first attempt (includes a fresh install
+     *    with an empty audit log).
+     *  - the oldest never-attempted row is younger than the threshold.
+     *
+     * Shape:
+     *  - `stale`: `bool` — whether to warn
+     *  - `unattemptedCount`: `int` — pending rows no forwarder has been
+     *     offered yet; 0 unless `stale`
+     *  - `oldestAge`: `string|null` — human-readable age of the oldest
+     *     never-attempted row; null unless `stale`
+     *
+     * Deliberately uncached, unlike the dashboard aggregates. The two
+     * lookups are index reads on a screen an operator opens by hand
+     * (never the CP nav or a hot path), and the count only runs once the
+     * install is already known to be behind. An uncached read also means
+     * the warning clears on the operator's next reload after they fix the
+     * cron, rather than up to a TTL later.
+     *
+     * @return array{stale: bool, unattemptedCount: int, oldestAge: ?string}
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getSiemSweepHealth(): array
+    {
+        $idle = [
+            'stale' => false,
+            'unattemptedCount' => 0,
+            'oldestAge' => null,
+        ];
+
+        if (!$this->_hasSweepingSiemForwarder()) {
+            return $idle;
+        }
+
+        $oldestDateCreated = $this->_unattemptedRowsQuery()
+            ->select(['dateCreated'])
+            ->orderBy(['id' => SORT_ASC])
+            ->limit(1)
+            ->scalar();
+
+        if (!is_string($oldestDateCreated) || $oldestDateCreated === '') {
+            return $idle;
+        }
+
+        $ageSeconds = $this->_secondsSince($oldestDateCreated);
+
+        if (!$this->_isSweepStale($ageSeconds)) {
+            return $idle;
+        }
+
+        return [
+            'stale' => true,
+            'unattemptedCount' => (int)$this->_unattemptedRowsQuery()->count(),
+            'oldestAge' => DateTimeHelper::humanDuration($ageSeconds, false),
+        ];
+    }
+
+    /**
      * Returns audit-log row totals — overall, last 30 days, and by
      * event class.
      *
@@ -455,8 +581,147 @@ class ComplianceAggregateService extends Component
         return $result;
     }
 
+    /**
+     * Returns whether the webhook delivery sweep looks like it has stopped
+     * running, for the warning on the webhook endpoints index.
+     *
+     * Webhooks have no per-row attempt counter: each endpoint is an
+     * independent subscriber carrying its own `lastDeliveredRowId` cursor,
+     * so the per-endpoint equivalent of "never attempted" is a cursor with
+     * rows behind it AND no recorded failures. `WebhookForwardJob` either
+     * advances the cursor (delivered) or the service increments
+     * `consecutiveFailures` (refused), so a backlog on an endpoint with a
+     * zeroed failure counter and a closed circuit was never dispatched at
+     * all. Older than {@see self::SWEEP_STALE_THRESHOLD_MINUTES} means
+     * nothing has swept for that long, which is what a missing
+     * `password-policy/webhook/run` cron entry looks like from the
+     * database.
+     *
+     * Endpoints excluded from the check:
+     *
+     *  - disabled, since the job never reads them.
+     *  - allowlist doesn't cover `audit_log`, since the job skips them and
+     *    their cursor is expected to stand still.
+     *  - `consecutiveFailures > 0` or an open circuit, because the backlog
+     *    then has a delivery cause already visible in the index's Circuit
+     *    column. One caveat, deliberate: an operator who resets the
+     *    circuit on a genuinely refusing endpoint zeroes that counter, so
+     *    that endpoint can warn about cron for one sweep interval until
+     *    the next dispatch fails and re-arms the counter.
+     *
+     * With no endpoint left to check, the idle shape comes back and no
+     * warning renders. Same for a fresh install (nothing behind any
+     * cursor, and new endpoints seed their watermark to the newest audit
+     * row) and for a backlog younger than the threshold.
+     *
+     * Shape:
+     *  - `stale`: `bool` — whether to warn
+     *  - `staleEndpointCount`: `int` — enabled endpoints sitting on an
+     *     undispatched backlog; 0 unless `stale`. Worth surfacing: one
+     *     endpoint behind points at that endpoint, all of them point at
+     *     the sweep.
+     *  - `oldestAge`: `string|null` — human-readable age of the oldest
+     *     undispatched row across those endpoints; null unless `stale`
+     *
+     * Deliberately uncached, for the reasons in
+     * {@see self::getSiemSweepHealth()}. One index read per candidate
+     * endpoint, and endpoint counts are small by nature.
+     *
+     * @return array{stale: bool, staleEndpointCount: int, oldestAge: ?string}
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getWebhookSweepHealth(): array
+    {
+        $service = PasswordPolicy::$plugin->getWebhook();
+        $staleEndpointCount = 0;
+        $oldestAgeSeconds = 0;
+
+        foreach ($service->listEndpoints() as $endpoint) {
+            if (!$endpoint->enabled) {
+                continue;
+            }
+
+            if ($endpoint->consecutiveFailures > 0 || $endpoint->circuitOpenAt !== null) {
+                continue;
+            }
+
+            if (!in_array('audit_log', $service->getEligibleEventClasses($endpoint), true)) {
+                continue;
+            }
+
+            $oldestDateCreated = (new Query())
+                ->select(['dateCreated'])
+                ->from('{{%passwordpolicy_audit_log}}')
+                ->where(['>', 'id', $endpoint->lastDeliveredRowId ?? 0])
+                ->orderBy(['id' => SORT_ASC])
+                ->limit(1)
+                ->scalar();
+
+            if (!is_string($oldestDateCreated) || $oldestDateCreated === '') {
+                continue;
+            }
+
+            $ageSeconds = $this->_secondsSince($oldestDateCreated);
+
+            if (!$this->_isSweepStale($ageSeconds)) {
+                continue;
+            }
+
+            $staleEndpointCount++;
+            $oldestAgeSeconds = max($oldestAgeSeconds, $ageSeconds);
+        }
+
+        if ($staleEndpointCount === 0) {
+            return [
+                'stale' => false,
+                'staleEndpointCount' => 0,
+                'oldestAge' => null,
+            ];
+        }
+
+        return [
+            'stale' => true,
+            'staleEndpointCount' => $staleEndpointCount,
+            'oldestAge' => DateTimeHelper::humanDuration($oldestAgeSeconds, false),
+        ];
+    }
+
     // Private Methods
     // =========================================================================
+
+    /**
+     * Returns whether at least one SIEM forwarder would pick up an audit
+     * row on the next sweep: enabled, circuit closed, and an allowlist
+     * covering the `audit_log` stream.
+     *
+     * Mirrors the predicate {@see \craftpulse\passwordpolicy\jobs\SiemForwardJob::processItem()}
+     * applies per row, minus the half-open cooldown probe. Without such a
+     * forwarder, `forwardedAt IS NULL` is the steady state of an idle
+     * install and says nothing about the sweep cron.
+     *
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _hasSweepingSiemForwarder(): bool
+    {
+        $service = PasswordPolicy::$plugin->getSiem();
+
+        foreach ($service->listForwarders() as $forwarder) {
+            if (!$forwarder->enabled || $forwarder->circuitOpenAt !== null) {
+                continue;
+            }
+
+            if (in_array('audit_log', $service->getEligibleEventClasses($forwarder), true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /**
      * Returns a human-readable duration string from the given UTC
@@ -471,10 +736,61 @@ class ComplianceAggregateService extends Component
      */
     private function _humanDurationSince(string $dateCreatedUtc): string
     {
-        $start = new DateTime($dateCreatedUtc, new DateTimeZone('UTC'));
-        $seconds = max(0, time() - $start->getTimestamp());
+        return DateTimeHelper::humanDuration($this->_secondsSince($dateCreatedUtc), false);
+    }
 
-        return DateTimeHelper::humanDuration($seconds, false);
+    /**
+     * Returns whether an age in seconds has passed
+     * {@see self::SWEEP_STALE_THRESHOLD_MINUTES}.
+     *
+     * @param int $ageSeconds
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _isSweepStale(int $ageSeconds): bool
+    {
+        return $ageSeconds > self::SWEEP_STALE_THRESHOLD_MINUTES * 60;
+    }
+
+    /**
+     * Returns whole seconds elapsed from the given UTC datetime string to
+     * now, floored at zero.
+     *
+     * The datetime columns hold naive UTC strings while the PHP process
+     * runs on `system.timeZone`, so the zone has to be named explicitly or
+     * every comparison shifts by the full offset.
+     *
+     * @param string $dateCreatedUtc UTC `Y-m-d H:i:s` string
+     * @return int
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _secondsSince(string $dateCreatedUtc): int
+    {
+        $start = new DateTime($dateCreatedUtc, new DateTimeZone('UTC'));
+
+        return max(0, time() - $start->getTimestamp());
+    }
+
+    /**
+     * Builds the query for audit rows no SIEM forwarder has been offered
+     * yet: pending (`forwardedAt IS NULL`) and never attempted
+     * (`forwardAttempts = 0`).
+     *
+     * @return Query
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _unattemptedRowsQuery(): Query
+    {
+        return (new Query())
+            ->from('{{%passwordpolicy_audit_log}}')
+            ->where(['forwardedAt' => null])
+            ->andWhere(['forwardAttempts' => 0]);
     }
 
     /**

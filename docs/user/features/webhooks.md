@@ -228,6 +228,15 @@ The dashboard's **Pending forwards** section shows broken-circuit endpoints alon
 - **Reset circuit**: manually closes a broken circuit after fixing the underlying issue
 - **Delete**: removes the endpoint (audit history retained)
 
+It also carries the sweep warning. Because delivery only happens when you schedule `password-policy/webhook/run`, an install that never wired that cron entry up looks exactly like a working one from this screen: an enabled endpoint, a closed circuit, and no deliveries. So when an endpoint has a backlog behind its cursor that has been waiting more than two hours without ever being dispatched, the index says so, reports how many endpoints are affected, names the command, and reminds you a queue runner has to be draining the queue too.
+
+The warning is deliberately quiet on anything that isn't a stopped sweep:
+
+- A cursor that has caught up, no endpoint enabled, no endpoint allowlist covering the `audit_log` stream, or a fresh install: no warning. A new endpoint starts from the newest audit row, so it has no backlog to begin with.
+- An endpoint with consecutive failures recorded, or one sitting on an open circuit: no warning. That is a delivery problem, not a cron problem, and it already shows in the Circuit column. One caveat: resetting the circuit on an endpoint that is genuinely refusing zeroes its failure counter, so that endpoint can report the cron warning for one sweep interval until the next dispatch fails.
+
+The endpoint count is the useful part of the message: one endpoint behind points at that endpoint, all of them behind points at the sweep. Two hours is roughly twenty-four consecutive missed sweeps at the documented five-minute cadence, and it is not configurable: the window only affects when the warning appears, never what gets delivered.
+
 ### Endpoint edit screen
 
 Three tabs:

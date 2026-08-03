@@ -204,7 +204,7 @@ For the GC command, monitoring is less critical, non-zero usually means a transi
 
 For expiry reminders, the queue's own observability (Craft's Utilities → Queue Manager, or whatever queue runner you use) covers the operational visibility.
 
-For the two forward sweeps, exit codes are a weak signal by design: the command's job is only to enqueue, so a zero exit means "queued", not "delivered". Monitor the backlog instead. The forwarder index reports pending forwards, `./craft password-policy/webhook/list` reports each endpoint's cursor, and the compliance dashboard surfaces pending SIEM forwards. A backlog that grows monotonically means the sweep cron or the queue runner has stopped, not that a forwarder is refusing rows.
+For the two forward sweeps, exit codes are a weak signal by design: the command's job is only to enqueue, so a zero exit means "queued", not "delivered". Monitor the backlog instead. Both the SIEM forwarders index and the webhooks index warn when the oldest row waiting for a first delivery attempt is more than two hours old, which is what a missing sweep entry or a stopped queue runner looks like from the database. `./craft password-policy/webhook/list` reports each endpoint's cursor, and the compliance dashboard surfaces pending SIEM forwards. A backlog that grows monotonically means the sweep cron or the queue runner has stopped, not that a forwarder is refusing rows: a forwarder that refuses rows records failures and trips its circuit, both of which show on the index.
 
 ## Verifying the cron is running
 

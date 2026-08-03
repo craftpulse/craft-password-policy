@@ -179,6 +179,15 @@ The dashboard's **Pending SIEM forwarding** section surfaces broken circuits wit
 - Consecutive-failure count
 - Edit + Delete actions
 
+It also carries the sweep warning. Because forwarding only happens when you schedule `password-policy/siem/run`, an install that never wired that cron entry up looks exactly like a working one from this screen: an enabled forwarder, a closed circuit, and no deliveries. So when an audit row has been waiting more than two hours for a first delivery attempt, the index says so, names the command, and reminds you a queue runner has to be draining the queue too.
+
+The warning is deliberately quiet on anything that isn't a stopped sweep:
+
+- Nothing pending, no forwarder enabled, no forwarder allowlist covering the `audit_log` stream, or an empty audit log: no warning. An install with no forwarder leaves `forwardedAt` empty on every row forever, and that is the correct steady state of an idle install rather than a fault.
+- Rows that were attempted and refused: no warning. That is a forwarder problem, not a cron problem, and it already shows in the Circuit column and the failure counter. Same for a forwarder sitting on an open circuit.
+
+Two hours is roughly twenty-four consecutive missed sweeps at the documented five-minute cadence. It is not configurable: the window only affects when the warning appears, never what gets forwarded.
+
 ### Forwarder edit screen
 
 Two tabs:
@@ -210,9 +219,9 @@ It enqueues `SiemForwardJob` for the rows waiting to be forwarded. Two of the op
 >
 > Two separate things have to be running, and a forwarder configured without both delivers nothing while reporting no error.
 >
-> `password-policy/siem/run` is what puts `SiemForwardJob` on the queue. Nothing else does: no request hook, no garbage-collection pass, no control panel action. Without that command on a schedule, every audit row keeps an empty `forwardedAt` forever.
+> `password-policy/siem/run` is what puts `SiemForwardJob` on the queue. Nothing else does: no request hook, no garbage-collection pass, no control panel action. Without that command on a schedule, every audit row keeps an empty `forwardedAt` forever. The forwarder index warns once the oldest such row is more than two hours old, so this is no longer silent, but the warning is a backstop and not a substitute for the cron entry.
 >
-> A queue runner is what executes the job once it is queued. If your install relies on Craft's default web-request-triggered runner and the site is quiet, the backlog reported on the forwarder index will sit still even with the cron in place. Run the queue from cron too (`./craft queue/listen` under a process supervisor, or `./craft queue/run` on a schedule).
+> A queue runner is what executes the job once it is queued. If your install relies on Craft's default web-request-triggered runner and the site is quiet, the backlog will sit still even with the cron in place, and the index warning will eventually appear for that reason too. Run the queue from cron as well (`./craft queue/listen` under a process supervisor, or `./craft queue/run` on a schedule).
 >
 > See [Cron setup](../operations/cron-setup.md) for both entries.
 

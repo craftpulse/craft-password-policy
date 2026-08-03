@@ -247,6 +247,13 @@ class WebhookEndpointController extends Controller
     /**
      * Index — list all endpoints.
      *
+     * Also carries the sweep-health verdict for the cron warning. The
+     * `password-policy/webhook/run` sweep is operator-scheduled, and an
+     * install that never wired it up looks identical to a healthy one from
+     * this screen: an enabled endpoint, a closed circuit, and no
+     * deliveries. {@see \craftpulse\passwordpolicy\services\ComplianceAggregateService::getWebhookSweepHealth()}
+     * turns that silence into something the operator can see.
+     *
      * @return Response
      *
      * @author CraftPulse
@@ -259,6 +266,7 @@ class WebhookEndpointController extends Controller
         return $this->renderTemplate('password-policy/_webhooks/_index', [
             'endpoints' => $endpoints,
             'readOnly' => $this->_readOnly,
+            'sweepHealth' => PasswordPolicy::$plugin->getComplianceAggregates()->getWebhookSweepHealth(),
         ]);
     }
 

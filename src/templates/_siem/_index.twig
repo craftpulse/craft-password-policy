@@ -4,6 +4,7 @@
    route resolves the controller has already enforced Enterprise. #}
 {# @var forwarders \craftpulse\passwordpolicy\models\SiemForwarderModel[] #}
 {# @var readOnly bool #}
+{# @var sweepHealth array{stale: bool, unattemptedCount: int, oldestAge: string|null} #}
 
 {% requirePermission "pp:siem-manage" %}
 
@@ -29,6 +30,32 @@
 {% block content %}
     {% if readOnly %}
         {{ readOnlyNotice() }}
+    {% endif %}
+
+    {# The sweep that forwards audit rows is scheduled by the operator, so
+       an install that never wired the cron entry up looks exactly like a
+       healthy one from here: an enabled forwarder, a closed circuit, and
+       nothing delivered. This is the only place that says so. The verdict
+       is computed in `ComplianceAggregateService::getSiemSweepHealth()`,
+       which stays quiet on an idle install and on a backlog that has a
+       delivery-side cause (that one shows in the Circuit column below). #}
+    {% if sweepHealth.stale ?? false %}
+        <blockquote class="note warning">
+            <p>
+                <strong>{{ 'Audit rows are not being forwarded.'|t('password-policy') }}</strong>
+                {{ "{n, plural, =1{One audit row has} other{# audit rows have}} been waiting for a first forward attempt, the oldest for {age}."|t('password-policy', {
+                    n: sweepHealth.unattemptedCount,
+                    age: sweepHealth.oldestAge,
+                }) }}
+            </p>
+            <p>
+                {{ 'Forwarding only runs when you schedule it, so this usually means the sweep is missing from cron. Every five minutes is the documented cadence:'|t('password-policy') }}
+                <code>php craft password-policy/siem/run</code>
+            </p>
+            <p>
+                {{ 'A queue runner also has to be draining the queue: the command enqueues the forward job, it does not deliver by itself.'|t('password-policy') }}
+            </p>
+        </blockquote>
     {% endif %}
 
     <div class="readable">
