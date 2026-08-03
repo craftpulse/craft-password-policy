@@ -10,11 +10,24 @@
  */
 
 use Craft;
+use craftpulse\auditkit\AuditKit;
+use craftpulse\auditkit\services\Bus;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\services\HibpClientInterface;
 
 it('boots Craft', function() {
     expect(Craft::$app)->not->toBeNull();
+});
+
+it('attaches the Audit Kit module and a live dispatch bus', function() {
+    // Behavioural counterpart to `tests/Unit/AuditKitRetrofitTest.php`. It
+    // cannot isolate PP's own `AuditKit::register()` call — `tests/bootstrap.php`
+    // registers the module too, and on a real install any other kit consumer
+    // would — so the token scan there is what guards the call itself. This pins
+    // the outcome the whole retrofit exists to produce: a constructed module and
+    // a resolvable bus.
+    expect(Craft::$app->getModule(AuditKit::ID))->toBeInstanceOf(AuditKit::class);
+    expect(AuditKit::getInstance()->getBus())->toBeInstanceOf(Bus::class);
 });
 
 it('installed the password-policy plugin', function() {

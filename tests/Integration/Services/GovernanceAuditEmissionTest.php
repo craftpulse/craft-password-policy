@@ -30,11 +30,14 @@
 
 use craftpulse\auditkit\audit\AuditEvent;
 use craftpulse\auditkit\AuditKit;
+use craftpulse\auditkit\services\Bus;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\services\GovernanceAuditService;
 use craftpulse\passwordpolicy\tests\Support\CapturingBusSink;
 use craftpulse\passwordpolicy\tests\Support\Factories\GroupFactory;
 use craftpulse\passwordpolicy\tests\Support\Factories\PolicyFactory;
+use craftpulse\passwordpolicy\tests\Support\ThrowingBusSink;
+use yii\base\Event;
 
 // =============================================================================
 // Setup — swap in a capturing sink for the duration of each test
@@ -42,11 +45,11 @@ use craftpulse\passwordpolicy\tests\Support\Factories\PolicyFactory;
 
 beforeEach(function() {
     $this->sink = new CapturingBusSink();
-    AuditKit::$plugin->getBus()->setSinks([$this->sink]);
+    AuditKit::getInstance()->getBus()->setSinks([$this->sink]);
 });
 
 afterEach(function() {
-    AuditKit::$plugin->getBus()->setSinks([]);
+    AuditKit::getInstance()->getBus()->setSinks([]);
 });
 
 // =============================================================================
@@ -155,7 +158,7 @@ it('emits no group_assignment_changed when the group set is unchanged', function
 // =============================================================================
 
 it('registers its three governance event types with the kit registry', function() {
-    $registry = AuditKit::$plugin->getEventTypes();
+    $registry = AuditKit::getInstance()->getEventTypes();
 
     foreach ([
         GovernanceAuditService::EVENT_POLICY_SAVED,
@@ -168,8 +171,52 @@ it('registers its three governance event types with the kit registry', function(
     }
 });
 
+// =============================================================================
+// Fail-soft — an emission failure never unwinds the committed governance action
+// =============================================================================
+
+it('saves the policy even when a registered sink throws', function() {
+    // The kit's `Bus::record()` isolates each sink in its own try/catch, so this
+    // never reaches `GovernanceAuditService::_record()`. It is asserted anyway,
+    // because the property PP depends on is end-to-end: a broken recorder
+    // elsewhere in the estate must not be able to fail a policy save here.
+    AuditKit::getInstance()->getBus()->setSinks([new ThrowingBusSink()]);
+
+    $policy = PolicyFactory::nist();
+
+    expect($policy->id)->not->toBeNull();
+    expect(PasswordPolicy::$plugin->getPolicies()->getPolicyById((int)$policy->id))->not->toBeNull();
+});
+
+it('saves the policy even when sink registration itself throws', function() {
+    // This is the path that actually exercises `_record()`'s own catch.
+    // `Bus::getSinks()` resolves lazily by triggering
+    // `EVENT_REGISTER_AUDIT_SINKS`, and a third-party listener on it is arbitrary
+    // code. `setSinks()` memoizes an array, so the private property is nulled
+    // back out to force the fan-out to run.
+    $bus = AuditKit::getInstance()->getBus();
+    $sinks = new ReflectionProperty($bus, '_sinks');
+    $sinks->setValue($bus, null);
+
+    $listener = static function(): never {
+        throw new RuntimeException('sink registration exploded');
+    };
+
+    Event::on(Bus::class, Bus::EVENT_REGISTER_AUDIT_SINKS, $listener);
+
+    try {
+        $policy = PolicyFactory::nist();
+
+        expect($policy->id)->not->toBeNull();
+        expect(PasswordPolicy::$plugin->getPolicies()->getPolicyById((int)$policy->id))->not->toBeNull();
+    } finally {
+        Event::off(Bus::class, Bus::EVENT_REGISTER_AUDIT_SINKS, $listener);
+        $bus->setSinks([]);
+    }
+});
+
 it('strips a non-allowlisted details key through the kit registry sanitiser', function() {
-    $eventTypes = AuditKit::$plugin->getEventTypes();
+    $eventTypes = AuditKit::getInstance()->getEventTypes();
     $type = $eventTypes->getEventType(GovernanceAuditService::EVENT_POLICY_SAVED);
 
     $sanitised = $eventTypes->sanitizeDetails($type, [

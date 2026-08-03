@@ -53,6 +53,7 @@ use craft\web\Application;
 use craft\web\twig\variables\CraftVariable;
 use craft\web\UrlManager;
 use craft\web\View;
+use craftpulse\auditkit\AuditKit;
 use craftpulse\auditkit\events\RegisterAuditEventsEvent;
 use craftpulse\auditkit\services\EventTypes as AuditKitEventTypes;
 use craftpulse\authkit\events\RegisterAuditSinksEvent;
@@ -350,7 +351,7 @@ class PasswordPolicy extends Plugin
     /**
      * @var string
      */
-    public string $schemaVersion = '2.18.0';
+    public string $schemaVersion = '2.19.0';
 
     /**
      * @var bool
@@ -381,6 +382,16 @@ class PasswordPolicy extends Plugin
     {
         parent::init();
         self::$plugin = $this;
+
+        // Audit Kit ships as a library-shipped Yii module (1.1.0+), not a Craft
+        // plugin, so Craft never boots it: the dispatch bus and the runtime
+        // event-type registry do not exist until a consumer registers the
+        // module. Unconditional and ahead of every other wiring below, because
+        // `_installEventHandlers()` registers PP's governance event types on the
+        // kit registry and `GovernanceAuditService` emits onto the kit bus.
+        // Idempotent — on an install running several kit consumers the first
+        // call attaches the module and the rest return it.
+        AuditKit::register();
 
         // Register custom log target
         $this->_registerLogTarget();

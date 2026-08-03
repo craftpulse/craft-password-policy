@@ -15,8 +15,10 @@ use craft\db\Connection;
 use craft\db\Migration;
 use craft\db\Query;
 use craft\db\Table;
+use craft\errors\MigrationException;
 use craft\helpers\Json;
 use craft\helpers\StringHelper;
+use craftpulse\auditkit\AuditKit;
 use craftpulse\passwordpolicy\data\EmailDefaults;
 use craftpulse\passwordpolicy\elements\AuditLogElement;
 use craftpulse\passwordpolicy\elements\NotificationLogElement;
@@ -38,10 +40,29 @@ class Install extends Migration
     /**
      * @inheritdoc
      *
+     * Pumps the shared Audit Kit migrator on its own `module:audit-kit` track
+     * before PP's schema lands. Audit Kit is a library-shipped Yii module, so
+     * Craft never runs its migrations: the seam that lets a kit migration reach
+     * every install is each consumer's `Install`, and it is wired even while the
+     * kit ships none, so the next fresh install is correct without a coordinated
+     * release across every consumer.
+     *
+     * There is deliberately no matching `getMigrator()->down()` in
+     * {@see safeDown()}. The kit is shared by every installed consumer and one
+     * plugin's uninstall must not tear down state the others still rely on.
+     *
+     * `AuditKit::getInstance()` registers the module lazily, so this works even
+     * when the migration runs before PP's own `init()` wiring.
+     *
+     * @throws MigrationException from `MigrationManager::up()` when a kit
+     *     migration fails.
+     *
      * @author CraftPulse
      */
     public function safeUp(): bool
     {
+        AuditKit::getInstance()->getMigrator()->up();
+
         $this->_createPasswordHistoryTable();
         $this->_createAuditLogTable();
         $this->_createNotificationLogTable();

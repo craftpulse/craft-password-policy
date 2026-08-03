@@ -294,6 +294,35 @@ class GovernanceAuditService extends Component
      * triggered it. With no recorder sink registered, `record()` is a cheap
      * no-op.
      *
+     * The bus is resolved through {@see AuditKit::getInstance()}, never through
+     * the `AuditKit::$plugin` static. That is a correctness requirement, not a
+     * style preference. `$plugin` is a typed static with no default, assigned
+     * only in the module's `init()`; reading it before {@see AuditKit::register()}
+     * has run throws `Error`, `Error` implements `Throwable`, and the catch below
+     * would therefore turn a missing registration into a permanent silent no-op
+     * that logs one line per emission and reports success to the control panel.
+     * `getInstance()` self-registers and is non-nullable, so that whole class of
+     * failure is gone by construction rather than caught.
+     *
+     * Why the catch stays broad rather than narrowing or re-throwing under
+     * `devMode`: this emission runs AFTER the governance action has committed, and
+     * PP's own hash-chained row is written by an entirely separate path
+     * ({@see AuditLogService}). Letting a throwable propagate would report a
+     * failed save for a save that succeeded, in production and in development
+     * alike.
+     *
+     * What it still guards is narrower than it looks.
+     * {@see \craftpulse\auditkit\services\Bus::record()} wraps every individual
+     * sink in its own try/catch, so a recorder whose storage is unavailable is
+     * already isolated by the kit and never reaches here. What does reach here is
+     * a throw from the lazy sink-registration fan-out (`Bus::getSinks()` triggers
+     * `EVENT_REGISTER_AUDIT_SINKS`, and a third-party listener on it is arbitrary
+     * code), or a module construction failure inside `getInstance()`. Both are
+     * boundaries where fail-soft is the correct contract. The throwable's class is
+     * logged so a programming fault stays distinguishable from a configuration
+     * one, and the regression guard for the registration itself lives where it
+     * can fail loudly, in `tests/Unit/AuditKitRetrofitTest.php`.
+     *
      * @param AuditEvent $event
      *
      * @author CraftPulse
@@ -302,12 +331,13 @@ class GovernanceAuditService extends Component
     private function _record(AuditEvent $event): void
     {
         try {
-            AuditKit::$plugin->getBus()->record($event);
+            AuditKit::getInstance()->getBus()->record($event);
         } catch (Throwable $e) {
             Craft::error(
                 sprintf(
-                    'Failed to emit governance audit event "%s": %s',
+                    'Failed to emit governance audit event "%s": %s: %s',
                     $event->name,
+                    $e::class,
                     $e->getMessage(),
                 ),
                 'password-policy',

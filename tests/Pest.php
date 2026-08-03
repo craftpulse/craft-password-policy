@@ -28,13 +28,15 @@ use craftpulse\passwordpolicy\tests\TestCase;
 // multi-site tests run outside it (site saves trigger project-config
 // writes that bypass DB transactions).
 //
-// `Integration/Permissions` holds the permission-grant migration coverage.
-// It lives outside `Integration/Migrations` deliberately: that folder is
-// bound to the non-transactional `MigrationTestCase`, and Pest can't
-// override a folder binding for a single file inside it. The permission
-// rename touches no plugin table and no DDL — only `userpermissions*` rows
-// and project-config group lists — so it wants the standard transaction
-// wrap, not the schema drop/restore cycle.
+// `Integration/Permissions` holds the permission-grant migration coverage,
+// and `Integration/Adoption` the Audit Kit module-adoption coverage. Both
+// live outside `Integration/Migrations` deliberately: that folder is bound
+// to the non-transactional `MigrationTestCase`, and Pest can't override a
+// folder binding for a single file inside it. Neither migration touches a
+// plugin table or any DDL — the permission rename moves `userpermissions*`
+// rows and project-config group lists, the adoption migration moves
+// `migrations` / `plugins` rows and one project-config entry — so both want
+// the standard transaction wrap, not the schema drop/restore cycle.
 //
 // Because the enumeration below is hand-maintained, an unlisted folder
 // silently falls back to a bare `PHPUnit\Framework\TestCase` — Craft is
@@ -45,6 +47,7 @@ use craftpulse\passwordpolicy\tests\TestCase;
 uses(MigrationTestCase::class)->in('Integration/Migrations');
 uses(MultiSiteTestCase::class)->in('Integration/MultiSite');
 uses(TestCase::class)->in(
+    'Integration/Adoption',
     'Integration/Batchers',
     'Integration/ConditionRules',
     'Integration/Console',

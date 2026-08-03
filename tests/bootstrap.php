@@ -31,6 +31,7 @@ use craft\helpers\ArrayHelper;
 use craft\migrations\Install as CraftInstall;
 use craft\models\Site;
 use craft\services\Config;
+use craftpulse\auditkit\AuditKit;
 use craftpulse\passwordpolicy\migrations\Install as PluginInstall;
 use craftpulse\passwordpolicy\PasswordPolicy;
 
@@ -191,6 +192,20 @@ $config = ArrayHelper::merge($config, [
 $app = Craft::createObject($config);
 
 // =============================================================================
+// Project config YAML writing is off for the whole process
+//
+// Every project config write the suite makes belongs to `db_test` and rolls back
+// with the per-test transaction. A YAML write does not: it clears
+// `tests/_craft/config/project/` and regenerates the whole tree on disk, which
+// no transaction undoes and which leaves untracked files behind in the repo.
+// `ProjectConfig::flush()` reaches `writeYamlFiles()` whenever a `set()` marked
+// the YAML dirty — which the Audit Kit adoption helper deliberately does, and
+// which any future forced write would too.
+// =============================================================================
+
+$app->getProjectConfig()->writeYamlAutomatically = false;
+
+// =============================================================================
 // Schema bootstrap — install Craft + the plugin if `db_test` is empty
 //
 // One-shot: a fresh `db_test` gets the full Craft install + plugin install.
@@ -229,37 +244,52 @@ if (!$app->getIsInstalled(true)) {
 }
 
 // =============================================================================
+// Audit Kit module registration
+//
+// Audit Kit is a hard dependency (composer `require`) — the shared hash-chain
+// engine, the runtime event-type registry, and the dispatch Bus PP emits
+// governance events onto all live in it. Since 1.1.0 it ships as a
+// library-shipped Yii module (`type: library`) rather than a Craft plugin, so
+// Craft cannot discover it and `installPlugin('audit-kit')` now throws
+// `InvalidPluginException`. Registering the module is what makes the bus exist.
+//
+// Registered here, ahead of the plugin install below, for two reasons: PP's
+// `Install` migration pumps the kit migrator, and a bootstrap that reached the
+// plugin install without the module attached would fail there rather than
+// producing a usable suite. It is idempotent, and PP's own `init()` registers it
+// too — that call is the production path and the one
+// `tests/Unit/AuditKitRetrofitTest.php` guards with a token scan, because this
+// bootstrap call would otherwise mask its absence.
+// =============================================================================
+
+AuditKit::register();
+
+// =============================================================================
 // Plugin install — register + install the password-policy plugin so its
 // schema and services are available to every Integration test
 // =============================================================================
 
 $plugins = $app->getPlugins();
 
-// Audit Kit is a hard dependency (composer `require`) — the shared hash-chain
-// engine + the dispatch Bus PP emits governance events onto live in it. It ships
-// no tables/migrations, so installing it just runs its init() (sets
-// `AuditKit::$plugin`, registers the Bus + EventTypes components). Install it
-// first so PP's own install sees its dependency satisfied.
-if (!$plugins->isPluginInstalled('audit-kit')) {
-    try {
-        $plugins->installPlugin('audit-kit');
-    } catch (InvalidPluginException) {
-        // Path-repo composer install may not surface the plugin to
-        // getPluginInfo() until a rescan; audit-kit has no schema to land, so a
-        // failed install here is non-fatal — the runtime instance below covers
-        // the services PP needs.
-    }
-}
-
 if (!$plugins->isPluginInstalled('password-policy')) {
     try {
         $plugins->installPlugin('password-policy');
-    } catch (InvalidPluginException) {
-        // Path-repo composer install in vendor/ may not surface to
-        // Plugins::getPluginInfo() until a composer rescan. Fall back to a
-        // direct migration up against the plugin's Install class so the
-        // schema lands regardless.
-        (new PluginInstall())->up(true);
+    } catch (InvalidPluginException $e) {
+        // `craftcms/plugin-installer` writes the ROOT package into
+        // `vendor/craftcms/plugins.php`, so on both a local
+        // `composer install` in the plugin directory and the CI job this path is
+        // not normally reached. It survives as a fallback for a vendor tree
+        // whose plugin map is stale, and it now fails loudly: a silently
+        // half-applied schema produced downstream fatals rather than a failing
+        // test, which is precisely how a broken Audit Kit retrofit stayed
+        // invisible.
+        if (!(new PluginInstall())->up(true)) {
+            throw new RuntimeException(
+                'Failed to install the password-policy plugin into the test database. '
+                . 'installPlugin() reported: ' . $e->getMessage(),
+                previous: $e,
+            );
+        }
     }
 }
 
@@ -267,3 +297,28 @@ if (!$plugins->isPluginInstalled('password-policy')) {
 // `Plugins::loadPlugins()` finished registering services. Defensive — every
 // downstream test trusts `PasswordPolicy::$plugin` to be live.
 PasswordPolicy::$plugin ?? PasswordPolicy::getInstance();
+
+// =============================================================================
+// Fail-fast harness assertions
+//
+// Both of these were reachable-but-unasserted, and both surfaced downstream as a
+// fatal inside an unrelated test rather than as a bootstrap failure naming the
+// cause. `AuditKit::$plugin` in particular is a typed static with no default:
+// reading it before the module is registered throws
+// `Error: Typed static property ... must not be accessed before initialization`
+// from whichever test happens to touch it first.
+// =============================================================================
+
+if (!(Craft::$app->getModule(AuditKit::ID) instanceof AuditKit)) {
+    throw new RuntimeException(
+        'The Audit Kit module is not attached to the test application. Every '
+        . 'governance emission and every hash-chain write depends on it.',
+    );
+}
+
+if (PasswordPolicy::$plugin === null) {
+    throw new RuntimeException(
+        'The password-policy plugin did not boot in the test application. Every '
+        . 'Integration test resolves its services through PasswordPolicy::$plugin.',
+    );
+}
