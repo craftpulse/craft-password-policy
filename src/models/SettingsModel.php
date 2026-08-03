@@ -213,7 +213,7 @@ class SettingsModel extends Model
 
     /**
      * @var int the minimum number of hours that must elapse between two
-     *     password changes for the same user (0 = disabled, default 24).
+     *     password changes for the same user (0 = disabled, and the default).
      *     Blocks a user re-changing their password within the window —
      *     closes the "cycle N+1 changes to flush the reuse history"
      *     evasion. Pro feature, per-group overridable via
