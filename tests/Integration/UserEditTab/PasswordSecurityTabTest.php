@@ -8,7 +8,7 @@
  * a `label` and (optionally) a `url`. The plugin appends a
  * `password-security` entry pointing at the standalone CP page
  * `password-policy/users/<userId>/security`. The same
- * `pp:force-reset-passwords` / `pp:change-user-passwords` permission
+ * `pp:user-force-reset` / `pp:change-user-passwords` permission
  * predicate guards both the screen registration and
  * `UserSecurityController::beforeAction()`.
  *
@@ -36,6 +36,7 @@ use craft\elements\User;
 use craft\events\DefineEditUserScreensEvent;
 use craft\web\Response;
 use craftpulse\passwordpolicy\PasswordPolicy;
+use craftpulse\passwordpolicy\tests\Support\Factories\PermissionFactory;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
 use craftpulse\passwordpolicy\tests\Support\WebRequestStub;
@@ -141,7 +142,8 @@ function renderPasswordSecurityContent(User $user): string
             'showNotifications' => $plugin->getIsPro(),
             'showForceReset' => $plugin->getIsPro()
                 && $currentUser !== null
-                && $currentUser->can('pp:force-reset-passwords')
+                && $currentUser->can(PasswordPolicy::PERMISSION_USER_FORCE_RESET)
+                && $plugin->getRetention()->canForceResetUser($user, $currentUser)
                 && !$user->passwordResetRequired,
             'currentUser' => $currentUser,
         ]);
@@ -303,7 +305,7 @@ it('renders the force-reset Actions pane on Pro', function() {
 
 it('omits the force-reset Actions pane on Pro without the permission', function() {
     // The pane's flag folds the permission in alongside the edition, so a Pro
-    // caller lacking `pp:force-reset-passwords` sees the same absence a Lite
+    // caller lacking `pp:user-force-reset` sees the same absence a Lite
     // admin does.
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
     $this->userStub->setIdentity(UserFactory::nonAdmin());
@@ -314,6 +316,43 @@ it('omits the force-reset Actions pane on Pro without the permission', function(
     expect($body)
         ->toBeString()
         ->and($body)->not->toContain('Force Password Reset');
+});
+
+it('omits the force-reset Actions pane when a permitted non-admin views an admin', function() {
+    // The pane folds the peer-admin guard in alongside the edition and the
+    // permission, so the screen never offers a button whose POST the controller
+    // would answer with a 403. The actor HOLDS `pp:user-force-reset` here, so
+    // the guard is the only thing that can remove the pane — without it the
+    // same actor sees the button on every admin in the system.
+    $this->plugin->edition = PasswordPolicy::EDITION_PRO;
+    $this->userStub->setIdentity(PermissionFactory::nonAdminWith([
+        PasswordPolicy::PERMISSION_USER_FORCE_RESET,
+    ]));
+
+    $target = UserFactory::admin();
+    $body = renderPasswordSecurityContent($target);
+
+    expect($body)
+        ->toBeString()
+        ->and($body)->not->toContain('Force Password Reset')
+        ->and($body)->not->toContain('password-policy/user-security/force-reset');
+});
+
+it('renders the force-reset Actions pane when a permitted non-admin views a non-admin', function() {
+    // The control case for the guard test above: same actor, same grant, only
+    // the target's admin flag differs. Without this pair the guard test would
+    // also pass if the permission plumbing were simply broken.
+    $this->plugin->edition = PasswordPolicy::EDITION_PRO;
+    $this->userStub->setIdentity(PermissionFactory::nonAdminWith([
+        PasswordPolicy::PERMISSION_USER_FORCE_RESET,
+    ]));
+
+    $target = UserFactory::nonAdmin();
+    $body = renderPasswordSecurityContent($target);
+
+    expect($body)
+        ->toBeString()
+        ->and($body)->toContain('Force Password Reset');
 });
 
 it('hides the pane rather than leaking it when showForceReset is missing', function() {

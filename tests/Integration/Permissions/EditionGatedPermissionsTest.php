@@ -113,6 +113,32 @@ it('registers the universal permissions on Lite', function() {
     );
 });
 
+it('registers the mass force-reset permission on Lite', function() {
+    // Regression pin. The mass force-reset path (the Password Retention
+    // utility's action and the `retention/force-reset-passwords` console
+    // command) shipped in 5.1.2, before the plugin had editions, so every
+    // install updating into 5.2.0 already holds `pp:force-reset-passwords` and
+    // every one of them resolves to Lite by default. Registering the handle
+    // behind Pro would silently withdraw a capability those installs already
+    // paid for, and the permissions screen would stop offering the grant that
+    // gates a utility still sitting in their Utilities list.
+    $this->plugin->edition = PasswordPolicy::EDITION_LITE;
+
+    expect(ppRegisteredPermissionHandles())
+        ->toContain(PasswordPolicy::PERMISSION_FORCE_RESET_PASSWORDS);
+});
+
+it('registers the mass force-reset permission on Pro and Enterprise too', function() {
+    // Universal means universal: the handle is not swapped out for the per-user
+    // one higher up the ladder, because the two capabilities coexist.
+    foreach ([PasswordPolicy::EDITION_PRO, PasswordPolicy::EDITION_ENTERPRISE] as $edition) {
+        $this->plugin->edition = $edition;
+
+        expect(ppRegisteredPermissionHandles())
+            ->toContain(PasswordPolicy::PERMISSION_FORCE_RESET_PASSWORDS);
+    }
+});
+
 // =============================================================================
 // Permissions — Pro handles are absent below Pro
 // =============================================================================
@@ -127,10 +153,11 @@ it('does not register the Pro permissions on Lite', function() {
         ->and($handles)->not->toContain('pp:notification-templates-manage')
         ->and($handles)->not->toContain('pp:notification-log-view')
         ->and($handles)->not->toContain('pp:inactive-view')
-        // Force reset is Pro on every surface it has (bulk element action,
-        // user-edit action menu, Password Security pane), so offering the
-        // grant on Lite would point at nothing.
-        ->and($handles)->not->toContain('pp:force-reset-passwords');
+        // PER-USER force reset is Pro on every surface it has (bulk element
+        // action, user-edit action menu, Password Security pane), so offering
+        // the grant on Lite would point at nothing. The MASS handle is a
+        // separate, universal permission and is asserted present above.
+        ->and($handles)->not->toContain(PasswordPolicy::PERMISSION_USER_FORCE_RESET);
 });
 
 it('registers the Pro permissions on Pro, nested child included', function() {
@@ -142,7 +169,7 @@ it('registers the Pro permissions on Pro, nested child included', function() {
         'pp:notification-templates-manage',
         'pp:notification-log-view',
         'pp:inactive-view',
-        'pp:force-reset-passwords',
+        PasswordPolicy::PERMISSION_USER_FORCE_RESET,
     );
 });
 

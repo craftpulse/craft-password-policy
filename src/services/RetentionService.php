@@ -12,6 +12,7 @@ namespace craftpulse\passwordpolicy\services;
 
 use Craft;
 use craft\base\Component;
+use craft\db\Query;
 use craft\db\Table;
 use craft\elements\User as UserElement;
 use craft\helpers\Queue;
@@ -61,7 +62,19 @@ class RetentionService extends Component
     }
 
     /**
-     * Flags a user as requiring a password reset.
+     * Flags a user as requiring a password reset — the write behind the
+     * MASS path, reached only for accounts a retention sweep already
+     * found expired (the Password Retention utility, the
+     * `retention/force-reset-passwords` console command, and
+     * `PasswordResetJob`).
+     *
+     * Admin accounts are skipped, silently and deliberately: that has
+     * been the behaviour since the plugin had no editions, and a
+     * retention sweep locking every administrator out at once is not a
+     * failure mode worth introducing. The Pro per-user path handles named
+     * targets, admins included, through
+     * {@see self::forceResetForUser()} behind
+     * {@see self::canForceResetUser()}.
      *
      * @param UserElement $user
      * @return void
@@ -96,6 +109,103 @@ class RetentionService extends Component
                 source: null,
             );
         }
+    }
+
+    /**
+     * Returns whether `$actor` is allowed to force a password reset on
+     * `$target` — the peer-admin guard shared by every per-user
+     * force-reset surface (the Password Security POST handler and the
+     * `ForcePasswordReset` bulk element action).
+     *
+     * Two rules, in order:
+     *
+     *  1. No identified actor, no write. Callers that reach a write path
+     *     without a session are rejected outright.
+     *  2. A non-admin may never force a reset on an admin. Locking an
+     *     administrator out of their own account is an escalation
+     *     primitive, and `pp:user-force-reset` is grantable to
+     *     non-admins by design, so the permission alone must not carry
+     *     it. Admin-on-admin stays allowed: co-administrators are peers
+     *     and Craft already treats them as mutually trusted.
+     *
+     * Deliberately a single predicate rather than one check per surface:
+     * duplicated authorization drifts, and the copy that drifts is the
+     * one nobody tests.
+     *
+     * @param UserElement $target the account that would be flagged
+     * @param UserElement|null $actor the acting CP session's identity
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function canForceResetUser(UserElement $target, ?UserElement $actor): bool
+    {
+        if ($actor === null) {
+            return false;
+        }
+
+        return !$target->admin || $actor->admin;
+    }
+
+    /**
+     * Forces a password reset on one named user — the Pro per-user path,
+     * additive to the universal mass path in
+     * {@see self::requirePasswordReset()}.
+     *
+     * Differences from the mass path, both deliberate:
+     *
+     *  - It flags the target whether or not the password has expired.
+     *    That is the capability Pro adds.
+     *  - It pins `ChangeReason::AdminForceReset` rather than
+     *    `ChangeReason::ExpiryForced`, because an operator pointed at
+     *    this account rather than a retention sweep reaching it.
+     *
+     * Callers MUST clear {@see self::canForceResetUser()} first — this
+     * method performs no authorization of its own, so that admin targets
+     * remain reachable to admin actors.
+     *
+     * Audit parity with the mass path: the same `password_reset_forced`
+     * event is written to the audit chain. Capture is universal across
+     * editions.
+     *
+     * @param UserElement $target
+     * @return bool whether the flag was newly set (false when the user
+     *     was already flagged, which is a no-op rather than a failure)
+     *
+     * @throws Throwable if the user element fails to save.
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function forceResetForUser(UserElement $target): bool
+    {
+        if ($this->_isPasswordResetRequired((int)$target->id)) {
+            return false;
+        }
+
+        $target->passwordResetRequired = true;
+        Craft::$app->getElements()->saveElement($target, false);
+        $this->resets++;
+
+        // Pin the pending reason BEFORE anything else consumes the slot so
+        // the target's next password change records `admin_force_reset` in
+        // history. Capture is non-negotiable across editions — Lite, Pro,
+        // and Enterprise installs all populate this row (memory rule
+        // `project_audit_capture_principle.md`).
+        PasswordPolicy::$plugin->getUserState()->setPendingReason(
+            $target,
+            ChangeReason::AdminForceReset,
+        );
+
+        PasswordPolicy::$plugin->getAuditLog()->logEvent(
+            userId: $target->id,
+            event: 'password_reset_forced',
+            outcome: 'success',
+            source: null,
+        );
+
+        return true;
     }
 
     /**
@@ -156,5 +266,37 @@ class RetentionService extends Component
         return Craft::$app->getDb()->createCommand()
             ->delete(Table::SESSIONS, $condition)
             ->execute();
+    }
+
+    // Private Methods
+    // =========================================================================
+
+    /**
+     * Returns whether the persisted `users.passwordResetRequired` column
+     * is set for the given user id.
+     *
+     * `craft\elements\db\UserQuery::beforePrepare()` does not
+     * `addSelect()` the column, so the in-memory
+     * `$user->passwordResetRequired` reads `false` on a freshly loaded
+     * element regardless of database state (same gotcha as
+     * `lastPasswordChangeDate`). Every already-flagged short-circuit
+     * therefore has to read the column directly, or a redundant operator
+     * click would clobber an in-flight pending reason (`BreachForced`
+     * from HIBP-on-login, `ExpiryForced` from cron) with
+     * `AdminForceReset`.
+     *
+     * @param int $userId
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _isPasswordResetRequired(int $userId): bool
+    {
+        return (bool)(new Query())
+            ->select(['passwordResetRequired'])
+            ->from(Table::USERS)
+            ->where(['id' => $userId])
+            ->scalar();
     }
 }

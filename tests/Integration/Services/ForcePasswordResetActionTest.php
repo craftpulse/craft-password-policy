@@ -25,6 +25,7 @@ use craftpulse\passwordpolicy\elements\actions\ForcePasswordReset;
 use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\records\UserStateRecord;
+use craftpulse\passwordpolicy\tests\Support\Factories\PermissionFactory;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
 
@@ -36,13 +37,22 @@ beforeEach(function() {
     $this->plugin = PasswordPolicy::$plugin;
     $this->action = new ForcePasswordReset();
 
+    $this->originalEdition = $this->plugin->edition;
     $this->originalUser = Craft::$app->getUser();
     $this->originalAllowAdminChanges = Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
     Craft::$app->getConfig()->getGeneral()->allowAdminChanges = true;
 
+    // The action only registers on Pro, and `performAction()` re-checks the
+    // edition as defense-in-depth against a caller that bypasses the trigger,
+    // so the whole file runs on Pro. Per-user force reset is the additive Pro
+    // capability; the universal mass path is a different code path entirely
+    // (`RetentionService::requirePasswordReset()`).
+    $this->plugin->edition = PasswordPolicy::EDITION_PRO;
+
     // `performAction()` gates on a logged-in user with the
-    // `pp:force-reset-passwords` permission. An admin identity passes the
-    // `can()` check, so the happy-path tests reach the action body.
+    // `pp:user-force-reset` permission. An admin identity passes the `can()`
+    // check and the peer-admin guard, so the happy-path tests reach the action
+    // body even when the targets are admins themselves.
     $this->userStub = new UserStub();
     Craft::$app->set('user', $this->userStub);
     $this->actingAdmin = UserFactory::admin();
@@ -50,6 +60,7 @@ beforeEach(function() {
 });
 
 afterEach(function() {
+    $this->plugin->edition = $this->originalEdition;
     Craft::$app->set('user', $this->originalUser);
     Craft::$app->getConfig()->getGeneral()->allowAdminChanges = $this->originalAllowAdminChanges;
 });
@@ -117,9 +128,31 @@ it('skips users already flagged passwordResetRequired without writing state', fu
 // Permission + admin-changes gate — defense-in-depth in performAction
 // =============================================================================
 
+it('refuses to force-reset on Lite even for an admin', function() {
+    // Defense-in-depth. The action never registers below Pro, so Craft's
+    // `ElementIndexesController` can't resolve it there — but `performAction()`
+    // is reachable by any caller that bypasses the trigger, and an admin
+    // identity clears every `can()` check, so the edition is the only thing left
+    // to reject on.
+    $this->plugin->edition = PasswordPolicy::EDITION_LITE;
+
+    $target = UserFactory::nonAdmin();
+    $query = User::find()->id($target->id);
+
+    expect($this->action->performAction($query))->toBeFalse();
+
+    $flag = (new Query())
+        ->select(['passwordResetRequired'])
+        ->from(Table::USERS)
+        ->where(['id' => $target->id])
+        ->scalar();
+    expect((bool)$flag)->toBeFalse()
+        ->and(UserStateRecord::findOne(['userId' => $target->id]))->toBeNull();
+});
+
 it('refuses to force-reset when the acting user lacks the permission', function() {
     // A non-admin identity does NOT auto-pass `can()`. Without the
-    // `pp:force-reset-passwords` permission the action must reject before
+    // `pp:user-force-reset` permission the action must reject before
     // touching any user.
     $nonAdmin = UserFactory::nonAdmin();
     $this->userStub->setIdentity($nonAdmin);
@@ -153,6 +186,77 @@ it('refuses to force-reset when admin changes are disabled', function() {
         ->where(['id' => $target->id])
         ->scalar();
     expect((bool)$flag)->toBeFalse();
+});
+
+// =============================================================================
+// Peer-admin guard — a permitted non-admin may not sweep an admin in
+// =============================================================================
+
+it('refuses the whole run when a permitted non-admin targets an admin', function() {
+    // The escalation this closes: `pp:user-force-reset` is grantable to
+    // non-admins, and a bulk selection is exactly the shape one would use to
+    // sweep every administrator in alongside legitimate targets. Permission held
+    // and edition satisfied, so the guard is the only thing that can refuse.
+    $this->userStub->setIdentity(PermissionFactory::nonAdminWith([
+        PasswordPolicy::PERMISSION_USER_FORCE_RESET,
+    ]));
+
+    $target = UserFactory::admin();
+    $query = User::find()->id($target->id)->status(null);
+
+    expect($this->action->performAction($query))->toBeFalse();
+
+    $flag = (new Query())
+        ->select(['passwordResetRequired'])
+        ->from(Table::USERS)
+        ->where(['id' => $target->id])
+        ->scalar();
+    expect((bool)$flag)->toBeFalse()
+        ->and(UserStateRecord::findOne(['userId' => $target->id]))->toBeNull();
+});
+
+it('flags a non-admin target for the same permitted non-admin caller', function() {
+    // The control case for the guard test above: same actor, same grant, only
+    // the target's admin flag differs. Without this pair the guard test would
+    // also pass if the permission plumbing were simply broken.
+    $this->userStub->setIdentity(PermissionFactory::nonAdminWith([
+        PasswordPolicy::PERMISSION_USER_FORCE_RESET,
+    ]));
+
+    $target = UserFactory::nonAdmin();
+    $query = User::find()->id($target->id)->status(null);
+
+    expect($this->action->performAction($query))->toBeTrue();
+
+    $flag = (new Query())
+        ->select(['passwordResetRequired'])
+        ->from(Table::USERS)
+        ->where(['id' => $target->id])
+        ->scalar();
+    expect((bool)$flag)->toBeTrue();
+});
+
+it('refuses the run rather than partially applying it across a mixed selection', function() {
+    // An admin swept in alongside non-admins refuses the whole run: silently
+    // skipping the admin and reporting success would leave the operator
+    // believing every selected account was flagged.
+    $this->userStub->setIdentity(PermissionFactory::nonAdminWith([
+        PasswordPolicy::PERMISSION_USER_FORCE_RESET,
+    ]));
+
+    $admin = UserFactory::admin();
+    $nonAdmin = UserFactory::nonAdmin();
+    $query = User::find()->id([$admin->id, $nonAdmin->id])->status(null);
+
+    expect($this->action->performAction($query))->toBeFalse();
+
+    $adminFlag = (new Query())
+        ->select(['passwordResetRequired'])
+        ->from(Table::USERS)
+        ->where(['id' => $admin->id])
+        ->scalar();
+
+    expect((bool)$adminFlag)->toBeFalse();
 });
 
 // =============================================================================

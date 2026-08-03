@@ -158,6 +158,48 @@ class PasswordPolicy extends Plugin
     public const PERMISSION_MANAGE_SETTINGS = 'pp:manage-settings';
 
     /**
+     * The permission that gates the MASS force-reset path: the "Force Reset
+     * Passwords" action on the Password Retention utility and the
+     * `password-policy/retention/force-reset-passwords` console command. Both
+     * target only the accounts that are already past the configured expiry
+     * window; neither can be pointed at a named user.
+     *
+     * Universal, on every edition. This capability shipped in 5.1.2, before the
+     * plugin had editions at all, so every install that updates into 5.2.0
+     * already has it and every one of them resolves to Lite by default. Moving
+     * the handle behind Pro would silently withdraw a capability those installs
+     * already paid for, so the registration is deliberately unconditional.
+     *
+     * The per-user counterpart is a separate, additive Pro capability with its
+     * own handle. See {@see self::PERMISSION_USER_FORCE_RESET}.
+     *
+     * @var string
+     * @since 5.2.0
+     */
+    public const PERMISSION_FORCE_RESET_PASSWORDS = 'pp:force-reset-passwords';
+
+    /**
+     * The permission that gates the PER-USER force-reset paths: the
+     * `ForcePasswordReset` bulk element action on the Users index, the "Force
+     * password reset" item in the user-edit action menu, and the Actions pane on
+     * the user-edit Password Security screen (plus the POST target all three
+     * drive, `UserSecurityController::actionForceReset()`).
+     *
+     * Pro-only, and registered only on Pro. Forcing a reset on a named account
+     * regardless of whether its password has expired is the additive capability
+     * Pro adds on top of the universal mass path; a Lite permissions screen
+     * would otherwise offer a grant with no surface behind it.
+     *
+     * Kept as a distinct handle from {@see self::PERMISSION_FORCE_RESET_PASSWORDS}
+     * precisely because the two sit on different editions. One handle cannot be
+     * universal and Pro-only at the same time.
+     *
+     * @var string
+     * @since 5.2.0
+     */
+    public const PERMISSION_USER_FORCE_RESET = 'pp:user-force-reset';
+
+    /**
      * Fired after a password has been changed and stored in history.
      * The plaintext is already gone by this point.
      *
@@ -1031,21 +1073,35 @@ class PasswordPolicy extends Plugin
                             'Change another user’s password and send password reset emails.',
                         ),
                     ],
+                    // The MASS force-reset path is universal. It shipped in
+                    // 5.1.2, before the plugin had editions, so every install
+                    // updating into 5.2.0 already holds it and defaults to
+                    // Lite. Registering it behind Pro would withdraw a
+                    // capability those installs already have.
+                    self::PERMISSION_FORCE_RESET_PASSWORDS => [
+                        'label' => Craft::t(
+                            'password-policy',
+                            'Force a reset on every already-expired password (retention utility and console command).',
+                        ),
+                    ],
                 ];
 
                 // Pro-only surfaces. Every permission below gates a screen
                 // that doesn't exist on Lite (blocklist editor, notification
-                // template editor, notification activity log, force reset), so
-                // a Lite admin's permissions screen never lists a grant that
-                // leads nowhere. Hide, never badge.
+                // template editor, notification activity log, per-user force
+                // reset), so a Lite admin's permissions screen never lists a
+                // grant that leads nowhere. Hide, never badge.
                 if ($this->getIsPro()) {
-                    // Force reset is Pro across every surface it has: the
-                    // `ForcePasswordReset` bulk element action, the user-edit
-                    // action-menu item, and the Password Security screen's
-                    // button. Registering the handle on Lite would offer a
-                    // grant with nothing behind it.
-                    $permissions['pp:force-reset-passwords'] = [
-                        'label' => Craft::t('password-policy', 'Force reset passwords retention access.'),
+                    // Per-user force reset is the additive Pro capability on
+                    // top of the universal mass path: it targets a named
+                    // account whether or not its password has expired. Three
+                    // surfaces drive it (bulk element action, user-edit action
+                    // menu, Password Security pane), all Pro.
+                    $permissions[self::PERMISSION_USER_FORCE_RESET] = [
+                        'label' => Craft::t(
+                            'password-policy',
+                            'Force a password reset on a specific user.',
+                        ),
                     ];
 
                     $permissions['pp:blocklist-view'] = [
@@ -2443,8 +2499,10 @@ class PasswordPolicy extends Plugin
         // Bulk element actions on the Users index. Bulk-friendly only:
         //
         // `ForcePasswordReset` (Pro) — flips `passwordResetRequired`
-        // and pins an `AdminForceReset` pending reason. Idempotent at
-        // the user level; safe to apply across many rows.
+        // and pins an `AdminForceReset` pending reason on each named
+        // target, expired or not. Idempotent at the user level; safe to
+        // apply across many rows. Pro because it targets named accounts;
+        // the universal path only reaches accounts already expired.
         //
         // `SendPasswordResetEmail` (all editions) — pins a pending
         // `AdminForceReset` reason on user_state and sends Craft's
@@ -2548,7 +2606,8 @@ class PasswordPolicy extends Plugin
 
     /**
      * Registers the "Password Security" left-nav screen on the User
-     * edit experience, gated on the same `pp:force-reset-passwords` /
+     * edit experience, gated on the same
+     * {@see self::PERMISSION_USER_FORCE_RESET} /
      * `pp:change-user-passwords` permission predicate the
      * {@see UserSecurityController::beforeAction()} enforces.
      *
@@ -2608,12 +2667,13 @@ class PasswordPolicy extends Plugin
      *
      * Items registered:
      *
-     *  - **Force password reset** (Pro, gated on `pp:force-reset-passwords`)
-     *    — POST to `password-policy/user-security/force-reset` with
-     *    the target userId. Idempotent flip; admin users are silently
-     *    skipped server-side. Moved out of `RetentionController` in
-     *    5.2.0 (pre-tag fix-pack) so the admin-on-user surface owns
-     *    the write that drives it.
+     *  - **Force password reset** (Pro, gated on
+     *    {@see self::PERMISSION_USER_FORCE_RESET}) — POST to
+     *    `password-policy/user-security/force-reset` with the target
+     *    userId. Idempotent flip. A non-admin can't aim it at an admin
+     *    (the controller answers 403). Moved out of
+     *    `RetentionController` in 5.2.0 (pre-tag fix-pack) so the
+     *    admin-on-user surface owns the write that drives it.
      *  - **Send password reset email** (gated on `pp:change-user-passwords`)
      *    — POST to `password-policy/user-password/send-reset-email`,
      *    elevated session required (the controller's `beforeAction()`
@@ -2662,7 +2722,7 @@ class PasswordPolicy extends Plugin
                 $userId = $user->id;
                 $editScreenUrl = UrlHelper::cpUrl("users/{$userId}");
 
-                if ($this->getIsPro() && $currentUser->can('pp:force-reset-passwords')) {
+                if ($this->getIsPro() && $currentUser->can(self::PERMISSION_USER_FORCE_RESET)) {
                     $event->items[] = [
                         'icon' => 'asterisk',
                         'label' => Craft::t('password-policy', 'Force password reset'),

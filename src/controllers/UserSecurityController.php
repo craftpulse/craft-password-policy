@@ -44,13 +44,18 @@ use yii\web\Response;
  * (see {@see PasswordPolicy::_registerUserEditScreen()}). Same screen
  * key used here (`password-security`) and there.
  *
- * Permission gate: the caller needs either `pp:force-reset-passwords`
- * (Pro-tier action exposed on this page) or `pp:change-user-passwords`
+ * Permission gate: the caller needs either
+ * {@see PasswordPolicy::PERMISSION_USER_FORCE_RESET} (the Pro-tier
+ * action exposed on this page) or `pp:change-user-passwords`
  * (D3 admin-direct password change permission). Either grants
  * visibility — both permissions concern the same admin-on-user
  * surface, and splitting them at this level would surface a
  * meaningless "you can see the page but every action is greyed out"
- * state.
+ * state. The universal mass-path handle
+ * {@see PasswordPolicy::PERMISSION_FORCE_RESET_PASSWORDS} is
+ * deliberately NOT in the predicate: it gates the retention utility's
+ * expired-only sweep, which is a settings concern rather than an
+ * admin-on-user one.
  *
  * Read-only mode: the page still renders when
  * `allowAdminChanges = false` — read-only data (status, policy
@@ -123,8 +128,8 @@ class UserSecurityController extends Controller
      * see the Password Security tab. Either of the two related
      * admin-on-user permissions grants visibility:
      *
-     *  - `pp:force-reset-passwords` — flips `passwordResetRequired`
-     *    via the existing retention endpoint.
+     *  - {@see PasswordPolicy::PERMISSION_USER_FORCE_RESET} — flips
+     *    `passwordResetRequired` on this one named user.
      *  - `pp:change-user-passwords` — D3's direct admin password change
      *    + send-reset-email permission.
      *
@@ -133,11 +138,11 @@ class UserSecurityController extends Controller
      * `beforeAction()` enforces — single source of truth.
      *
      * No edition gate here: the screen is universal. Note that
-     * `pp:force-reset-passwords` only registers on Pro, so on Lite this
-     * predicate is effectively `pp:change-user-passwords` for anyone but an
-     * admin (who clears every `can()` check) and anyone holding a grant that
-     * predates a downgrade (Craft never prunes `userpermissions` rows for
-     * unregistered names).
+     * {@see PasswordPolicy::PERMISSION_USER_FORCE_RESET} only registers on
+     * Pro, so on Lite this predicate is effectively
+     * `pp:change-user-passwords` for anyone but an admin (who clears every
+     * `can()` check) and anyone holding a grant that predates a downgrade
+     * (Craft never prunes `userpermissions` rows for unregistered names).
      *
      * @return bool
      *
@@ -152,7 +157,7 @@ class UserSecurityController extends Controller
             return false;
         }
 
-        return $user->can('pp:force-reset-passwords')
+        return $user->can(PasswordPolicy::PERMISSION_USER_FORCE_RESET)
             || $user->can('pp:change-user-passwords');
     }
 
@@ -221,14 +226,17 @@ class UserSecurityController extends Controller
             ? $plugin->getNotificationActivity()->recentForUser($user->id)
             : [];
 
-        // Force reset is a Pro surface. Below Pro the whole Actions pane is
-        // absent (hide, never badge) — no disabled button, no upsell copy.
-        // The flag also carries the permission and the "already requested"
-        // check so the template holds no policy of its own.
+        // Per-user force reset is a Pro surface. Below Pro the whole Actions
+        // pane is absent (hide, never badge) — no disabled button, no upsell
+        // copy. The flag also carries the permission, the peer-admin guard,
+        // and the "already requested" check so the template holds no policy
+        // of its own. Folding the guard in here means the pane never offers a
+        // button whose POST the controller would answer with a 403.
         $currentUser = Craft::$app->getUser()->getIdentity();
         $showForceReset = $plugin->getIsPro()
             && $currentUser !== null
-            && $currentUser->can('pp:force-reset-passwords')
+            && $currentUser->can(PasswordPolicy::PERMISSION_USER_FORCE_RESET)
+            && $plugin->retention->canForceResetUser($user, $currentUser)
             && !$user->passwordResetRequired;
 
         /** @var Response|CpScreenResponseBehavior $response */
@@ -249,11 +257,11 @@ class UserSecurityController extends Controller
     }
 
     /**
-     * Forces a password reset for a single user — the action target of
-     * the "Force Password Reset" button on the user edit tab template
-     * at `_users/password-security.twig`. Admin users are silently
-     * skipped server-side by
-     * `RetentionService::requirePasswordReset()`.
+     * Forces a password reset for a single named user — the action
+     * target of the "Force Password Reset" button on the user edit tab
+     * template at `_users/password-security.twig`, of the user-edit
+     * action-menu item, and the Pro capability that the universal
+     * expired-only mass path does not cover.
      *
      * Moved from `RetentionController::actionForceReset()` in 5.2.0
      * (pre-tag fix-pack) so the admin-on-user surface owns the action
@@ -263,17 +271,25 @@ class UserSecurityController extends Controller
      * `password-policy/user-security/force-reset`.
      *
      * Self-gated: enforces `requirePostRequest()` +
-     * `requireProEdition()` + `requirePermission('pp:force-reset-passwords')`
+     * `requireProEdition()` +
+     * `requirePermission(PasswordPolicy::PERMISSION_USER_FORCE_RESET)`
      * independent of the controller-wide `beforeAction()` (which only
      * checks the union-of-permissions for tab visibility).
      *
-     * Edition before permission, deliberately. Force reset is Pro, the
-     * button that drives this POST doesn't render below Pro, and
-     * `pp:force-reset-passwords` isn't even registered there — so a Lite
-     * POST has to look like a nonexistent route (404), not like a route
-     * that exists but is denied (403). A 403 would confirm the surface
-     * the hidden button withholds. An admin on Lite hits the same 404:
-     * admins bypass permissions, never editions.
+     * Edition before permission, deliberately. Per-user force reset is
+     * Pro, the button that drives this POST doesn't render below Pro, and
+     * {@see PasswordPolicy::PERMISSION_USER_FORCE_RESET} isn't even
+     * registered there — so a Lite POST has to look like a nonexistent
+     * route (404), not like a route that exists but is denied (403). A 403
+     * would confirm the surface the hidden button withholds. An admin on
+     * Lite hits the same 404: admins bypass permissions, never editions.
+     *
+     * Peer-admin guard, after the target resolves: a non-admin holding
+     * the grant may not aim this at an admin. `ForbiddenHttpException`
+     * rather than 404, because on Pro the endpoint genuinely exists and
+     * the caller genuinely holds the permission — the denial is about who
+     * the target is, which is the permission axis, not the edition axis.
+     * See `RetentionService::canForceResetUser()`.
      *
      * @return Response|null
      *
@@ -289,7 +305,7 @@ class UserSecurityController extends Controller
     {
         $this->requirePostRequest();
         $this->requireProEdition();
-        $this->requirePermission('pp:force-reset-passwords');
+        $this->requirePermission(PasswordPolicy::PERMISSION_USER_FORCE_RESET);
 
         $plugin = PasswordPolicy::$plugin;
 
@@ -304,7 +320,22 @@ class UserSecurityController extends Controller
             throw new NotFoundHttpException('User not found.');
         }
 
-        $plugin->retention->requirePasswordReset($user);
+        // Peer-admin guard. The permission is grantable to non-admins, so it
+        // cannot be allowed to carry "lock an administrator out of their own
+        // account" with it. Re-checked here rather than only where the button
+        // renders, because the target id arrives in the POST body and can name
+        // a user the rendered screen never offered.
+        $currentUser = Craft::$app->getUser()->getIdentity();
+
+        if (!$plugin->retention->canForceResetUser($user, $currentUser)) {
+            throw new ForbiddenHttpException(
+                Craft::t('password-policy', 'Only an admin can force a password reset on another admin.')
+            );
+        }
+
+        if (!$plugin->retention->forceResetForUser($user)) {
+            return $this->_forceResetFailure('A password reset was already requested for this user.');
+        }
 
         return $this->_forceResetSuccess('Password reset has been requested for this user.');
     }

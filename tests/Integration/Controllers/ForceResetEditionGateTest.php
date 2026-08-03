@@ -1,21 +1,31 @@
 <?php
 /**
- * Pest coverage for the Pro gate on force password reset.
+ * Pest coverage for the Pro gate, and the peer-admin guard, on PER-USER force
+ * password reset.
  *
- * Force reset has three CP surfaces: the `ForcePasswordReset` bulk element
- * action on the Users index, the "Force password reset" item in the user-edit
- * action menu, and the Actions pane on the user-edit Password Security screen.
- * The first two were Pro from the start; the pane was not, so a Lite operator
- * could still force a reset from it. All three are Pro now, which means three
- * things have to hold together:
+ * Force reset splits along the mass/per-user line, not along an edition line
+ * drawn through one capability:
  *
- *  1. `pp:force-reset-passwords` registers on Pro+ only (asserted in
+ *  - The MASS path (Password Retention utility, `retention/force-reset-passwords`
+ *    console command) is universal on every edition. It reaches only accounts a
+ *    retention sweep already found expired, it shipped in 5.1.2 before the
+ *    plugin had editions, and `pp:force-reset-passwords` gates it on Lite too
+ *    (asserted in `Integration/Permissions/EditionGatedPermissionsTest`).
+ *  - The PER-USER path is the additive Pro capability: a named account, expired
+ *    or not. Three surfaces drive it (the `ForcePasswordReset` bulk element
+ *    action, the user-edit action-menu item, and the Actions pane on the
+ *    Password Security screen), all of them behind `pp:user-force-reset`, which
+ *    registers on Pro+ only.
+ *
+ * Which leaves three things to hold together, and this file pins the third:
+ *
+ *  1. `pp:user-force-reset` registers on Pro+ only (asserted in
  *     `Integration/Permissions/EditionGatedPermissionsTest`).
  *  2. The Password Security pane is absent below Pro (asserted in
  *     `Integration/UserEditTab/PasswordSecurityTabTest`).
  *  3. `UserSecurityController::actionForceReset()` gates on edition BEFORE
- *     permission, so a Lite POST answers 404 and not 403 — which is what this
- *     file pins, in both directions and against both axes.
+ *     permission, and refuses a non-admin aiming at an admin regardless of
+ *     permission — in both directions and against every axis.
  *
  * Edition before permission matters: a 403 would confirm the endpoint exists,
  * which is exactly the signal the hidden pane withholds. And because admins
@@ -23,14 +33,15 @@
  * with an ADMIN identity too — if the order were reversed, an admin on Lite
  * would sail through the permission gate and reach the action body.
  *
- * Grants are fixtured with raw inserts rather than
- * `UserPermissions::saveUserPermissions()`. That method runs the incoming list
- * through `_filterOrphanedPermissions()`, which drops any handle the current
- * edition doesn't register — so it can't express "a grant made on Pro that
- * survived a downgrade to Lite", which is precisely the case under test. It
- * would also be order-dependent: `getAllPermissions()` memoizes into a private
- * property with no reset, so the first call in the process fixes the tree at
- * whatever edition happened to be live then.
+ * The peer-admin guard is the opposite axis and answers 403, not 404: on Pro the
+ * endpoint exists and the caller does hold the grant, so the denial is about who
+ * the TARGET is. `pp:user-force-reset` is grantable to non-admins by design, and
+ * flagging an administrator's account is an escalation primitive, so the
+ * permission must not carry it.
+ *
+ * Grants are fixtured through `PermissionFactory`, which writes raw inserts
+ * rather than going through `UserPermissions::saveUserPermissions()` — see that
+ * class for why the service path can't express the cases under test here.
  *
  * @link      https://craftpulse.com
  * @copyright Copyright (c) 2024 CraftPulse
@@ -44,7 +55,10 @@ use craft\db\Table;
 use craft\errors\MissingComponentException;
 use craft\web\Response;
 use craftpulse\passwordpolicy\controllers\UserSecurityController;
+use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\PasswordPolicy;
+use craftpulse\passwordpolicy\records\UserStateRecord;
+use craftpulse\passwordpolicy\tests\Support\Factories\PermissionFactory;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
 use craftpulse\passwordpolicy\tests\Support\WebRequestStub;
@@ -127,63 +141,6 @@ function runForceResetPastFlash(int $targetUserId): void
 }
 
 /**
- * Grants permissions to a user with raw inserts, bypassing
- * `UserPermissions::saveUserPermissions()`'s orphan filter (see the file
- * docblock for why). Reuses an existing `userpermissions` row when the handle
- * is already known, matching the service's own upsert-by-name behaviour.
- *
- * @param string[] $permissions
- */
-function ppRawGrantPermissions(int $userId, array $permissions): void
-{
-    $db = Craft::$app->getDb();
-
-    foreach ($permissions as $permission) {
-        $name = strtolower($permission);
-
-        $permissionId = (new Query())
-            ->select(['id'])
-            ->from(Table::USERPERMISSIONS)
-            ->where(['name' => $name])
-            ->scalar();
-
-        if ($permissionId === false || $permissionId === null) {
-            $db->createCommand()->insert(Table::USERPERMISSIONS, ['name' => $name])->execute();
-            $permissionId = $db->getLastInsertID(Table::USERPERMISSIONS);
-        }
-
-        $db->createCommand()
-            ->insert(Table::USERPERMISSIONS_USERS, [
-                'permissionId' => (int)$permissionId,
-                'userId' => $userId,
-            ])
-            ->execute();
-    }
-}
-
-/**
- * Creates a non-admin holding CP access plus whatever extra permissions are
- * passed, and returns the re-fetched user so `can()` reflects the grants.
- *
- * Named distinctly from `SettingsPermissionGateTest`'s equivalent: Pest hoists
- * these into the global function namespace, so two files can't both declare
- * `nonAdminWithPermissions()`.
- *
- * @param string[] $extraPermissions
- */
-function forceResetCaller(array $extraPermissions = []): \craft\elements\User
-{
-    $user = UserFactory::nonAdmin();
-
-    ppRawGrantPermissions(
-        (int)$user->id,
-        array_merge(['accessCp', 'accessCpWhenSystemIsOff'], $extraPermissions),
-    );
-
-    return Craft::$app->getUsers()->getUserById((int)$user->id);
-}
-
-/**
  * Reads `passwordResetRequired` straight out of the users table.
  * `craft\elements\db\UserQuery` doesn't select the column, so a re-fetched
  * element would always report `false`.
@@ -221,7 +178,7 @@ it('404s the force-reset POST on Lite for a non-admin holding the grant', functi
     // gate is the only thing between the holder and this endpoint. It has to
     // answer 404, not 403.
     $this->plugin->edition = PasswordPolicy::EDITION_LITE;
-    $this->userStub->setIdentity(forceResetCaller(['pp:force-reset-passwords']));
+    $this->userStub->setIdentity(PermissionFactory::nonAdminWith([PasswordPolicy::PERMISSION_USER_FORCE_RESET]));
 
     $target = UserFactory::nonAdmin();
 
@@ -245,9 +202,9 @@ it('forces the reset on Pro for an admin', function() {
     expect(passwordResetRequiredFor((int)$target->id))->toBeTrue();
 });
 
-it('forces the reset on Pro for a non-admin holding pp:force-reset-passwords', function() {
+it('forces the reset on Pro for a non-admin holding pp:user-force-reset', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
-    $this->userStub->setIdentity(forceResetCaller(['pp:force-reset-passwords']));
+    $this->userStub->setIdentity(PermissionFactory::nonAdminWith([PasswordPolicy::PERMISSION_USER_FORCE_RESET]));
 
     $target = UserFactory::nonAdmin();
 
@@ -256,11 +213,28 @@ it('forces the reset on Pro for a non-admin holding pp:force-reset-passwords', f
     expect(passwordResetRequiredFor((int)$target->id))->toBeTrue();
 });
 
+it('pins AdminForceReset rather than ExpiryForced on the per-user path', function() {
+    // The per-user path is an operator pointing at one account, not a retention
+    // sweep reaching it, so the pending reason the next password change records
+    // has to say so. The mass path keeps `ExpiryForced`.
+    $this->plugin->edition = PasswordPolicy::EDITION_PRO;
+    $this->userStub->setIdentity(UserFactory::admin());
+
+    $target = UserFactory::nonAdmin();
+
+    runForceResetPastFlash((int)$target->id);
+
+    $state = UserStateRecord::findOne(['userId' => $target->id]);
+
+    expect($state)->not->toBeNull()
+        ->and($state->pendingResetReason)->toBe(ChangeReason::AdminForceReset->value);
+});
+
 // =============================================================================
 // Pro — 403 without the permission
 // =============================================================================
 
-it('403s the force-reset POST on Pro without pp:force-reset-passwords', function() {
+it('403s the force-reset POST on Pro without pp:user-force-reset', function() {
     $this->plugin->edition = PasswordPolicy::EDITION_PRO;
 
     // `pp:change-user-passwords` clears the controller-wide `beforeAction()`
@@ -268,11 +242,66 @@ it('403s the force-reset POST on Pro without pp:force-reset-passwords', function
     // the 403 comes from the action's own `requirePermission()` and not from
     // the screen gate. On Pro the endpoint DOES exist, so 403 is the honest
     // answer — the 404 is reserved for the edition that doesn't have it.
-    $this->userStub->setIdentity(forceResetCaller(['pp:change-user-passwords']));
+    $this->userStub->setIdentity(PermissionFactory::nonAdminWith(['pp:change-user-passwords']));
 
     $target = UserFactory::nonAdmin();
 
     expect(fn() => runForceReset((int)$target->id))->toThrow(ForbiddenHttpException::class);
 
     expect(passwordResetRequiredFor((int)$target->id))->toBeFalse();
+});
+
+it('403s the force-reset POST on Pro when the mass grant is the only one held', function() {
+    // The two handles are not interchangeable. Holding the universal mass grant
+    // buys the retention utility's expired-only sweep and nothing else; it must
+    // not open the per-user endpoint.
+    $this->plugin->edition = PasswordPolicy::EDITION_PRO;
+    $this->userStub->setIdentity(PermissionFactory::nonAdminWith([
+        PasswordPolicy::PERMISSION_FORCE_RESET_PASSWORDS,
+        'pp:change-user-passwords',
+    ]));
+
+    $target = UserFactory::nonAdmin();
+
+    expect(fn() => runForceReset((int)$target->id))->toThrow(ForbiddenHttpException::class);
+
+    expect(passwordResetRequiredFor((int)$target->id))->toBeFalse();
+});
+
+// =============================================================================
+// Peer-admin guard — a non-admin may not aim this at an admin
+// =============================================================================
+
+it('403s the force-reset POST when a non-admin targets an admin', function() {
+    // The escalation this closes: `pp:user-force-reset` is grantable to
+    // non-admins, and without the guard a holder could flag every
+    // administrator's account, forcing a credential change on accounts they
+    // have no authority over. Permission held, edition satisfied, target
+    // resolved — and still refused, because the denial is about WHO the target
+    // is.
+    $this->plugin->edition = PasswordPolicy::EDITION_PRO;
+    $this->userStub->setIdentity(PermissionFactory::nonAdminWith([PasswordPolicy::PERMISSION_USER_FORCE_RESET]));
+
+    $target = UserFactory::admin();
+
+    expect(fn() => runForceReset((int)$target->id))->toThrow(ForbiddenHttpException::class);
+
+    // No write, and no pending reason pinned either — the guard fires before
+    // the service is reached, so nothing partial lands.
+    expect(passwordResetRequiredFor((int)$target->id))->toBeFalse()
+        ->and(UserStateRecord::findOne(['userId' => $target->id]))->toBeNull();
+});
+
+it('lets an admin force-reset another admin', function() {
+    // The guard is about peers crossing a privilege boundary, not about admin
+    // accounts being untouchable. Co-administrators are peers, and Craft
+    // already treats them as mutually trusted, so an admin actor passes.
+    $this->plugin->edition = PasswordPolicy::EDITION_PRO;
+    $this->userStub->setIdentity(UserFactory::admin());
+
+    $target = UserFactory::admin();
+
+    runForceResetPastFlash((int)$target->id);
+
+    expect(passwordResetRequiredFor((int)$target->id))->toBeTrue();
 });

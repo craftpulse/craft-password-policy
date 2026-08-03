@@ -1,14 +1,20 @@
 <?php
 /**
- * Pest coverage for `RetentionService::requirePasswordReset()` — the
- * seam used by `PasswordResetJob` (cron-driven expiry),
- * `UserSecurityController::actionForceReset` (web-UI single-user
- * trigger), and `resetPasswordsByGroup()`. Phase D1.3 wired the service to
- * `UserStateService::setPendingReason(ExpiryForced)` so the user's
- * NEXT password change records the right `changeReason` in history.
+ * Pest coverage for `RetentionService::requirePasswordReset()` — the write
+ * behind the MASS force-reset path, used by `PasswordResetJob` (cron-driven
+ * expiry), the Password Retention utility, the
+ * `retention/force-reset-passwords` console command, and
+ * `resetPasswordsByGroup()`. Phase D1.3 wired the service to
+ * `UserStateService::setPendingReason(ExpiryForced)` so the user's NEXT
+ * password change records the right `changeReason` in history.
+ *
+ * `ExpiryForced` is the correct reason here precisely because this is the mass
+ * path: a retention sweep reached the account, no operator pointed at it. The
+ * per-user Pro path pins `AdminForceReset` instead and is covered in
+ * `RetentionServicePerUserForceResetTest`.
  *
  * Admin-account guard stays the load-bearing safety net — the existing
- * pre-D1 contract (the free version never force-resets admins) must
+ * pre-D1 contract (a retention sweep never force-resets admins) must
  * apply to the pending-reason write too. Tests pin both branches.
  *
  * @link      https://craftpulse.com

@@ -12,11 +12,8 @@ namespace craftpulse\passwordpolicy\elements\actions;
 
 use Craft;
 use craft\base\ElementAction;
-use craft\db\Query;
-use craft\db\Table;
 use craft\elements\db\ElementQueryInterface;
 use craft\elements\User;
-use craftpulse\passwordpolicy\enums\ChangeReason;
 use craftpulse\passwordpolicy\PasswordPolicy;
 
 use Throwable;
@@ -25,7 +22,10 @@ use Throwable;
  * Class ForcePasswordReset
  *
  * Bulk element action that flags selected users as requiring a password reset
- * on their next login.
+ * on their next login. One of the three per-user (Pro) force-reset surfaces,
+ * alongside the user-edit action menu and the Password Security screen's
+ * Actions pane. Unlike the universal mass path it reaches named accounts
+ * whether or not their passwords have expired.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -91,14 +91,20 @@ class ForcePasswordReset extends ElementAction
     /**
      * Performs the action on the given element query.
      *
-     * Sets `passwordResetRequired = true` on each selected user and saves.
+     * Sets `passwordResetRequired = true` on each selected user, pins an
+     * `AdminForceReset` pending reason, and writes a
+     * `password_reset_forced` audit event — all three via
+     * `RetentionService::forceResetForUser()`, so this surface records the
+     * same trail the mass path does.
      *
-     * Defense-in-depth gate: the trigger only registers for users with
-     * `pp:force-reset-passwords` when admin changes are allowed, but
-     * `performAction()` is reachable by any caller that bypasses the
-     * trigger (Craft internals, crafted POSTs). Reject those explicitly
-     * — require the force-reset permission AND `allowAdminChanges` before
-     * mutating any user, matching the `SendPasswordResetEmail` guard.
+     * Defense-in-depth gates: the trigger only registers on Pro, for
+     * users holding {@see PasswordPolicy::PERMISSION_USER_FORCE_RESET},
+     * when admin changes are allowed. `performAction()` is reachable by
+     * any caller that bypasses the trigger (Craft internals, crafted
+     * POSTs), so all three are re-checked here, and the peer-admin guard
+     * runs per selected target — a bulk selection is exactly the shape a
+     * non-admin would use to sweep an admin in alongside legitimate
+     * targets.
      *
      * @param ElementQueryInterface $query
      * @return bool
@@ -108,9 +114,18 @@ class ForcePasswordReset extends ElementAction
      */
     public function performAction(ElementQueryInterface $query): bool
     {
+        $plugin = PasswordPolicy::$plugin;
         $currentUser = Craft::$app->getUser()->getIdentity();
 
-        if ($currentUser === null || !$currentUser->can('pp:force-reset-passwords')) {
+        if (!$plugin->getIsPro()) {
+            $this->setMessage(Craft::t(
+                'password-policy',
+                'You don’t have permission to force a password reset.',
+            ));
+            return false;
+        }
+
+        if ($currentUser === null || !$currentUser->can(PasswordPolicy::PERMISSION_USER_FORCE_RESET)) {
             $this->setMessage(Craft::t(
                 'password-policy',
                 'You don’t have permission to force a password reset.',
@@ -128,41 +143,25 @@ class ForcePasswordReset extends ElementAction
 
         /** @var User[] $users */
         $users = $query->all();
-        $elementsService = Craft::$app->getElements();
+        $retention = $plugin->retention;
         $successCount = 0;
-
-        $userState = PasswordPolicy::$plugin->getUserState();
-
-        // `UserQuery::beforePrepare()` does NOT addSelect
-        // `passwordResetRequired`, so the in-memory `$user->passwordResetRequired`
-        // is always `false` regardless of the DB column. Same gotcha as
-        // `lastPasswordChangeDate` (memory gap #9). Pre-load the persisted
-        // column for the queried user IDs so the short-circuit skips users
-        // already flagged — otherwise we'd clobber any in-flight pending
-        // reason (BreachForced from HIBP-on-login, ExpiryForced from cron)
-        // with `AdminForceReset` on a redundant admin click.
-        $persistedFlags = $this->_loadPasswordResetFlags(
-            array_map(static fn(User $u): int => (int)$u->id, $users),
-        );
+        $deniedCount = 0;
 
         foreach ($users as $user) {
-            if ($persistedFlags[$user->id] ?? false) {
-                $successCount++;
+            // Peer-admin guard, per target. A non-admin holding the grant may
+            // not force a reset on an admin, so an admin swept into the
+            // selection is refused rather than quietly skipped.
+            if (!$retention->canForceResetUser($user, $currentUser)) {
+                $deniedCount++;
                 continue;
             }
 
             try {
-                $user->passwordResetRequired = true;
-                $elementsService->saveElement($user, false);
-
-                // Pin a pending `AdminForceReset` reason on the user_state
-                // row so the user's NEXT password change records the right
-                // `changeReason` in history. Capture is non-negotiable
-                // across editions — Lite, Pro, and Enterprise installs all
-                // populate this row (memory rule
-                // `project_audit_capture_principle.md`).
-                $userState->setPendingReason($user, ChangeReason::AdminForceReset);
-
+                // Returns false when the user is already flagged, which is a
+                // no-op rather than a failure: re-pinning would clobber an
+                // in-flight pending reason (`BreachForced` from HIBP-on-login,
+                // `ExpiryForced` from cron) with `AdminForceReset`.
+                $retention->forceResetForUser($user);
                 $successCount++;
             } catch (Throwable) {
                 Craft::warning(
@@ -170,6 +169,14 @@ class ForcePasswordReset extends ElementAction
                     'password-policy',
                 );
             }
+        }
+
+        if ($deniedCount > 0) {
+            $this->setMessage(Craft::t(
+                'password-policy',
+                'Only an admin can force a password reset on another admin.',
+            ));
+            return false;
         }
 
         if ($successCount !== count($users)) {
@@ -188,44 +195,5 @@ class ForcePasswordReset extends ElementAction
         );
 
         return true;
-    }
-
-    // Private Methods
-    // =========================================================================
-
-    /**
-     * Returns a map of `[userId => bool]` reflecting the persisted
-     * `users.passwordResetRequired` column for every queried user.
-     *
-     * Workaround for `UserQuery::beforePrepare()` not addSelect-ing the
-     * column — without this the in-memory User element always reads as
-     * `false` regardless of DB state, and the bulk action's
-     * already-flagged short-circuit would never fire.
-     *
-     * @param int[] $userIds
-     * @return array<int, bool> map keyed by userId
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private function _loadPasswordResetFlags(array $userIds): array
-    {
-        if (empty($userIds)) {
-            return [];
-        }
-
-        $rows = (new Query())
-            ->select(['id', 'passwordResetRequired'])
-            ->from(Table::USERS)
-            ->where(['id' => $userIds])
-            ->all();
-
-        $flags = [];
-
-        foreach ($rows as $row) {
-            $flags[(int)$row['id']] = (bool)$row['passwordResetRequired'];
-        }
-
-        return $flags;
     }
 }

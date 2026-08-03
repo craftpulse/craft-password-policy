@@ -84,6 +84,9 @@ class RetentionController extends Controller
     /**
      * Force resets all passwords that have expired according to the retention settings.
      *
+     * Available on every edition. Only accounts already past the configured
+     * expiry window are touched, and admin accounts are skipped.
+     *
      * @return int
      *
      * @throws Throwable

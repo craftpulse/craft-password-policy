@@ -16,6 +16,14 @@ use craft\base\Utility;
 /**
  * Class RetentionUtility
  *
+ * The Password Retention utility. Hosts the mass force-reset action, which
+ * flags every account already past the configured expiry window.
+ *
+ * Registered on every edition, deliberately. The mass path shipped in 5.1.2,
+ * before the plugin had editions, so gating it would withdraw a capability
+ * existing installs already have. Per-user force reset is the additive Pro
+ * capability and lives on the user-edit surfaces instead.
+ *
  * @author      CraftPulse
  * @package     PasswordPolicy
  * @since       5.0.0
