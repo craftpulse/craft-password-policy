@@ -34,11 +34,17 @@ use RuntimeException;
  *    surfaces. (Device-row capture stays universal; only the alert email
  *    is gated.)
  *
- * HTTP controllers continue to use `yii\web\ForbiddenHttpException` for
- * edition gates because Craft's web layer expects an HttpException to
- * render a proper 403 response. Queue jobs and console controllers skip
- * gracefully with a warning log / non-zero exit rather than throwing.
- * See `.claude/rules/architecture.md` for the layered convention.
+ * The rest of the plugin's layered convention for edition-gate throws:
+ *  - HTTP controllers throw `yii\web\NotFoundHttpException` via
+ *    {@see \craftpulse\passwordpolicy\base\RequiresEditionTrait} — 404,
+ *    never 403. The screen does not exist on that edition and the nav never
+ *    offered it, so a bookmarked or hand-typed URL has to behave like any
+ *    other nonexistent route; a 403 would confirm the screen is there and
+ *    contradict the hidden nav.
+ *  - Queue jobs and console controllers skip gracefully — a warning log and
+ *    an early return (jobs), or stderr output and a non-zero exit code
+ *    (console) — rather than throwing. Async and CLI surfaces can't carry
+ *    exception-driven control flow without surfacing user-visible problems.
  *
  * Why a dedicated subclass of `\RuntimeException`:
  *  - Integrators can catch this specific class without false positives

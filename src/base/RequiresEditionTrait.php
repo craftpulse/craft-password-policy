@@ -24,11 +24,19 @@ use yii\web\NotFoundHttpException;
  * that the route exists and contradict the hidden nav; a 500 (from an
  * uncaught non-HTTP exception) would leak a stack trace in dev mode.
  *
- * Scope: HTTP controllers only. Service and Twig-variable gates throw
- * {@see \craftpulse\passwordpolicy\exceptions\EditionRequiredException} so
- * integrators can catch the gate explicitly, and queue jobs plus console
- * controllers skip gracefully rather than throwing. See
- * `.claude/rules/architecture.md` for the layered convention.
+ * Scope: HTTP controllers only. The plugin's layered convention for
+ * edition-gate throws is:
+ *  - HTTP controllers throw {@see NotFoundHttpException} — 404, never 403.
+ *  - Service-layer and Twig-variable gates throw
+ *    {@see \craftpulse\passwordpolicy\exceptions\EditionRequiredException},
+ *    so integrators can catch the gate explicitly.
+ *  - Queue jobs and console controllers skip gracefully — a warning log and
+ *    an early return (jobs), or stderr output and a non-zero exit code
+ *    (console) — rather than throwing.
+ *
+ * `ForbiddenHttpException` stays reserved for permission and
+ * `allowAdminChanges` denials, which are a different axis: those screens do
+ * exist on this edition, the current user just may not use them.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy

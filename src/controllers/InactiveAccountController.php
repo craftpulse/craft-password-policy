@@ -31,9 +31,13 @@ use yii\web\Response;
  * controller has no write actions and no CSRF-protected mutations. It is a
  * pure view surface gated behind `pp:inactive-view`.
  *
- * Edition gate (HTTP-controller convention → `ForbiddenHttpException`, per
- * `feedback_edition_gate_convention`): Pro-only — Craft's web layer needs an
- * HttpException to render a proper 403.
+ * Edition gate: Pro-only, applied through
+ * {@see RequiresEditionTrait::requireProEdition()}, which throws
+ * {@see NotFoundHttpException} — 404, never 403, per the HTTP-controller half
+ * of the plugin's edition-gate convention. The report doesn't exist below Pro
+ * and the nav never offered it, so the URL behaves like any other nonexistent
+ * route. The `ForbiddenHttpException` this controller also throws is the
+ * `pp:inactive-view` permission denial, which is a different axis.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
