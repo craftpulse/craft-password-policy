@@ -363,7 +363,7 @@ See [Events reference](../reference/events.md) for the full catalog with payload
 
 - [Audit verifier CLI](./audit-verifier.md): deeper detail on the verifier, including the auditor-from-fresh-checkout workflow.
 - [Compliance Dashboard](./compliance-dashboard.md): the Enterprise UI on top of the audit log.
-- [SIEM forwarders](./siem-forwarders.md): Syslog-over-TLS to Splunk HEC, Datadog Logs, and any RFC 5424 receiver.
-- [Webhooks](./webhooks.md): HMAC-signed delivery for consumer integrations.
+- [SIEM forwarders](./siem-forwarders.md): Syslog-over-TLS to rsyslog, syslog-ng, Graylog, QRadar, and any RFC 5424 receiver.
+- [Webhooks](./webhooks.md): HMAC-signed HTTPS delivery for consumer integrations.
 - [Audit export](./audit-export.md): Streaming CSV/JSONL export with per-admin download tokens.
 - [Compliance frameworks](../operations/compliance-frameworks.md): Per-clause mapping for evidence packages.

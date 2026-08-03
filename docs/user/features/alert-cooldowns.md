@@ -1,12 +1,14 @@
 # Alert Cooldowns
 
-The plugin's `AlertCooldownService` is a per-(event class, scope) dedup substrate that prevents alert spam: operators don't get 47 identical "password breach detected" emails when 47 users on the same compromised password sign in within a minute. It's used internally by the notifications layer + the audit + the SIEM/webhook forwarders; you typically don't interact with it directly unless you're building custom alerting on top.
+The plugin's `AlertCooldownService` is a per-(event class, scope) dedup substrate that prevents alert spam: operators don't get 47 identical "password breach detected" emails when 47 users on the same compromised password sign in within a minute. It's used internally by the notifications layer; you typically don't interact with it directly unless you're building custom alerting on top.
+
+Cooldowns are for user-facing alerts. Audit-row forwarding does not use them: [SIEM forwarders](./siem-forwarders.md) and [Webhooks](./webhooks.md) each keep their own per-destination circuit breaker instead, and neither writes a row to this table.
 
 This page covers what the service does, how the dedup windows are configured, and how to register a custom alert with cooldown semantics.
 
 ## What it does
 
-Every alert in the plugin (notification emails, SIEM forwards, webhook deliveries, future plugin extensions) goes through `AlertCooldownService::shouldFire()` before dispatch:
+Every alert the plugin sends goes through `AlertCooldownService::shouldFire()` before dispatch:
 
 ```php
 $cooldown = PasswordPolicy::$plugin->getAlertCooldown();
@@ -40,8 +42,7 @@ Each call to `shouldFire()` specifies its own window. The plugin's built-in aler
 | `breach_detected` | 24 hours | per user | Don't email the same user about the same HIBP match more than once a day. |
 | `new_device_alert` | (caller-handled, typically the HIBP-on-login 24h cache) | per user | Defer to caller. |
 | `admin_security_alert` | 5 minutes | per event class | Operators get one digest of "breach detected" per 5 minutes, not one email per user. |
-| `siem_forward_retry` | exponential backoff (1, 5, 25, 125, 625 sec) | per forwarder + event class | Don't hammer a down SIEM. |
-| `webhook_delivery_retry` | exponential backoff | per endpoint + event class | Same. |
+| `group_alert` | 1 hour | per group + event type | One copy per security contact per event type per hour. |
 
 `AlertCooldownService::DEFAULT_COOLDOWN_*` constants are the canonical source; see the service source for the current defaults.
 
@@ -52,7 +53,7 @@ The `scope` parameter is a free-form discriminator. Common shapes:
 - **Per-user**: `"user:{userId}"`. Different users have independent cooldowns; the same user is rate-limited.
 - **Per-event-class**: `"event:{eventName}"`. All users get one alert per window for a given event type. Useful for `admin_security_alert` where the operator wants a digest, not per-user emails.
 - **Global**: `"global"`. One alert per window across the whole site. Rare: most alerts have a more specific scope.
-- **Composite**: `"forwarder:{forwarderId}:{eventName}"`. Per-forwarder, per-event-class state. Used by the SIEM forwarder retry logic.
+- **Composite**: `"group:{groupId}:{eventType}"`. Per-group, per-event-type state. Used by the group security-contact alerts.
 
 The discriminator is a `VARCHAR(191)` column with a composite index on `(eventClass, cooldownKey, firedAt)`, fast `WHERE eventClass = ? AND cooldownKey = ? AND firedAt >= ?` queries even with millions of rows.
 
@@ -150,7 +151,6 @@ The event captures every fire (`shouldFire() === true`); cooldown skips (`should
 ## See also
 
 - [Notifications](./notifications.md): the primary consumer of cooldowns for email dedup.
-- [SIEM forwarders](./siem-forwarders.md): uses cooldowns for retry backoff.
-- [Webhooks](./webhooks.md): uses cooldowns for retry backoff.
+- [Group alerts](./group-alerts.md): the per-group security-contact copies, deduped per group and event type.
 - [Compliance Dashboard](./compliance-dashboard.md): surfaces cooldown activity for operators.
 - [Events](../reference/events.md): `EVENT_ALERT_COOLDOWN_FIRED` payload and example listeners.

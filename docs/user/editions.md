@@ -84,6 +84,13 @@ Lite/Pro installs cannot save these via the CP: the settings save-action strip b
 | `adminAlertEmail` | `?string` | `null` | Email address (env var) for admin security alerts. |
 | `adminAlertEvents` | `?array` | `null` | Audit event types that trigger admin alerts. |
 | `apiEnabled` | `bool` | `false` | Enable the read-only REST API. No CP field: set it in `config/password-policy.php`. See [REST API](./reference/rest-api.md). |
+| `siemForwardEventClasses` | `array` | `['audit_log']` | Global default for which audit streams a SIEM forwarder receives. No CP field. A forwarder's own **Event class allowlist** overrides it. `audit_log` is the only supported stream, and a list that omits it delivers nothing. See [SIEM forwarders](./features/siem-forwarders.md#event-eligibility). |
+| `siemCircuitFailureThreshold` | `int` | `5` | Consecutive failures that open a forwarder's circuit breaker. No CP field. |
+| `siemCircuitCooldownSeconds` | `int` | `300` | Seconds a forwarder's breaker stays open before the half-open probe. No CP field. |
+| `webhookForwardEventClasses` | `array` | `['audit_log']` | Global default for which audit streams a webhook endpoint receives. No CP field. An endpoint's own **Event class allowlist** overrides it. Same caveat as above: a list that omits `audit_log` delivers nothing. See [Webhooks](./features/webhooks.md#event-eligibility). |
+| `webhookCircuitFailureThreshold` | `int` | `5` | Consecutive failures that open an endpoint's circuit breaker. No CP field. |
+| `webhookCircuitCooldownSeconds` | `int` | `300` | Seconds an endpoint's breaker stays open before the half-open probe. No CP field. |
+| `webhookSecretGracePeriodHours` | `int` | `24` | Hours a rotated signing secret stays stored so receivers can still verify against it. 1 to 168. No CP field. See [Webhooks](./features/webhooks.md#secret-rotation). |
 
 #### Declared but not consumed
 
@@ -94,11 +101,11 @@ Setting any of these has no effect. They are listed here so the table matches th
 | Setting | Type | Default | What actually applies instead |
 |---------|------|---------|-------------------------------|
 | `siemEnabled` | `bool` | `false` | Nothing gates forwarding globally. A forwarder forwards when its own **Enabled** switch is on and its circuit breaker is closed, on an Enterprise install. See [SIEM forwarders](./features/siem-forwarders.md). |
-| `siemDestinationType` | `string` | `'syslog'` | Each forwarder row's own protocol (`syslog-tls` or `http`). |
-| `siemEndpointUrl` | `?string` | `null` | Each forwarder row's own URL, or host and port for syslog. |
-| `siemAuthType` | `string` | `'bearer'` | Each forwarder row's own auth headers. |
-| `siemAuthToken` | `?string` | `null` | Each forwarder row's own auth headers, encrypted at rest. |
-| `siemCustomHeaders` | `?array` | `null` | Each forwarder row's own headers. |
+| `siemDestinationType` | `string` | `'syslog'` | Nothing. Syslog over TLS is the only transport, and a forwarder row's `protocol` column accepts no other value. |
+| `siemEndpointUrl` | `?string` | `null` | Nothing. A syslog forwarder is addressed by host and port; there is no URL on the forwarder row. |
+| `siemAuthType` | `string` | `'bearer'` | Nothing. A syslog-over-TLS connection authenticates by certificate, not by a request credential. |
+| `siemAuthToken` | `?string` | `null` | Nothing, and it is not encrypted: it stores whatever you write, like any other setting. |
+| `siemCustomHeaders` | `?array` | `null` | Nothing. A syslog message carries no headers. |
 | `siemIpHandling` | `string` | `'masked'` | Nothing. The audit log stores `ipHash` only, so there is no raw IP for a forwarder to shape. |
 | `siemDeviceHandling` | `string` | `'label'` | Nothing. |
 | `webhooksEnabled` | `bool` | `false` | Nothing gates delivery globally. An endpoint receives when its own **Enabled** switch is on and its circuit breaker is closed, on an Enterprise install. See [Webhooks](./features/webhooks.md). |

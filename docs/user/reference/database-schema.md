@@ -191,7 +191,7 @@ Per-(eventClass, cooldownKey) dedup substrate for the AlertCooldownService.
 |---|---|---|
 | `id` | int PK | |
 | `eventClass` | varchar(128), NOT NULL | Alert key (e.g. `admin_security_alert:breach_detected`) |
-| `cooldownKey` | varchar(191), NOT NULL | Scope discriminator (e.g. `user:42`, `event:breach_detected`, `forwarder:3:password_changed`) |
+| `cooldownKey` | varchar(191), NOT NULL | Scope discriminator (e.g. `user:42`, `event:breach_detected`, `group:3:hibp_breach_detected`) |
 | `firedAt` | datetime, NOT NULL | When the cooldown was recorded |
 | `dateCreated`, `dateUpdated`, `uid` | Craft standard | |
 
@@ -204,23 +204,26 @@ See [Alert cooldowns](../features/alert-cooldowns.md).
 
 ### `passwordpolicy_siem_forwarders` (Enterprise)
 
-Configured SIEM endpoints.
+Configured syslog-over-TLS receivers.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | int PK | |
-| `name` | varchar(255), NOT NULL | Display name |
+| `name` | varchar(255), nullable | Display name. The index falls back to `host:port` when it's null |
 | `enabled` | tinyint(1), NOT NULL DEFAULT 1 | Soft toggle |
-| `protocol` | enum, NOT NULL | `syslog-tls` or `http` |
-| `host` | varchar(255), nullable | For syslog-tls |
-| `port` | smallint, nullable | For syslog-tls |
-| `url` | varchar(2048), nullable | For http |
-| `headers` | JSON, nullable | Custom headers for http (e.g. `{"Authorization": "Splunk <token>"}`) |
-| `tlsCaBundlePath` | varchar(1024), nullable | Override path for syslog-tls CA bundle |
+| `protocol` | varchar(32), NOT NULL DEFAULT `'syslog-tls'` | `syslog-tls` is the only accepted value |
+| `host` | varchar(255), NOT NULL | Receiver hostname or IP |
+| `port` | int, NOT NULL | Receiver port. The new-forwarder form prefills 6514 |
+| `tlsCertVerify` | tinyint(1), NOT NULL DEFAULT 1 | Verify the receiver's certificate chain and hostname |
+| `tlsCaBundlePath` | varchar(255), nullable | PEM CA bundle path. Accepts an env var reference, resolved at use |
+| `eventClasses` | JSON, nullable | Per-forwarder event-class allowlist override. Null or empty falls back to `siemForwardEventClasses` |
 | `consecutiveFailures` | int, NOT NULL DEFAULT 0 | Circuit-breaker state |
 | `circuitOpenAt` | datetime, nullable | When the breaker opened |
-| `lastDeliveryAt` | datetime, nullable | Most recent delivery attempt |
 | `dateCreated`, `dateUpdated`, `uid` | Craft standard | |
+
+**Indexes:**
+
+- `(enabled)`, `(circuitOpenAt)`: the `getActiveForwarders()` predicate.
 
 See [SIEM forwarders](../features/siem-forwarders.md).
 
@@ -231,17 +234,22 @@ Configured webhook delivery endpoints.
 | Column | Type | Notes |
 |---|---|---|
 | `id` | int PK | |
-| `name` | varchar(255), NOT NULL | Display name |
+| `name` | varchar(255), nullable | Display name. The index falls back to the URL when it's null |
 | `enabled` | tinyint(1), NOT NULL DEFAULT 1 | Soft toggle |
-| `url` | varchar(2048), NOT NULL | HTTPS destination |
-| `signingSecret` | varchar(255), NOT NULL | HMAC key (encrypted at rest via Craft's `Security::encryptByKey()`) |
-| `previousSigningSecret` | varchar(255), nullable | Old key during the rotation grace window |
+| `url` | varchar(2048), NOT NULL | HTTPS destination. Accepts an env var reference, resolved at dispatch |
+| `secretCurrent` | text, NOT NULL | Active HMAC key, encrypted at rest via Craft's `Security::encryptByKey()` |
+| `secretPrevious` | text, nullable | Previous key, retained through the rotation grace window |
 | `secretRotatedAt` | datetime, nullable | When the rotation happened |
-| `eventFilter` | JSON, nullable | Optional list of event names to scope deliveries |
-| `lastDeliveredRowId` | int, NOT NULL DEFAULT 0 | Per-endpoint audit-row watermark |
+| `eventClasses` | JSON, nullable | Per-endpoint event-class allowlist override. Null or empty falls back to `webhookForwardEventClasses` |
+| `lastDeliveredRowId` | bigint, nullable | Per-endpoint audit-row watermark. Set to the newest audit row id when the endpoint is created, so a new endpoint never replays history |
 | `consecutiveFailures` | int, NOT NULL DEFAULT 0 | Circuit-breaker state |
 | `circuitOpenAt` | datetime, nullable | When the breaker opened |
 | `dateCreated`, `dateUpdated`, `uid` | Craft standard | |
+
+**Indexes:**
+
+- `(enabled)`, `(circuitOpenAt)`: the `getActiveEndpoints()` predicate.
+- `(lastDeliveredRowId)`: the per-endpoint watermark scan.
 
 See [Webhooks](../features/webhooks.md).
 

@@ -57,8 +57,8 @@ Each feature has its own page covering what it does, how to configure it, and ho
 | [Audit verifier CLI](./user/features/audit-verifier.md) | Independent end-to-end chain verification, auditor-runnable. |
 | [Compliance dashboard](./user/features/compliance-dashboard.md) | Aggregates utility + HTML/CSV report controller. |
 | [IP geolocation](./user/features/geoip.md) | Country code on audit rows and device alerts. Off by default, and carries an attribution obligation. |
-| [SIEM forwarders](./user/features/siem-forwarders.md) | Syslog-over-TLS to Splunk HEC, Datadog Logs, or any RFC 5424 receiver. |
-| [Webhooks](./user/features/webhooks.md) | HMAC-signed delivery with replay-window protection and idempotency UUIDs. |
+| [SIEM forwarders](./user/features/siem-forwarders.md) | Syslog-over-TLS to rsyslog, syslog-ng, Graylog, QRadar, or any RFC 5424 receiver. |
+| [Webhooks](./user/features/webhooks.md) | HMAC-signed HTTPS delivery with a replay-window timestamp and a stable event id per row. |
 | [Audit export](./user/features/audit-export.md) | Streaming CSV/JSONL to any Craft filesystem, per-admin download tokens. |
 
 ## Operations

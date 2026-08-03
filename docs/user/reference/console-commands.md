@@ -285,15 +285,16 @@ Registers a webhook endpoint and prints its generated signing secret to stdout e
 ```shell
 ./craft password-policy/webhook/create \
     --url=https://hooks.example.com/audit \
-    --name="Compliance dashboard" \
-    --events=password_changed,hibp_breach_detected
+    --name="Compliance dashboard"
 ```
 
 | Option | Description |
 |---|---|
-| `--url` | The destination URL. Required. |
+| `--url` | The destination URL. Required, and it has to be HTTPS. |
 | `--name` | A display name for the control panel. |
-| `--events` | Comma-separated event-class allowlist. Omit to receive every event. |
+| `--events` | Comma-separated allowlist of audit **streams**, not event names. `audit_log` is the only supported value in 5.2.0. Omit it to use the `webhookForwardEventClasses` setting, which is what you want. A list that omits `audit_log` delivers nothing, silently. |
+
+There is no per-event-name filtering. Every endpoint receives every audit row; a receiver that only wants some events discriminates on the body's `event` key. See [Webhooks → Event eligibility](../features/webhooks.md#event-eligibility).
 
 ### `webhook/list`
 

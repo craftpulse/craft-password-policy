@@ -43,7 +43,7 @@ Count of audit rows with `forwardedAt IS NULL` (not yet forwarded), plus the old
 | State | Visual |
 |---|---|
 | 0 pending | Green tip callout: "All audit rows have been forwarded." |
-| ≥1 pending | Amber warning callout with the count + oldest age + a link to **Forwarders → Index** to investigate. |
+| ≥1 pending | Amber warning callout with the count + oldest age + a link to **SIEM forwarders** to investigate. |
 
 The oldest age is rendered via `DateTimeHelper::humanDuration()`: "12 minutes", "3 hours", "2 days." If the oldest pending row is more than 24 hours old, the SIEM forwarder is likely stuck and warrants investigation. See [SIEM forwarders](./siem-forwarders.md#troubleshooting).
 
@@ -148,7 +148,7 @@ If you've configured a CP cache backend (Redis recommended for Enterprise instal
 ## Integration with the rest of the plugin
 
 - **Verifier results**: surfaced live via the inline chain-health check. See [Audit verifier](./audit-verifier.md).
-- **Pending forwards**: link from the dashboard goes to **Password Policy → Forwarders → Index** where operators can inspect per-endpoint state, retry failed batches, etc. See [SIEM forwarders](./siem-forwarders.md).
+- **Pending forwards**: link from the dashboard goes to **Password Policy → SIEM forwarders**, where operators can inspect each forwarder's enabled state and circuit breaker, and reset a circuit from the edit screen. There is no retry action: a pending row is retried by the next sweep on its own. See [SIEM forwarders](./siem-forwarders.md).
 - **Retention status**: links to the GC console command + the [GC and retention](../operations/gc-and-retention.md) operations doc.
 - **Alert activity**: links to **Password Policy → Notifications → Activity** for the per-event drill-through.
 

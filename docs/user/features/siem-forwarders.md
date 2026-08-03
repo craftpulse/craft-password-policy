@@ -1,183 +1,145 @@
 # SIEM Forwarders (Enterprise)
 
-Enterprise installs can forward every audit row to one or more SIEM endpoints: Splunk HEC, Datadog Logs, generic syslog-over-TLS receivers (Graylog, IBM QRadar, rsyslog, syslog-ng), or any HTTP-based ingestion path. The forwarder ships TLS by default, an HMAC-signed delivery model, a per-endpoint circuit breaker, and at-least-once delivery semantics.
+Enterprise installs can forward every audit row to one or more syslog receivers over TLS. Each row goes out as an RFC 5424 message whose payload is the audit row as canonical JSON. The forwarder ships TLS peer verification on by default, a per-endpoint circuit breaker, and at-least-once delivery semantics.
 
-This page covers configuring forwarders, the supported protocols, the at-least-once delivery model, the circuit breaker, the audit-row format on the wire, and troubleshooting common issues.
+Syslog over TLS is the only transport. If your log platform ingests over HTTPS instead of syslog, use [Webhooks](./webhooks.md): the plugin POSTs the same canonical JSON to a URL you control, signed with an HMAC, and you supply the receiver that reshapes the body into whatever envelope your platform expects.
+
+This page covers configuring forwarders, event eligibility, the at-least-once delivery model, the circuit breaker, the audit-row format on the wire, and troubleshooting.
 
 ## Quick start
 
-1. Open **Password Policy → Forwarders → New forwarder** in the control panel.
-2. Pick a protocol: **Syslog over TLS** for traditional SIEMs, or **HTTP** for SaaS log platforms.
-3. Configure the destination URL + auth headers (for HTTP) or host + port (for syslog).
-4. Save.
-5. Put `password-policy/siem/run` on a cron schedule and make sure a queue runner is running. Nothing is forwarded until both are in place, see [Console commands](#console-commands) below.
+1. Open **Password Policy → SIEM forwarders → New forwarder** in the control panel.
+2. Enter the receiver's **Host** and **Port**. Port 6514 is prefilled.
+3. Save.
+4. Put `password-policy/siem/run` on a cron schedule and make sure a queue runner is running. Nothing is forwarded until both are in place, see [Console commands](#console-commands) below.
 
 The forwarder works on a watermark model: every audit row tracks whether it's been delivered (`forwardedAt` column). New rows are delivered on the next forwarder run; backlogs are caught up automatically.
 
-## Supported protocols
+## Transport
 
-### Syslog over TLS (`syslog-tls`)
+The plugin opens a `tls://` stream socket to the configured host and port and writes one RFC 5424 message per audit row. There is no other protocol, and the **Protocol** field on the edit screen offers `syslog-TLS` as its only value.
 
-The native protocol for traditional SIEMs. RFC 5424 framing over a TLS socket on the standard IANA port (6514) or a custom port.
+This reaches rsyslog, syslog-ng, Graylog, IBM QRadar, and any collector with a TLS syslog listener, including a self-hosted Splunk indexer configured with a TCP-SSL input.
 
-| Setting | Required | Example |
+Messages are delimited by a trailing newline rather than by a leading octet count. That is what rsyslog's `imtcp` and the collectors above accept by default. A receiver configured to require octet-counted framing will need that requirement relaxed.
+
+### Forwarder fields
+
+| Field | Required | Notes |
 |---|---|---|
-| Host | Yes | `siem.acme.internal` |
-| Port | Yes | `6514` |
-| TLS CA bundle path | No (defaults to system) | `/etc/ssl/certs/siem-ca-bundle.pem` |
-| Facility | No (defaults to `local0`) | `local0` … `local7` |
-| Hostname identifier | No (defaults to `gethostname()`) | `craft-prod` |
+| Name | No | Display label, for example "Central rsyslog". The index falls back to `host:port` when it's empty. |
+| Host | Yes | The receiver's hostname or IP, for example `siem.acme.internal`. |
+| Port | Yes | Prefilled with `6514`, the IANA registered port for syslog over TLS. |
+| Protocol | Yes | `syslog-TLS`, the only option. |
+| Enabled | Yes | On by default. Disabled forwarders are skipped by the queue job entirely. |
+| Verify TLS certificate | No | On by default. |
+| Custom CA bundle path | No | Path to a PEM CA bundle, for example `/etc/ssl/certs/siem-ca-bundle.pem`. Accepts an environment variable reference such as `$PP_SIEM_CA_BUNDLE`. |
+| Event class allowlist | No | Empty means "use the global setting". See [Event eligibility](#event-eligibility). |
 
-The TLS connection uses Craft's default trust store unless you set a custom CA bundle. The plugin enforces `verify_peer => true` and `verify_peer_name => true`, disabling peer verification requires editing the service code, intentionally.
+The connection verifies the receiver's certificate chain against the system trust store unless you point **Custom CA bundle path** at your own bundle. Turning **Verify TLS certificate** off disables peer and peer-name verification together, so use it only against a receiver you trust by network path.
 
-Compatible with rsyslog, syslog-ng, Graylog (via the GELF TLS input), IBM QRadar, and any SIEM that accepts RFC 5424 messages over TLS.
+Timeouts are not configurable. The connect timeout is 5 seconds, and the same bound applies to the write, which is what turns a receiver that accepts the connection but never drains the frame into a recorded failure instead of a stalled queue job.
 
-### HTTP (`http`)
+## Event eligibility
 
-For SaaS log platforms that ingest over HTTPS. POST JSON to a configured URL with optional custom headers for auth.
+A forwarder only receives audit rows when its eligible event classes include the `audit_log` stream. Two layers decide that:
 
-| Setting | Required | Example |
-|---|---|---|
-| URL | Yes | `https://http-intake.logs.datadoghq.com/api/v2/logs` |
-| Custom headers | No | `DD-API-KEY: your-key-here` (one per line) |
-| Method | No (defaults to POST) | `POST` |
+- **`siemForwardEventClasses`**, a plugin setting, is the global default. It ships as `['audit_log']` and there is no control panel field for it. Set it in `config/password-policy.php` if you need to change it.
+- The **Event class allowlist** field on each forwarder overrides the global setting for that row when it's non-empty.
 
-The HTTP destination uses Guzzle with `verify => true` enforced at the request site (overrides any site-level `config/guzzle.php` setting). Request timeout defaults to 10 seconds; configurable per forwarder.
+`audit_log` is the only supported stream in 5.2.0. The field exists because the shape is forward-compatible with future streams, not because there is a second value to pick today.
 
-**Specific destination configurations** are documented in [Supported destinations](#supported-destinations) below.
-
-## Supported destinations
-
-The wire format is the same across destinations; only the transport class (syslog-tls vs HTTP) and the auth/header config differ. Buyers searching by name:
-
-### Splunk HEC (HTTP Event Collector)
-
-- **Protocol:** HTTP
-- **URL:** `https://<your-splunk>/services/collector/event`
-- **Custom headers:** `Authorization: Splunk <your-HEC-token>`
-- **Optional:** `X-Splunk-Request-Channel: <channel-uuid>` for per-stream tracking
-
-Splunk HEC accepts JSON over POST and returns a `200 OK` with `{"text": "Success", "code": 0}` on accept. The plugin treats any non-2xx response as a delivery failure for circuit-breaker purposes.
-
-### Datadog Logs
-
-- **Protocol:** HTTP
-- **URL:** `https://http-intake.logs.datadoghq.com/api/v2/logs` (or `eu.datadoghq.com` / regional equivalent)
-- **Custom headers:** `DD-API-KEY: <your-datadog-api-key>`
-
-Datadog accepts JSON arrays and the plugin sends individual events as single-element arrays for compatibility.
-
-### Sumo Logic HTTP Source
-
-- **Protocol:** HTTP
-- **URL:** Your collector URL (the URL itself embeds the source ID, no auth header required)
-- **Custom headers:** None required
-
-### Generic HTTP-based SIEM
-
-Any platform that accepts JSON over POST with configurable headers works through the same HTTP destination class:
-
-- NewRelic Logs API
-- Logstash HTTP input
-- Elastic ingest pipelines
-- Fluentd HTTP input
-- Custom internal ingestion endpoints
-
-Point the URL + configure the headers: the rest is transparent.
-
-### Graylog, rsyslog, syslog-ng, IBM QRadar
-
-- **Protocol:** Syslog over TLS
-- **Port:** 6514 (or your configured listener)
-- **Auth:** TLS peer verification (configure the CA bundle on your SIEM)
-
-These accept RFC 5424 framed messages over TLS directly.
-
-## Wire format
-
-Each audit row produces one structured-data message containing the canonical JSON of the row plus standard syslog or HTTP framing.
-
-### Syslog over TLS
-
-```
-<14>1 2026-05-15T03:33:14.123Z craft-prod password-policy 12345 audit_row [pp@32473 event="password_changed" rowId="8821"] {"event":"password_changed","userIdentifier":"a3f4b...","userId":42,"ipHash":"c91d7...","outcome":"success","details":{...},"previousHash":"...","rowHash":"...","dateCreated":"2026-05-15T03:33:14Z"}
-```
-
-- **PRI**: `14` (`local0.info` by default; configurable).
-- **VERSION**: `1` (RFC 5424).
-- **TIMESTAMP**: UTC ISO 8601 with millisecond precision.
-- **HOSTNAME**: Configured hostname identifier.
-- **APP-NAME**: `password-policy`.
-- **PROCID**: The audit row's `id`.
-- **MSGID**: `audit_row`.
-- **STRUCTURED-DATA**: PEN-anchored `pp@32473` element with `event` and `rowId` keys.
-- **MSG**: The canonical JSON of the audit row (same bytes that go into the hash chain).
-
-The PEN (`32473`) is a private enterprise number reserved for examples. Production deployments should request their own from IANA if they need a vendor-specific PEN.
-
-### HTTP
-
-```json
-{
-    "event": "password_changed",
-    "userIdentifier": "a3f4b...",
-    "userId": 42,
-    "ipHash": "c91d7...",
-    "outcome": "success",
-    "details": {...},
-    "previousHash": "...",
-    "rowHash": "...",
-    "dateCreated": "2026-05-15T03:33:14Z",
-    "_meta": {
-        "rowId": 8821,
-        "hostname": "craft-prod",
-        "pluginVersion": "5.2.0"
-    }
-}
-```
-
-The body is the canonical JSON plus a `_meta` envelope with operational fields the receiving SIEM may want for routing/filtering.
+> [!WARNING]
+> **An allowlist that doesn't name `audit_log` delivers nothing, silently**
+>
+> A forwarder whose eligible classes exclude `audit_log` is never offered a row. It is not a failure, so nothing increments `forwardAttempts`, the circuit stays closed, the status pill stays green, and no warning appears anywhere. The forwarder simply never receives anything.
+>
+> Leave the field empty unless you have a reason not to. If you fill it in, `audit_log` has to be in the list.
 
 ## At-least-once delivery semantics
 
 The plugin uses a watermark model with at-least-once-to-one semantics across multiple endpoints:
 
 1. The `forwardedAt` column on each audit row is `NULL` when the row hasn't been delivered to any endpoint.
-2. `password-policy/siem/run` enqueues `SiemForwardJob` (a `BaseBatchedJob`), which reads unforwarded rows in batches of 100 from `UnforwardedAuditRowBatcher`. That command is the only trigger, so it belongs in cron.
-3. For each row, the job attempts delivery to every configured endpoint in sequence.
-4. The row counts as **forwarded** the moment ONE endpoint returns success, at which point `forwardedAt` is stamped.
-5. Failed endpoints retry on the next forwarder run; the row's `forwardedAt` doesn't roll back.
+2. `password-policy/siem/run` enqueues `SiemForwardJob` (a `BaseBatchedJob`), which reads unforwarded rows in batches of 100, oldest first. That command is the only trigger, so it belongs in cron.
+3. For each row, the job attempts delivery to every active forwarder in sequence.
+4. The row counts as **forwarded** the moment ONE forwarder accepts it, at which point `forwardedAt` is stamped.
+5. When no forwarder accepts, `forwardAttempts` increments and `forwardedAt` stays empty, so the next run retries the row.
 
 Note what that means on the first sweep after you configure your first forwarder: `forwardedAt` is empty on every row already in the audit log, so all of them are pending and all of them are forwarded, oldest first. On an install that has been collecting audit events for months, that is a large first pass. It is bounded by the audit log's own retention window, it is batched at 100 rows per slice, and it happens once. If you would rather not ship that history, purge to the window you want to keep with `./craft password-policy/audit/purge --days=<n>` before you schedule the sweep. Webhook endpoints behave differently: they start from the newest row at creation and never replay history.
 
-The trade-off: a SIEM that's slow to come back online will miss some events while it's down. Operators running redundant SIEMs (Splunk + a secondary Graylog as cold backup) accept this: the primary captures everything; the cold backup may have gaps during the primary's downtime windows.
+The trade-off: with more than one forwarder configured, a receiver that's slow to come back online misses whatever another forwarder accepted while it was down. Operators running a redundant collector accept this. The primary captures everything, and the cold backup may have gaps across the primary's downtime windows.
 
-For per-endpoint at-least-once delivery (every endpoint receives every row independently), use [Webhooks](./webhooks.md) instead: webhook endpoints use a per-endpoint watermark via `lastDeliveredRowId`.
+For per-endpoint at-least-once delivery, where every endpoint receives every row independently, use [Webhooks](./webhooks.md) instead: webhook endpoints keep a per-endpoint watermark in `lastDeliveredRowId`.
+
+## Wire format
+
+Each audit row produces one RFC 5424 message:
+
+```
+<133>1 2026-05-15T03:33:14Z craft-prod password-policy 4821 audit-log - {"changedByIdentifier":null,"changedByUserId":null,"dateCreated":"2026-05-15 03:33:14","details":"{\"source\":\"front-end-change\"}","event":"password_changed","forwardAttempts":0,"forwardedAt":null,"geoCountry":null,"geoRegion":null,"id":8821,"ipHash":"c91d7...","outcome":"success","previousHash":"...","rowHash":"...","source":"web","uid":"6f7e8d9c-1234-5678-9abc-def012345678","userId":42,"userIdentifier":"a3f4b..."}
+```
+
+Header field by field:
+
+- **PRI**: `133`, which is facility `local0` with severity `notice`. Not configurable.
+- **VERSION**: `1`.
+- **TIMESTAMP**: the moment the message was built, UTC, second precision, with a literal `Z`. It is not the row's `dateCreated`.
+- **HOSTNAME**: the Craft host's own `gethostname()`. Not configurable.
+- **APP-NAME**: `password-policy`.
+- **PROCID**: the id of the PHP process that built the message.
+- **MSGID**: `audit-log`.
+- **STRUCTURED-DATA**: `-`. The plugin sends no structured-data elements.
+- **MSG**: the audit row as canonical JSON, followed by the newline that terminates the message on the stream.
+
+### Payload
+
+The MSG is the whole audit-log row, encoded by the same canonicaliser that feeds the hash chain: keys sorted recursively as strings, with unescaped slashes and unescaped unicode. The keys are:
+
+`changedByIdentifier`, `changedByUserId`, `dateCreated`, `details`, `event`, `forwardAttempts`, `forwardedAt`, `geoCountry`, `geoRegion`, `id`, `ipHash`, `outcome`, `previousHash`, `rowHash`, `source`, `uid`, `userId`, `userIdentifier`.
+
+Two things to know before writing a parser against it:
+
+- **`details` arrives as a JSON string, not a nested object.** The column value is passed through verbatim, so it reads as `"{\"source\":\"admin\"}"`. Field extraction that expects nested keys needs a decode step first.
+- **`dateCreated` is the raw column value**, `YYYY-MM-DD HH:MM:SS` in UTC, not ISO 8601.
+
+`forwardedAt` is always `null` on the wire, because a row is only offered to a forwarder while it is unforwarded.
+
+The payload is a wider key set than the hash chain covers. The chain hashes nine keys (`changedByIdentifier`, `dateCreated`, `details`, `event`, `ipHash`, `outcome`, `source`, `uid`, `userIdentifier`) with `details` as a decoded object, so recomputing `rowHash` from what arrives on the wire will not reproduce the stored value. For chain verification, run the [audit verifier](./audit-verifier.md) against the source install. See [Audit logging](./audit-logging.md) for what each column means and which of them are identifying.
+
+Webhook deliveries carry the same canonical JSON as their request body, so a receiver written against one shape parses the other. The two can disagree on `forwardedAt` and `forwardAttempts`, which track forwarder progress and therefore depend on which sweep read the row first.
 
 ## Circuit breaker
 
-Each forwarder has a per-endpoint circuit breaker to prevent cascading failures from blocking the queue:
+Each forwarder has a per-endpoint circuit breaker to prevent a dead receiver from blocking the queue:
 
-- **Closed state** (normal): Every forwarder run attempts delivery.
-- **Open state**: After 5 consecutive failures, the breaker opens. Subsequent forwarder runs skip this endpoint and increment `consecutiveFailures`.
-- **Half-open state**: After 5 minutes in the open state, the next forwarder run attempts a single delivery. Success → closed; failure → back to open with the timer reset.
+- **Closed state** (normal): every forwarder run attempts delivery.
+- **Open state**: once consecutive failures reach the threshold, the breaker opens and subsequent runs skip this forwarder.
+- **Half-open state**: after the cooldown elapses, the forwarder rejoins the next batch and the next delivery attempt is the probe. Success closes the circuit; failure pushes the open timestamp forward.
 
-Circuit state is durably stored in the `siem_forwarders` table (`consecutiveFailures` + `circuitOpenAt` columns) so a cache flush doesn't reset the breaker.
+Two settings control it, both without a control panel field:
 
-The dashboard's **Pending SIEM forwarding** section surfaces broken circuits with the oldest-pending-row age: operators can spot a stuck forwarder before the backlog grows.
+| Setting | Default | Effect |
+|---|---|---|
+| `siemCircuitFailureThreshold` | `5` | Consecutive failures that open the breaker. |
+| `siemCircuitCooldownSeconds` | `300` | Seconds a breaker stays open before the half-open probe. |
+
+Circuit state is stored durably on the `passwordpolicy_siem_forwarders` row (`consecutiveFailures` + `circuitOpenAt`), so a cache flush doesn't reset the breaker.
+
+The compliance dashboard's **Pending SIEM forwarding** section reports how many audit rows are still unforwarded and how old the oldest one is, with a link through to the forwarders index. That is the earliest place a stuck forwarder shows up, as a number that keeps growing.
 
 ## CP management
 
 ### Forwarders index
 
-**Password Policy → Forwarders** lists every configured forwarder with:
+**Password Policy → SIEM forwarders** lists every configured forwarder in a table of:
 
-- Name + protocol
-- Endpoint URL/host
-- Status pill (Green: healthy, Amber: circuit open or recent failures, Grey: disabled)
-- Last delivery timestamp
-- Consecutive-failure count
-- Edit + Delete actions
+- Name, linking to the edit screen
+- Endpoint, as `host:port`
+- Protocol
+- Status pill (green when enabled, grey when disabled)
+- Circuit pill (green when closed, red when open, with the consecutive-failure count inline)
+- An **Edit** button
 
 It also carries the sweep warning. Because forwarding only happens when you schedule `password-policy/siem/run`, an install that never wired that cron entry up looks exactly like a working one from this screen: an enabled forwarder, a closed circuit, and no deliveries. So when an audit row has been waiting more than two hours for a first delivery attempt, the index says so, names the command, and reminds you a queue runner has to be draining the queue too.
 
@@ -190,14 +152,28 @@ Two hours is roughly twenty-four consecutive missed sweeps at the documented fiv
 
 ### Forwarder edit screen
 
-Two tabs:
+One screen, in sections:
 
-- **Configuration**: protocol-specific fields (URL, headers for HTTP; host, port, CA bundle for syslog-tls).
-- **Test event**: a button that sends a synthetic audit row to the endpoint and surfaces the response inline. Useful for validating credentials/connectivity without waiting for real audit traffic.
+- **General**: name, host, port, protocol, enabled.
+- **TLS**: certificate verification toggle and custom CA bundle path.
+- **Eligibility**: the per-forwarder event class allowlist.
+- **Circuit breaker**: current circuit state, plus the **Reset circuit** and **Send test event** buttons. This section only renders on a forwarder that has been saved.
+
+### Send test event
+
+**Send test event** writes a real `siem_test` row to the audit log and forwards it to this forwarder synchronously, then reports the outcome as a control panel notice.
+
+Three things follow from that:
+
+- The test row is a real audit row. It stays in the audit log, and webhook endpoints will deliver it too.
+- Syslog has no application-level acknowledgement, so "Test event delivered." means the frame was written to the socket without error. It does not prove the receiver parsed or indexed it. Confirm that on the receiver.
+- A test event counts towards the circuit breaker like any other forward. A failing test increments the failure counter, and a succeeding one clears it.
+
+Connection-level detail is deliberately kept out of the response, because raw TLS errors carry internal hostnames, IPs and ports. When a test fails, the exception is in the plugin log.
 
 ### Reset circuit
 
-Each forwarder with an open circuit gets a **Reset circuit** action on the index. Clicking it manually closes the breaker, which is useful after fixing the underlying issue on the SIEM side.
+**Reset circuit** on the edit screen clears `circuitOpenAt` and zeroes the failure counter immediately, which saves waiting out the cooldown after you've fixed the problem on the receiver's side.
 
 ## Console commands
 
@@ -211,8 +187,8 @@ It enqueues `SiemForwardJob` for the rows waiting to be forwarded. Two of the op
 
 | Action | Where |
 |---|---|
-| Send a test event to one forwarder | The **Test event** tab on the forwarder's edit screen. |
-| Close an open circuit breaker | The **Reset circuit** action on the forwarder index. |
+| Send a test event to one forwarder | The **Circuit breaker** section of the forwarder's edit screen. |
+| Close an open circuit breaker | The **Reset circuit** button in the same section. |
 
 > [!WARNING]
 > **Forwarding needs a cron entry and a queue runner**
@@ -233,37 +209,37 @@ It enqueues `SiemForwardJob` for the rows waiting to be forwarded. Two of the op
 
 ## Troubleshooting
 
-### Forwarder shows "Pending: 3,247 rows, oldest 4 hours"
+### Pending count is large and the oldest row is hours old
 
-The forwarder is stuck. Check:
+Work through these in order:
 
-1. **Circuit state** on the forwarder index: is the circuit open?
-2. **Endpoint URL**: does the URL still resolve? Manual `curl` from the Craft host.
-3. **Auth credentials**: has the SIEM rotated tokens? Click **Test event** on the edit screen.
-4. **TLS bundle**: for syslog-tls forwarders, has the SIEM rotated its certificate? Update the CA bundle path.
+1. **Is the sweep scheduled?** A missing `password-policy/siem/run` cron entry is the most common cause, and it is what the index warning is pointing at.
+2. **Is a queue runner draining the queue?** `./craft queue/info` shows what's waiting.
+3. **Is the circuit open?** Check the Circuit column on the index. An open circuit with a failure count means the receiver is refusing or timing out, which is a receiver problem rather than a cron problem.
+4. **Does the forwarder's allowlist include `audit_log`?** An allowlist that excludes it produces zero deliveries and zero failures, so it looks healthy from the index.
 
-After fixing the underlying issue, click **Reset circuit** to resume delivery.
+After fixing the underlying issue, use **Reset circuit** to resume delivery without waiting out the cooldown.
 
-### Test event fails with "Connection refused"
+### Test event fails
 
-Network-level issue. Check:
+The message in the control panel is deliberately generic. The actual exception is in the plugin log (`storage/logs/password-policy-*.log`). Common causes:
 
-1. **Firewall**: outbound traffic from Craft host to the SIEM endpoint allowed?
-2. **DNS**: does the endpoint hostname resolve from the Craft host?
-3. **Port**: is the SIEM listening on the configured port?
+1. **Firewall**: outbound traffic from the Craft host to the receiver's port is blocked.
+2. **DNS**: the host doesn't resolve from the Craft host.
+3. **Port**: the receiver isn't listening on the configured port, or is listening for plain TCP rather than TLS.
+4. **Certificate**: the receiver's chain doesn't verify against the system trust store. Point **Custom CA bundle path** at the issuing CA rather than turning verification off.
+5. **Half-open peer**: the receiver accepts the connection but never drains the frame. This surfaces as a write timeout after 5 seconds.
 
-### Splunk HEC returns 403 "Token disabled"
+### The receiver connects but logs nothing usable
 
-HEC token is invalid or disabled. Generate a new token in Splunk and update the **Custom headers** field on the forwarder edit screen.
-
-### Datadog API returns 413 "Request entity too large"
-
-Audit row payloads should be well under Datadog's per-event size limit (5 MB). If you're hitting this, a row's `details` JSON is likely larger than expected; check what's being captured. This is rare but worth flagging as a defensive check.
+1. **Framing**: the plugin newline-delimits messages. A listener configured to require octet-counted framing will discard them.
+2. **`details` is a string**: parsers expecting a nested object see a quoted JSON string. See [Payload](#payload).
+3. **Message size**: a row with an unusually large `details` blob makes for a long message. Check what's being captured if your receiver truncates.
 
 ## See also
 
-- [Audit logging](./audit-logging.md): the source of the audit rows that get forwarded.
-- [Webhooks](./webhooks.md): alternative HMAC-signed delivery with per-endpoint at-least-once semantics.
-- [Compliance Dashboard](./compliance-dashboard.md): Pending SIEM forwarding section + status drilldown.
+- [Audit logging](./audit-logging.md): the source of the audit rows that get forwarded, and what each column means.
+- [Webhooks](./webhooks.md): HMAC-signed HTTPS delivery with per-endpoint at-least-once semantics, for platforms that ingest over HTTP.
+- [Audit verifier](./audit-verifier.md): proving the source-side hash chain hasn't been tampered with.
+- [Compliance Dashboard](./compliance-dashboard.md): the pending-forwarding count and oldest-pending age.
 - [Audit export](./audit-export.md): batch export to filesystem for offline analysis.
-- [Events](../reference/events.md): `EVENT_SIEM_FORWARD_ATTEMPT` fires on every forwarder attempt for custom monitoring integrations.
