@@ -6,8 +6,6 @@ The plugin ships a complete notification surface for password-related emails (ex
 - **Pro** adds the CP template editor (per-site overrides), token-picker UX, AJAX test-send, the activity log screen, the resend action, plus the `breach-detected` and `new-device-alert` email types that depend on the Pro HIBP-on-login listener.
 - **Enterprise** adds the `admin-security-alert` email type, cooldown-gated against the audit log's alert cooldowns table, plus the option to override the DB-stored body with a site Twig template.
 
-> 📷 *Screenshot: Notifications → Templates index showing four editable templates (Expiry Reminder, Breach Detected, New Device Alert, Admin Security Alert) with their per-site overrides.*
-
 This page covers configuring the templates, sending notifications programmatically, the activity log, and (on Enterprise) overriding the DB-stored body with a site Twig template.
 
 ## What's in the box
@@ -31,21 +29,21 @@ Plus one system-mailer-registered key for the audit-export-ready email:
 
 Open **Password Policy → Notifications → Templates** in the control panel.
 
-> 📷 *Screenshot: Edit template screen for "Expiry Reminder" with the General tab visible, subject field, body textarea, click-to-copy token chips ({{ user }}, {{ daysUntilExpiry }}, {{ siteName }}), and the Advanced tab tab in the secondary nav.*
-
 Each template has three tabs:
 
 - **General**: Subject + body (plaintext). Both fields are Twig sources; tokens render at send time with per-user context.
 - **Advanced**: Sender name, sender email, reply-to. Empty fields fall back to Craft's system mailer defaults.
 - **Test**: Test-send the current draft to the signed-in admin's email. The rendered subject and a body excerpt are returned in-page so you can verify token substitution without leaving the screen.
 
-> ::: tip Token chips
+> [!TIP]
+> **Token chips**
+>
 > Click a token chip below the body textarea to insert it at the cursor in whichever field (subject or body) was last focused. Token chips list the variables available for this template's render context, try clicking `{{ user.friendlyName ?? user.username }}` to insert a name-with-fallback expression.
-> :::
 
-> ::: tip Env-var-aware sender fields
+> [!TIP]
+> **Env-var-aware sender fields**
+>
 > Sender Email and Reply-To accept env-var indirection. Type `$EXPIRY_REMINDER_FROM` to read from your `.env` instead of hardcoding the address in project config.
-> :::
 
 Save the template. Subsequent notification sends use the new content.
 
@@ -112,8 +110,6 @@ Every dispatch attempt (success and failure) writes a `NotificationLogElement` r
 
 Open **Password Policy → Notifications → Activity** to see the chronological log.
 
-> 📷 *Screenshot: Activity index with status pills (Sent / Failed) and a detail-panel view showing the rendered subject + body for a selected row.*
-
 | Column | What it shows |
 |---|---|
 | Status | `Sent` (green pill) or `Failed` (red pill) |
@@ -146,15 +142,11 @@ See [GC and retention](../operations/gc-and-retention.md) for the production cro
 
 Every user's edit screen has a **Password Security** tab with a Notifications panel embedded near the bottom. The panel lists the user's recent notification activity (last 10 by default, filterable to `Sent` / `Failed`) with the same Resend action available from the Activity index.
 
-> 📷 *Screenshot: User edit screen → Password Security tab → Notifications panel listing four entries (one failed, three sent) with a Resend button on the failed row.*
-
 Permission required: `pp:notification-log-view`.
 
 ## Custom Twig email template paths (Enterprise)
 
 Enterprise installs can override the DB-stored body with a site Twig template, which is useful for whitelabel branding, full HTML emails with `<img>` includes, or dev-managed templates that live in version control alongside the rest of the site.
-
-> 📷 *Screenshot: Edit template screen on Enterprise with the "Custom Twig template" field visible (autosuggest, with a placeholder of `_emails/expiry-reminder.twig`).*
 
 On the **Edit template** screen:
 

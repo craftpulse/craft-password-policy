@@ -1,6 +1,6 @@
 # Garbage Collection and Retention
 
-Password Policy keeps four retention-managed datasets, password history (every edition), notification log (Pro+), alert cooldowns (every edition), and audit log (Enterprise). This page covers how those tables are pruned, what the recommended production setup is, and which retention windows are configurable.
+Password Policy keeps six retention-managed datasets: password history, notification log, audit log, alert cooldowns, known devices, and API tokens. This page covers how those tables are pruned, what the recommended production setup is, and which retention windows are configurable.
 
 For production cron recipes including the audit verifier, see [Cron setup](./cron-setup.md).
 
@@ -10,14 +10,17 @@ For production cron recipes including the audit verifier, see [Cron setup](./cro
 |---|---|---|---|---|
 | `passwordpolicy_password_history` | `passwordHistoryCount` + `passwordHistoryExpiryDays` | 5 rows × 365 days | All editions | Keep the latest N rows per user. Delete rows beyond N that are older than the day window. Per-group `passwordHistoryCount` overrides require Pro. |
 | `passwordpolicy_notification_log` | `notificationLogRetentionDays` | 30 days | Pro | Hard-delete rows older than the window. |
-| `passwordpolicy_alert_cooldowns` | `alertCooldownRetentionDays` | 30 days | All editions | Hard-delete rows older than the window. |
+| `passwordpolicy_alert_cooldowns` | none (derived) | Longest configured cooldown, 7-day floor | All editions | Hard-delete rows older than the derived window. |
 | `passwordpolicy_audit_log` | `auditLogRetentionDays` | 365 days | Enterprise (capture is universal; purge runs on every edition) | Hard-delete rows older than the window via `craft_elements` DELETE + FK CASCADE. |
+| `passwordpolicy_known_devices` | `deviceRetentionDays` | 180 days | All editions (capture is universal) | Hard-delete rows whose `lastSeenAt` is older than the window. |
+| `passwordpolicy_api_tokens` | none (per-token `expiresAt`) | no expiry unless set | Enterprise | Hard-delete rows whose `expiresAt` has passed. Tokens issued without an expiry are never purged. |
 
 The audit log retention default of 365 days satisfies PCI DSS v4.0.1 §10.5.1's "at least 12 months" requirement exactly.
 
-> ::: tip Retention is a hard delete on every table
+> [!TIP]
+> **Retention is a hard delete on every table**
+>
 > No soft-delete via `dateDeleted`. Compliance frameworks require retention windows actually remove the data, not just hide it. The verifier CLI tolerates this: it walks the surviving rows and verifies the chain among them. See [Audit verifier → Retention-purge tolerance](../features/audit-verifier.md#retention-purge-tolerance).
-> :::
 
 ## Two mechanisms
 
@@ -38,9 +41,10 @@ The command reports per-table purge counts on stdout, pipe to a log file for aud
 0 2 * * * cd /path/to/project && ./craft password-policy/gc/run >> /var/log/pp-gc.log 2>&1
 ```
 
-> ::: warning Don't say "pruning is automatic"
-> The framing "pruning is automatic" implies operator-free retention. The reality: the cron is the enforcement mechanism. Documentation, marketing copy, and compliance attestations should describe the cron as the production setup, not as an edge case.
-> :::
+> [!WARNING]
+> **Retention is not automatic**
+>
+> The cron is the enforcement mechanism. Without it, the retention windows you configure are advisory: rows stay in the table past their window until something runs the purge. Treat the cron as part of the production install, not as an optional extra.
 
 ### Craft GC hook (`Gc::EVENT_RUN`): fallback
 
@@ -62,7 +66,7 @@ Retention windows are surfaced in the CP under **Settings → Password Policy �
 | `passwordHistoryCount` | int | `0` (disabled) | All editions |
 | `passwordHistoryExpiryDays` | int | `365` | All editions |
 | `notificationLogRetentionDays` | int | `30` | Pro |
-| `alertCooldownRetentionDays` | int | `30` | All |
+| `deviceRetentionDays` | int | `180` | All editions |
 | `auditLogRetentionDays` | int | `365` | Enterprise |
 
 Every setting can be overridden via `config/password-policy.php` with `App::env()` for env-var indirection:
@@ -106,13 +110,14 @@ Combined, this demonstrates a documented + enforced retention policy: the standa
 
 When the cron runs after a long pause (e.g. you set up the cron weeks after the upgrade), the first run may delete a large batch of rows that exceeded retention while no cron was active. This is expected. Subsequent runs are small deltas.
 
-For a controlled first run that gives you visibility into what's being deleted:
+There is no dry-run mode. To see the size of that first delete before you commit to it, count the rows the windows will catch:
 
-```bash
-./craft password-policy/gc/run --dry-run
+```sql
+SELECT COUNT(*) FROM passwordpolicy_audit_log
+WHERE dateCreated < NOW() - INTERVAL 365 DAY;
 ```
 
-Reports what *would* be deleted without making changes. Useful for validating the retention configuration before flipping the cron live.
+Substitute each table and its configured window. Then run the command once by hand and read the per-table purge counts it prints, before you put it on a schedule.
 
 ## See also
 

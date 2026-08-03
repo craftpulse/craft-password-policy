@@ -4,7 +4,7 @@ Every table the plugin creates, with columns, indexes, foreign keys, and the Cra
 
 The schema is created by `Install.php` on fresh install and by dated migrations on upgrade. Both paths produce the same schema and are idempotent, re-running them on an existing schema is a no-op.
 
-Current schema version: `2.18.0`.
+Current schema version: `2.19.0`. Fourteen tables.
 
 ## Element-backed tables
 
@@ -245,43 +245,120 @@ Configured webhook delivery endpoints.
 
 See [Webhooks](../features/webhooks.md).
 
+### `passwordpolicy_known_devices`
+
+One row per (user, device) pair. Capture is universal across editions; the new-device alert email that reads it is Enterprise.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | int PK | |
+| `userId` | int, NOT NULL | FK to `craft_users.id`, CASCADE on user delete |
+| `fingerprint` | char(64), NOT NULL | SHA-256 of `"{userAgent}|{maskedIp}"`. The raw user agent and raw IP are never stored |
+| `deviceLabel` | varchar(255), nullable | Coarse label, e.g. `Chrome on macOS`, or `Unknown device` |
+| `maskedIp` | varchar(45), nullable | IPv4 masked to a `/24`, IPv6 to a `/64` |
+| `siteId` | int, nullable | FK to `craft_sites.id`, `SET NULL` on site delete. Null for a control panel sign-in |
+| `firstSeenAt` | datetime, NOT NULL | First sign-in from this device |
+| `lastSeenAt` | datetime, NOT NULL | Most recent sign-in from this device |
+| `dateCreated`, `dateUpdated`, `uid` | Craft standard | |
+
+**Indexes:**
+
+- `(userId, fingerprint)` **unique**: the upsert key. A device is new exactly when no row matches this pair.
+- `(fingerprint)`: lookup by fingerprint.
+- `(lastSeenAt)`: the retention purge's scan.
+
+Retention-managed against `deviceRetentionDays` (default 180) by `gc/run`.
+
+See [Device tracking](../features/device-tracking.md).
+
+### `passwordpolicy_group_alert_subscriptions`
+
+One row per (group, event, recipient) alert-routing rule. Storage is edition-independent; the dispatch that reads these rows is Pro.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | int PK | |
+| `groupId` | int, NOT NULL | FK to `craft_usergroups.id`, CASCADE on group delete |
+| `eventType` | varchar(255), NOT NULL | `breach_detected` or `new_device` |
+| `recipientEmail` | varchar(255), NOT NULL | The address that receives the routed copy |
+| `enabled` | tinyint(1), NOT NULL DEFAULT 1 | Off keeps the row without routing |
+| `dateCreated`, `dateUpdated`, `uid` | Craft standard | |
+
+**Indexes:**
+
+- `(groupId, eventType)`: the resolution path, matching the affected user's groups against subscribed events.
+
+The group-delete cascade is intentional: deleting a Craft user group drops its routing rules rather than leaving alerts addressed on behalf of a group that no longer exists.
+
+See [Group alerts](../features/group-alerts.md).
+
+### `passwordpolicy_api_tokens` (Enterprise)
+
+Registry of hashed Bearer tokens for the read-only REST API.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | int PK | |
+| `name` | varchar(255), NOT NULL | Operator-supplied display name |
+| `tokenHash` | char(64), NOT NULL UNIQUE | SHA-256 of the token. The plaintext is never persisted and is not recoverable |
+| `tokenPrefix` | varchar(16), NOT NULL | First 8 characters, for identifying the row in the control panel |
+| `scopes` | JSON, nullable | Reserved for future per-token scoping; not consumed in 5.2.0 |
+| `lastUsedAt` | datetime, nullable | Most recent authenticated request |
+| `expiresAt` | datetime, nullable | Null means no expiry. `findByToken()` rejects rows whose value is in the past |
+| `createdByUserId` | int, nullable | FK to `craft_users.id`, `SET NULL`. A token outlives the admin who issued it |
+| `dateCreated`, `dateUpdated`, `uid` | Craft standard | |
+
+**Indexes:**
+
+- `(tokenHash)` **unique**: the lookup key, and the guarantee that two tokens cannot share a digest.
+- `(expiresAt)`: the expired-token purge's scan.
+
+Unlike the audit tables, nothing writes here below Enterprise: the only writer is the Enterprise-gated token manager, so the table sits empty on Lite and Pro. Expired rows are purged by `gc/run`.
+
+See [REST API](./rest-api.md).
+
 ## Tables read by the plugin (not modified)
 
 The plugin reads from Craft core tables without adding columns:
 
 - `craft_users`: `lastPasswordChangeDate`, `passwordResetRequired`, `lastLoginAttemptIp`, `invalidLoginCount`, `lockoutDate`, `admin`, and standard element columns.
 - `craft_sessions`: auth tokens for the `destroyOtherSessions` path.
-- `craft_usergroups`: referenced by `passwordpolicy_policy_groups` and the user-index condition rules.
-- `craft_sites`: referenced by `passwordpolicy_notification_templates` and the per-site template propagation.
+- `craft_usergroups`: referenced by `passwordpolicy_policy_groups`, `passwordpolicy_group_alert_subscriptions`, and the user-index condition rules.
+- `craft_sites`: referenced by `passwordpolicy_notification_templates`, `passwordpolicy_known_devices`, and the per-site template propagation.
 
 ## Foreign-key drop order
 
-When uninstalling the plugin or dropping tables manually, drop in reverse FK-dependency order:
+When uninstalling the plugin or dropping tables manually, drop in reverse FK-dependency order. This is the order `Install.php`'s own teardown uses:
 
-1. `passwordpolicy_policy_groups` (FK to `passwordpolicy_policies` and `craft_usergroups`)
-2. `passwordpolicy_blocklist` (FK to `passwordpolicy_policies`)
-3. `passwordpolicy_password_history` (FK to `craft_users`)
-4. `passwordpolicy_user_state` (FK to `craft_users`)
-5. `passwordpolicy_notification_log` (FK to `craft_elements`, `craft_users`, `craft_sites`)
-6. `passwordpolicy_notification_templates` (FK to `craft_sites`)
-7. `passwordpolicy_audit_log` (FK to `craft_elements`, `craft_users`)
-8. `passwordpolicy_alert_cooldowns` (no FKs)
-9. `passwordpolicy_siem_forwarders` (no FKs)
-10. `passwordpolicy_webhook_endpoints` (no FKs)
+1. `passwordpolicy_api_tokens` (FK to `craft_users`)
+2. `passwordpolicy_group_alert_subscriptions` (FK to `craft_usergroups`)
+3. `passwordpolicy_known_devices` (FK to `craft_users`, `craft_sites`)
+4. `passwordpolicy_webhook_endpoints` (no FKs)
+5. `passwordpolicy_siem_forwarders` (no FKs)
+6. `passwordpolicy_alert_cooldowns` (no FKs)
+7. `passwordpolicy_user_state` (FK to `craft_users`)
+8. `passwordpolicy_notification_templates` (FK to `craft_sites`)
+9. `passwordpolicy_blocklist` (FK to `passwordpolicy_policies`)
+10. `passwordpolicy_policy_groups` (FK to `passwordpolicy_policies` and `craft_usergroups`)
 11. `passwordpolicy_policies` (FK to `craft_elements`)
+12. `passwordpolicy_notification_log` (FK to `craft_elements`, `craft_users`, `craft_sites`)
+13. `passwordpolicy_audit_log` (FK to `craft_elements`, `craft_users`)
+14. `passwordpolicy_password_history` (FK to `craft_users`)
 
 `./craft plugin/uninstall password-policy` handles the order automatically.
 
 ## Schema-version tracking
 
-`PasswordPolicy::$schemaVersion` is the source of truth, `2.18.0` as of release. Increment on every structural change (column add, table add, index change). Used by Craft to determine "needs craft up" state.
+`PasswordPolicy::$schemaVersion` is the source of truth, `2.19.0` as of release. Increment on every structural change (column add, table add, index change). Used by Craft to determine "needs craft up" state.
 
 ## Migration filenames
 
-Fresh installs run `Install.php` directly and don't apply the dated migrations. Upgraders apply the dated migrations in timestamp order:
+Fresh installs run `Install.php` directly and don't apply the dated migrations. Upgraders apply the dated migrations in timestamp order. There are 24 of them:
 
-- `m260429_224908_UpgradeTo520Schema`: single consolidated migration for the 5.1.x → 5.2.0 baseline.
-- `m26050*` and `m26051*`, Phase G dated migrations (hash chain recompute, element conversions, FK dedup, G12 notification seeds, etc.).
+- `m260429_224908_UpgradeTo520Schema` establishes the 5.1.x to 5.2.0 baseline: it renames the legacy `pwned` settings key to `hibp` and seeds the tables that 5.1.x did not have.
+- The remainder land the individual 5.2.0 features on top: hash-chain columns and the chain recompute, element conversions for the audit log, notification log and policies, a foreign-key deduplication pass, the alert-cooldown, SIEM, webhook, known-device, group-alert-subscription and API-token tables, the geo columns, the notification-default seeds, the kebab-case permission rename, and the audit-kit module adoption.
+
+Every migration is idempotent, so re-running one against a schema that already has its changes is a no-op.
 
 ## See also
 
@@ -289,5 +366,9 @@ Fresh installs run `Install.php` directly and don't apply the dated migrations. 
 - [Notifications](../features/notifications.md): semantic detail on the notification tables.
 - [Per-Group Policies](../features/per-group-policies.md): semantic detail on the policies tables.
 - [Blocklist](../features/blocklist.md): semantic detail on the blocklist table.
+- [Device tracking](../features/device-tracking.md): semantic detail on the known-devices table.
+- [Group alerts](../features/group-alerts.md): semantic detail on the subscriptions table.
+- [REST API](./rest-api.md): semantic detail on the API tokens table.
 - [Events](./events.md): events that fire on writes to these tables.
+- [GC and retention](../operations/gc-and-retention.md): which of these tables are retention-managed.
 - [Upgrade Guide](../operations/upgrade-from-5.1.md): what changes in the schema on 5.1.x → 5.2.0.

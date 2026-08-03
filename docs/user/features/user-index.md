@@ -2,8 +2,6 @@
 
 Password Policy threads its data into Craft's native Users element index (table columns, sort options, condition-builder rules, and bulk element actions) rather than building a parallel "Password Policy" CP section. Operators work where they already are; the plugin surfaces what they need to see, filter on, and act on, all from `/admin/users`.
 
-> 📷 *Screenshot: Users index showing the Password Policy columns enabled (Last password change, Days until expiry, Status (composite seven-state pill), Last change reason) with a few rows displaying mixed states (current, expired, reset-required, breached).*
-
 ## Table attributes
 
 Nine attributes register on `RegisterElementTableAttributesEvent` for `craft\elements\User`. `UserIndexService::preloadForUsers()` runs once per request to keep cell rendering at O(1) per cell. The full preload issues at most five bounded queries regardless of visible-row count.
@@ -72,8 +70,6 @@ Three plugin-owned actions register on `User::EVENT_REGISTER_ACTIONS`. All three
 ## User edit screen: Password Security tab
 
 The User edit screen ships a **Password Security** tab via `UsersController::EVENT_DEFINE_EDIT_SCREENS`. The tab is gated on either `pp:user-force-reset` or `pp:change-user-passwords` permission and is visible on every edition (the tab itself is permission-gated, not edition-gated). Individual panes inside it are edition-gated: the force-reset Actions pane and the notification activity panel are Pro+, and below Pro they are absent rather than disabled. The force-reset pane is also absent when a non-admin is viewing an admin.
-
-> 📷 *Screenshot: User edit screen with the Password Security tab selected, showing the resolved policy panel, status indicators (last change date, days until expiry, force-reset state), and three action buttons (Change password…, Send reset email, Force password reset on next sign-in).*
 
 The tab renders:
 

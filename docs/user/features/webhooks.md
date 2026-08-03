@@ -2,8 +2,6 @@
 
 Enterprise installs can forward audit events to one or more HTTP webhook endpoints with HMAC-SHA-256 signing, replay-window protection, and idempotency UUIDs. Unlike [SIEM forwarders](./siem-forwarders.md) which are designed for log aggregation (at-least-once-to-one across endpoints), webhooks are designed for per-endpoint integration (every endpoint receives every row independently).
 
-> 📷 *Screenshot: Webhooks index page showing three configured endpoints, "Slack #security alerts" (green-status, 12 successful deliveries today), "Internal SOC API" (green-status, 47 deliveries today), "Vendor compliance webhook" (amber-status, 2 retries in flight). Each row shows endpoint URL, last delivery, signature scheme.*
-
 This page covers configuring webhook endpoints, the signature scheme, replay-window verification, secret rotation with grace windows, and the per-endpoint delivery watermark model.
 
 ## Quick start
@@ -185,35 +183,26 @@ This means:
 - **An endpoint that's down for a week** catches up the missed rows on recovery (subject to retention: rows pruned by GC are not redelivered).
 - **Two endpoints with different filters** maintain independent watermarks: a Slack channel filtered to `hibp_breach_detected` and a SOC API filtered to all events deliver independently.
 
-To **backfill** an endpoint with historical events (e.g. you just added a new compliance webhook and want it to receive everything from the past 90 days), use the bundled command:
-
-```bash
-./craft password-policy/webhook/backfill --endpoint=<id> --from=2026-02-15
-```
-
-The command resets `lastDeliveredRowId` and queues the backlog for delivery. Use with care: the receiver gets a burst of N events all at once.
+There is no backfill command. A new endpoint starts from the current row and there is no supported way to rewind its watermark, so if a receiver needs the historical events, use [Audit export](./audit-export.md) to hand them the window as a file instead. That is usually the better answer anyway: a backfill would hand the receiver a burst of thousands of events at once, and most receivers rate-limit long before they finish.
 
 ## Secret rotation
 
-Rotate the signing secret without breaking in-flight signatures using the **Rotate secret** action on the endpoint edit screen:
+Rotate the signing secret using the **Rotate secret** action on the endpoint edit screen, or the console command:
 
-> 📷 *Screenshot: Webhook endpoint edit screen with the "Rotate secret" button visible at the bottom of the configuration panel; below it, a "Previous secret retained until 2026-05-15 03:38:14 (grace window)" callout.*
-
-1. Click **Rotate secret**.
-2. The plugin generates a new secret + saves it.
-3. Both the **new** and **old** secrets are valid for a 5-minute grace window: every delivery in that window is signed with the new secret but the old secret's HMAC is also published in a `X-PasswordPolicy-Signature-Previous` header so receivers can verify either.
-4. After 5 minutes, the `RotateWebhookSecretJob` reaper job runs and clears the old secret.
-5. Update your receiver-side stored secret during the grace window.
-
-The grace window prevents the standard "rotation race": a request signed with the old secret arrives at the receiver after they've already updated to the new one (or vice versa). The dual-secret window covers both directions.
-
-If 5 minutes isn't enough (slow infrastructure rollout), schedule the rotation outside business hours or use the longer-window variant:
-
-```bash
-./craft password-policy/webhook/rotate --endpoint=<id> --grace=3600
+```shell
+./craft password-policy/webhook/rotate-secret 42
 ```
 
-Defaults to 300 seconds; configurable up to 86,400 (24 hours).
+Either way:
+
+1. The current secret moves to `secretPrevious` and a freshly generated secret becomes current.
+2. The new plaintext is shown **once**, in a control panel flash message or on stdout. It is encrypted at rest and not recoverable afterwards, so capture it there or rotate again.
+3. Through the grace window, the old secret remains stored so your receiver can still verify against it.
+4. `RotateWebhookSecretJob` reaps the old secret once the window elapses.
+
+The grace window exists for the receiver's benefit, not the plugin's. **The plugin signs with the new secret exclusively from the moment of rotation.** There is no header carrying a second signature, so a receiver that only knows the old secret starts failing verification immediately. Update your receiver during the window; the window buys you time to deploy, not dual-signing.
+
+The window is set by `webhookSecretGracePeriodHours`, default **24 hours**, configurable up to 7 days. There is no per-rotation override.
 
 ## Circuit breaker
 
@@ -251,22 +240,32 @@ The **Activity** tab is useful for debugging: every delivery is captured with th
 
 ## Console commands
 
-```bash
-# Trigger an immediate delivery run
-./craft password-policy/webhook/run
+Three commands, all Enterprise:
 
-# Test-fire a specific endpoint
-./craft password-policy/webhook/test --endpoint=<id>
-
-# Rotate the signing secret with custom grace window
-./craft password-policy/webhook/rotate --endpoint=<id> --grace=300
-
-# Reset a broken circuit
-./craft password-policy/webhook/reset-circuit --endpoint=<id>
-
-# Backfill historical events to a new endpoint
-./craft password-policy/webhook/backfill --endpoint=<id> --from=2026-02-15
+```shell
+# Register an endpoint; prints the signing secret once
+./craft password-policy/webhook/create \
+    --url=https://hooks.example.com/audit \
+    --name="Compliance dashboard" \
+    --events=password_changed,hibp_breach_detected
 ```
+
+```shell
+# List endpoints with their id, enabled state, delivery cursor, and URL
+./craft password-policy/webhook/list
+```
+
+```shell
+# Rotate one endpoint's signing secret (id is positional)
+./craft password-policy/webhook/rotate-secret 42
+```
+
+Test-firing and resetting a circuit are control panel actions, not commands. See [Console commands](../reference/console-commands.md#webhooks) for the full option reference.
+
+> [!WARNING]
+> **Delivery needs a queue runner**
+>
+> Deliveries are made by `WebhookForwardJob`, which reads undelivered audit rows and advances each endpoint's `lastDeliveredRowId`. Like every Craft queue job, it only makes progress when something is running the queue. On a quiet site relying on Craft's default web-request-triggered runner, the pending count sits still. Run the queue from cron (`./craft queue/listen` under a process supervisor, or `./craft queue/run` on a schedule) on any install where delivery matters.
 
 ## Permissions
 

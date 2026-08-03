@@ -7,8 +7,6 @@ The plugin ships a **Blocklist** subnav on Pro and Enterprise installs at **Pass
 
 On Enterprise, you can also scope custom words to specific named policies, useful when different teams need different exclusions.
 
-> 📷 *Screenshot: Blocklist page showing the source citation block ("Bundled list: 10,000 entries from SecLists Common-Credentials, seeded 2026-04-30"), the "Update common passwords" button, the editable table with 14 custom words, and the "Check a word" tool at the bottom showing a result for a queried word.*
-
 This page covers configuring the blocklist, the bundled list source, the custom dictionary editor, the per-policy blocklist (Enterprise), and the "Check a word" diagnostic tool.
 
 ## Enabling the blocklist
@@ -28,14 +26,12 @@ The bundle is **seeded on plugin install** and re-seeded on demand. To refresh a
 **From the CLI:** Run the bundled command:
 
 ```bash
-./craft password-policy/blocklist/seed-common
+./craft password-policy/blocklist/update
 ```
 
 Re-seeding deletes every row with `source = 'common'` and inserts the current bundled list. Custom words (`source = 'custom'`) are untouched.
 
 ## Custom dictionary editor
-
-> 📷 *Screenshot: Editable table with rows for "acme-corp-2024", "passw0rd2026", "summer123", each with a delete icon. The Add a row button shows below the table.*
 
 Add words specific to your install: employee surnames, company codenames, internal product names, breached internal passwords that aren't in the bundled list, etc. Edits use Craft's standard `forms.editableTableField` with diff-on-save semantics:
 
@@ -60,8 +56,6 @@ The bundled-list message frames the rejection as a quality issue (the password i
 
 Use the **Check a word** tool at the bottom of the Blocklist page to verify whether a specific value is currently blocked, handy for debugging "why is this password being rejected?" tickets.
 
-> 📷 *Screenshot: Check a word input with "summer123" typed; result block below shows "Blocked: this word matches a custom-dictionary entry." rendered as a `<blockquote class="note warning">`.*
-
 Type the word + click **Check**. The tool AJAX-queries the same cache-backed lookup the validator uses and renders the result inline:
 
 | Result | Visual |
@@ -79,8 +73,6 @@ Enterprise installs can scope custom words to specific named policies. Useful fo
 - **Sales reps with a "Customers" policy**: block customer company names (so a sales rep can't use "AcmeCorp2024!" as their password).
 - **Engineers with an "Engineering" policy**: block project codenames + internal product names.
 - **Admins with a "Strict" policy**: block breached internal passwords specific to admin accounts.
-
-> 📷 *Screenshot: Per-policy blocklist editor on the policy edit screen: a custom-dictionary tab inside the policy with five entries scoped to "Customers (NIST)".*
 
 On the **Policy edit screen** (Enterprise), there's a **Blocklist** tab next to **General / Rules / Lifecycle**. Each policy can have its own custom-dictionary entries via the same editable-table UI as the global custom dictionary.
 
@@ -103,13 +95,13 @@ The CP edit screen renders the per-policy blocklist tab on Enterprise only. The 
 | `pp:blocklist-view` | Read-only access to the Blocklist page (stats + custom dictionary table render). |
 | `pp:blocklist-manage` (nested) | Write access: add/remove custom words, trigger common-password seed, check a word. |
 
-The nesting follows the plugin's [view-vs-manage permission convention](../../internal/handover.md#permission-nesting-convention), granting `pp:blocklist-manage` automatically grants `pp:blocklist-view`.
+The two nest, so granting `pp:blocklist-manage` grants `pp:blocklist-view` with it. Write access implies read access; the reverse does not hold, so you can give someone the ability to review the deny list without the ability to change it.
 
 ## Console commands
 
 ```bash
 # Re-seed the bundled common-password list from the shipped data file
-./craft password-policy/blocklist/seed-common
+./craft password-policy/blocklist/update
 
 # Bulk-import custom words from a plaintext file (one word per line)
 ./craft password-policy/blocklist/import --file=path/to/words.txt
@@ -148,7 +140,7 @@ The bundled common-password list lives at `src/data/common-passwords.php` as a P
 To update the bundled list:
 
 1. Replace `src/data/common-passwords.php` with a newer SecLists vintage.
-2. Run `./craft password-policy/blocklist/seed-common`.
+2. Run `./craft password-policy/blocklist/update`.
 
 The plugin's CI verifies the file's row count against a known minimum (8,000+) to catch accidental truncation.
 

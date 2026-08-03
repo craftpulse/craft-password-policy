@@ -2,8 +2,6 @@
 
 Enterprise installs can forward every audit row to one or more SIEM endpoints: Splunk HEC, Datadog Logs, generic syslog-over-TLS receivers (Graylog, IBM QRadar, rsyslog, syslog-ng), or any HTTP-based ingestion path. The forwarder ships TLS by default, an HMAC-signed delivery model, a per-endpoint circuit breaker, and at-least-once delivery semantics.
 
-> 📷 *Screenshot: Forwarders index page showing three configured forwarders, "Splunk Production" (green-status), "Datadog Logs" (green-status), "Graylog Backup" (amber-status with "Circuit open: 3 consecutive failures"). Each row shows endpoint URL, protocol, last-delivery timestamp, and consecutive-failure count.*
-
 This page covers configuring forwarders, the supported protocols, the at-least-once delivery model, the circuit breaker, the audit-row format on the wire, and troubleshooting common issues.
 
 ## Quick start
@@ -185,24 +183,23 @@ Two tabs:
 - **Configuration**: protocol-specific fields (URL, headers for HTTP; host, port, CA bundle for syslog-tls).
 - **Test event**: a button that sends a synthetic audit row to the endpoint and surfaces the response inline. Useful for validating credentials/connectivity without waiting for real audit traffic.
 
-> 📷 *Screenshot: Forwarder edit screen on Configuration tab, Splunk HEC URL field, custom-headers textarea showing the Authorization header, the Test event button at the bottom with an "Awaiting test" state.*
-
 ### Reset circuit
 
 Each forwarder with an open circuit gets a **Reset circuit** action on the index. Clicking it manually closes the breaker, which is useful after fixing the underlying issue on the SIEM side.
 
 ## Console commands
 
-```bash
-# Trigger an immediate forwarder run (catches up the backlog)
-./craft password-policy/siem/run
+The forwarder ships no console commands in 5.2.0. Both operator actions live in the control panel:
 
-# Send a test event to a specific forwarder
-./craft password-policy/siem/test --forwarder=<id>
+| Action | Where |
+|---|---|
+| Send a test event to one forwarder | The **Test event** tab on the forwarder's edit screen. |
+| Close an open circuit breaker | The **Reset circuit** action on the forwarder index. |
 
-# Reset a forwarder's circuit breaker
-./craft password-policy/siem/reset-circuit --forwarder=<id>
-```
+> [!WARNING]
+> **Delivery needs a queue runner**
+>
+> Forwarding is done by `SiemForwardJob`, which reads unforwarded audit rows in batches and stamps each row's `forwardedAt` as it goes. Like every Craft queue job it only makes progress when something is running the queue. If your install relies on Craft's default web-request-triggered queue runner and the site is quiet, the backlog reported on the forwarder index will sit still. Run the queue from cron (`./craft queue/listen` under a process supervisor, or `./craft queue/run` on a schedule) on any install where forwarding matters.
 
 ## Permissions
 

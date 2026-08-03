@@ -57,9 +57,10 @@ Each character class is a separate setting:
 
 All enabled toggles must be satisfied independently. A password missing any required class is rejected with a clear per-class error message.
 
-> ::: warning NIST 800-63B Rev. 4 forbids composition rules
+> [!WARNING]
+> **NIST 800-63B Rev. 4 forbids composition rules**
+>
 > Rev. 4 §3.1.1.2 explicitly forbids requiring composition (`SHALL NOT impose other composition rules`). The composition fields remain available because PCI DSS v4.0.1 §8.3.6 still requires numeric + alphabetic mix. Pick the preset that matches your audit. See [Compliance frameworks](../operations/compliance-frameworks.md).
-> :::
 
 ### Minimum types mode (Pro)
 
@@ -141,9 +142,10 @@ Rejects passwords containing case-insensitive substrings of the user's own conte
 
 The 3-char minimum prevents over-rejecting common short substrings (`a`, `co`, `mr`).
 
-> ::: tip Why contextual checks matter
+> [!TIP]
+> **Why contextual checks matter**
+>
 > Compliance frameworks generally treat user-contextual passwords as a form of insufficient entropy. NIST 800-63B Rev. 4 §3.1.1.2 explicitly recommends rejecting "context-specific words, such as the name of the service, the username, and derivatives thereof."
-> :::
 
 ## Hooking into validation
 

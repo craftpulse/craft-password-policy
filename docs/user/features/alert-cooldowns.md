@@ -2,8 +2,6 @@
 
 The plugin's `AlertCooldownService` is a per-(event class, scope) dedup substrate that prevents alert spam: operators don't get 47 identical "password breach detected" emails when 47 users on the same compromised password sign in within a minute. It's used internally by the notifications layer + the audit + the SIEM/webhook forwarders; you typically don't interact with it directly unless you're building custom alerting on top.
 
-> 📷 *Screenshot: Compliance Dashboard's "Activity in last 24h" section showing cooldown fires by event class, `breach_detected: 12`, `account_locked: 3`, `force_reset_completed: 19`. The dashboard pulls these numbers from the alert-cooldowns table.*
-
 This page covers what the service does, how the dedup windows are configured, and how to register a custom alert with cooldown semantics.
 
 ## What it does
@@ -64,10 +62,10 @@ The `passwordpolicy_alert_cooldowns` table is retention-managed by `password-pol
 
 ```
 DELETE FROM passwordpolicy_alert_cooldowns
-WHERE firedAt < NOW() - INTERVAL <retentionDays> DAY
+WHERE firedAt < NOW() - INTERVAL <window> SECOND
 ```
 
-Default retention is 30 days. Configure via the `alertCooldownRetentionDays` plugin setting (or leave at the default).
+There is no retention setting for this table. The window is derived: the longer of your longest configured cooldown and a 7-day floor. Deriving it is what keeps the purge from deleting a row that a still-open cooldown depends on, so a table you cannot misconfigure is the point.
 
 Older rows don't affect correctness: the `shouldFire()` query only looks at the most-recent fire within the window. Retention is purely a table-size guard.
 
@@ -117,15 +115,16 @@ No:
 
 The compliance dashboard's **Activity in last 24h** section surfaces cooldown fires grouped by event class; see [Compliance Dashboard](./compliance-dashboard.md).
 
-For ad-hoc inspection from the CLI:
+There is no console command for cooldown state. For ad-hoc inspection, query the table directly:
 
-```bash
-# Show recent cooldown fires grouped by event class
-./craft password-policy/alert-cooldowns/stats
-
-# Show recent fires for a specific event class
-./craft password-policy/alert-cooldowns/stats --event=breach_detected --hours=24
+```sql
+SELECT eventClass, cooldownKey, firedAt
+FROM passwordpolicy_alert_cooldowns
+WHERE firedAt > NOW() - INTERVAL 24 HOUR
+ORDER BY firedAt DESC;
 ```
+
+The `(eventClass, cooldownKey, firedAt)` composite index covers this shape, so it stays fast even on a table with a long retention window.
 
 ## Events
 

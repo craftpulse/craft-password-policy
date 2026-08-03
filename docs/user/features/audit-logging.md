@@ -2,8 +2,6 @@
 
 The Enterprise edition ships a tamper-evident audit log that records every password-related security event in your Craft install. It's hash-chained from the row level up, verifiable end-to-end by a bundled console command, and built privacy-first: no raw IPs, no plaintext emails, no PII outside a fail-closed per-event allowlist.
 
-> 📷 *Screenshot: The Audit Log element index in the control panel, with the status pill column showing successful and failed events, and the inline detail panel for a selected row.*
-
 This page covers what the audit log captures, the schema, the privacy guarantees, the hash chain mechanics, and the verifier CLI. For the visible Enterprise UI on top of this infrastructure, see [Compliance Dashboard](./compliance-dashboard.md). For SIEM and webhook integration, see [SIEM forwarders](./siem-forwarders.md) and [Webhooks](./webhooks.md).
 
 ## What's captured
@@ -85,7 +83,7 @@ $details = array_intersect_key($details, self::ALLOWED_DETAILS_BY_EVENT[$event] 
 
 An event type not in `ALLOWED_DETAILS_BY_EVENT` is **fail-closed**: the row is dropped and a warning logged. Adding a new event type without declaring its allowlist is a static defect: the test suite has an assertion that fails if any fired event class lacks a registry entry.
 
-Inspect the live allowlist via the **Audit Log Schema** utility (`Utilities → Audit Log Schema`) or the console command:
+Inspect the live allowlist via the **Audit Schema** utility (`Utilities → Audit Schema`) or the console command:
 
 ```bash
 ./craft password-policy/audit/schema
@@ -127,9 +125,10 @@ The `FOR UPDATE` row lock prevents concurrent writers from chaining off the same
 
 The `userIdentifier` column is part of the canonical payload. Rotating `CRAFT_AUDIT_PII_KEY` does **not** invalidate the chain for existing rows: those rows still carry the hash they were written with, and the verifier reads them as-is. Rotation affects future writes; it doesn't rewrite history.
 
-> ::: warning Don't log the canonical payload
+> [!WARNING]
+> **Don't log the canonical payload**
+>
 > Logging `AuditLogService::canonicalize($row)` at debug level would compromise the chain's tamper-detection property: an attacker reading logs could reconstruct the canonical string and forge matching rows. The plugin never logs the canonical payload. Don't add a `Craft::debug()` call on it.
-> :::
 
 ## Verifier CLI (G2)
 
@@ -220,9 +219,10 @@ The audit log is retention-managed. Configure the window in **Settings → Passw
 0 2 * * * cd /path/to/project && ./craft password-policy/gc/run
 ```
 
-> ::: warning Retention is a hard delete
+> [!WARNING]
+> **Retention is a hard delete**
+>
 > The audit log is append-only for write but retention is a hard delete (via `craft_elements` `DELETE` + FK CASCADE on `passwordpolicy_audit_log`). Soft-delete via `dateDeleted` is not used, compliance frameworks require that retention windows actually remove the data, not just hide it. The verifier CLI tolerates this: it walks the surviving rows and verifies the chain among them.
-> :::
 
 Default retention satisfies PCI DSS v4.0.1 §10.5.1 (≥12 months of audit logs). For longer retention requirements, increase the setting and provision additional database storage.
 

@@ -15,15 +15,11 @@ composer require craftpulse/craft-password-policy
 
 Or install through the Plugin Store: **Settings → Plugins → Search "Password Policy" → Install**.
 
-> 📷 *Screenshot: Plugin Store listing with the Install button highlighted.*
-
 The plugin installs in the **Lite** edition by default. Lite is free and covers global password rules, HIBP breach checking at password change, strength meter, retention/expiry, and force-change-on-first-login. See the [Edition Matrix](./editions.md) for what each tier ships.
 
 ## Step 2: Configure a global policy
 
 Open **Settings → Password Policy** in the control panel.
-
-> 📷 *Screenshot: Settings → Password Policy sidebar showing the Policy / Validation / Monitoring sections.*
 
 The settings page is grouped into three sections:
 
@@ -37,17 +33,14 @@ Start with the **Configuration** screen under Policy. The defaults are reasonabl
 2. Enable **Have I Been Pwned** to check new passwords against the breach database via k-anonymity.
 3. Leave **HIBP Fail Mode** on `Open` for most production sites: a transient API outage won't block a password change. Switch to `Closed` only if you can tolerate the rare false reject during HIBP outages.
 
-> ::: tip
+> [!TIP]
 > The HIBP check uses k-anonymity: the plugin sends only the first 5 characters of the SHA-1 of the password to the HIBP API. The full hash and the password itself never leave your server.
-> :::
 
 Save the page. Your policy is now active on every new user save and password change.
 
 ## Step 3: Test it
 
 Open **Users → New user** in the control panel and try setting a weak password:
-
-> 📷 *Screenshot: New user form rejecting "Password123" with the strength meter at red and the rule list showing failures.*
 
 You should see:
 - Per-rule pass/fail next to the password field.
@@ -69,9 +62,10 @@ If your compliance framework requires periodic password changes, configure expir
 - **Expiry amount** + **Expiry period**: how long a password is valid (e.g. `90 days`). Set to `null` to disable.
 - **Expiry reminder days**: when to email users before expiry. Lite ships the seeded reminder template; Pro adds the template editor + activity log + resend.
 
-> ::: warning NIST 800-63B Rev. 4 caveat
+> [!WARNING]
+> **NIST 800-63B Rev. 4 caveat**
+>
 > NIST 800-63B Rev. 4 explicitly forbids periodic rotation (`SHALL NOT require subscribers to change passwords periodically`). PCI DSS v4.0.1 §8.3.9 still requires 90-day rotation. Pick the framework that matches your audit and use the matching preset on the [Per-group policies](./features/per-group-policies.md) screen.
-> :::
 
 Then set up the GC cron so expired passwords actually trigger reset prompts:
 
@@ -92,11 +86,11 @@ You're done: the Lite edition is a single global policy. Explore what Lite ships
 - **[Common-password blocklist](./features/blocklist.md)**: reject passwords matching the bundled 10,000-entry SecLists list via the `checkCommonPasswords` toggle. Auto-seeds on first enable.
 - **Expiry reminders**: the seeded `expiry-reminder` template sends to users approaching their expiry window via the `password-policy/notification/send-expiry-reminders` cron command. See [Cron setup](./operations/cron-setup.md).
 - **[Validators](./features/validators.md)**: fine-tune which checks run on every password.
-- **Compliance-aligned configuration**: Lite gives you the building blocks (length, HIBP, blocklist, history, expiry) to hand-configure a policy matching NIST 800-63B / OWASP ASVS L1 / PCI-DSS / CIS Controls v8. The one-click [Compliance Presets](#pro) surface as framework-named commitments lives in Pro.
+- **Compliance-aligned configuration**: the building blocks (length, HIBP, blocklist, history, expiry) are all here, so you can hand-configure a policy matching NIST 800-63B, OWASP ASVS L1, PCI-DSS, or CIS Controls v8. Applying one of those as a named preset in a single click requires Pro.
 
 ### Pro
 
-Upgrade to Pro to unlock:
+Pro adds:
 
 - **[Per-group named policies](./features/per-group-policies.md)**: different rules for different user groups, with five bundled compliance presets (NIST 800-63B, OWASP ASVS L1, PCI-DSS v4.0.1, CIS Controls v8, Strict Enterprise).
 - **[HIBP-on-login](./features/audit-logging.md#hibp-on-login)**: re-check every user's password against the breach database on every sign-in, not just at change time.
@@ -117,7 +111,7 @@ Then run `./craft up` to apply.
 
 ### Enterprise
 
-Upgrade to Enterprise on top of Pro to unlock the audit + integration surface:
+Enterprise adds the audit and integration surface, on top of everything in Pro:
 
 - **[Hash-chained audit log](./features/audit-logging.md)**: tamper-evident from the row level up, with a [bundled verifier CLI](./features/audit-verifier.md) auditors can run from a fresh checkout.
 - **[Compliance dashboard](./features/compliance-dashboard.md)**: Enterprise CP utility with aggregates over the audit infrastructure, plus HTML and CSV report exports.

@@ -2,9 +2,10 @@
 
 This page maps every Pro and Enterprise feature in the plugin to specific clauses across seven compliance frameworks. The citations are anchors for an operator's evidence package, they're not certifications. The plugin provides specific technical measures that controllers can rely on as part of their framework obligations.
 
-> ::: warning Phrasing discipline
-> Never write "compliant with [framework]" or "[framework]-certified", certification requires an auditor, not a plugin. Write "provides specific technical measures that controllers can rely on as part of their [framework] obligations" or "evidence and controls aligned with [specific clause]". Cite clause numbers, not framework names alone: auditors read the clause text, not the marketing.
-> :::
+> [!WARNING]
+> **No plugin can make you compliant**
+>
+> Certification requires an auditor. What you get here is a set of technical measures you can point at, mapped to the clause that asks for them. When you write your own evidence package, cite the clause number rather than the framework name: an auditor reads the clause text.
 
 The seven frameworks covered:
 
@@ -157,9 +158,10 @@ The `PCI_DSS_V4` preset sets `passwordHistoryCount = 4`, exact match.
 
 The `PCI_DSS_V4` preset sets `expiryAmount = 90` / `expiryPeriod = day`, exact match on the conservative path.
 
-> ::: warning §8.3.9 conflicts with NIST 800-63B Rev. 4
+> [!WARNING]
+> **§8.3.9 conflicts with NIST 800-63B Rev. 4**
+>
 > NIST Rev. 4 explicitly forbids periodic rotation. PCI DSS requires it. Sites under PCI scope use the PCI preset; sites under NIST scope use the NIST preset. The two are mutually exclusive, pick the framework that matches your audit.
-> :::
 
 ### §10.2: Audit log content requirements
 
@@ -337,11 +339,7 @@ The hash chain + retention model + audit infrastructure as a whole.
 
 > *"...a process for regularly testing, assessing and evaluating the effectiveness of technical and organisational measures for ensuring the security of the processing."*
 
-The independent verifier CLI is the literal implementation. The plugin provides the *capability*; the operator demonstrates the *process* by running the verifier on a schedule and retaining the output as evidence.
-
-> ::: warning Phrase Article 32 carefully
-> Don't write "satisfies Article 32", that's a certification claim. Write "provides specific technical measures that controllers can rely on as part of their Article 32 obligations." The distinction matters to compliance buyers.
-> :::
+The independent verifier CLI is the literal implementation. The plugin provides the *capability*; you demonstrate the *process* by running the verifier on a schedule and retaining the output as evidence. The capability on its own does not satisfy Article 32, and the retained verifier output is what an auditor will ask to see.
 
 ### Article 30: NOT applicable
 

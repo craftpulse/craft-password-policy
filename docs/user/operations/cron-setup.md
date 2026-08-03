@@ -1,10 +1,12 @@
 # Cron Setup
 
-Password Policy ships three cron-friendly console commands. This page covers the recommended production cron recipes, what each command does, and how to wire them into your existing scheduler, system cron, Laravel-style scheduler, Kubernetes CronJobs, or whatever you already use.
+Password Policy ships four cron-friendly console commands. This page covers the recommended production cron recipes, what each command does, and how to wire them into your existing scheduler, system cron, Laravel-style scheduler, Kubernetes CronJobs, or whatever you already use.
+
+For the full option reference on every command, see [Console commands](../reference/console-commands.md).
 
 ## Recommended production cron
 
-For a typical Pro install:
+Every edition:
 
 ```cron
 # Retention + GC nightly at 02:00 local time
@@ -14,17 +16,28 @@ For a typical Pro install:
 0 6 * * * cd /path/to/project && ./craft password-policy/notification/send-expiry-reminders
 ```
 
-For an Enterprise install, add:
+On Pro, if you have turned on dormant-account handling:
 
 ```cron
-# Daily audit-chain verification at 03:00 local time
-0 3 * * * cd /path/to/project && ./craft password-policy/audit/verify --from=$(date -d yesterday +%Y-%m-%d) --json
-
-# Monthly full-chain verification on the 1st at 02:00 local time
-0 2 1 * * cd /path/to/project && ./craft password-policy/audit/verify --json
+# Dormant-account scan weekly, Sundays at 04:00 local time
+0 4 * * 0 cd /path/to/project && ./craft password-policy/inactive/scan
 ```
 
-Adjust the times for your timezone and infrastructure preferences. The order is: retention first (small DB cleanup), reminders later (user-facing email), verifier last (read-only check of yesterday's writes).
+On Enterprise, add the audit-chain verifier:
+
+```cron
+# Audit-chain verification nightly at 03:00 local time
+0 3 * * * cd /path/to/project && ./craft password-policy/audit/verify --json
+```
+
+Adjust the times for your timezone and infrastructure preferences. The order is: retention first (small DB cleanup), reminders later (user-facing email), verifier last (read-only check over the day's writes).
+
+> [!WARNING]
+> **The verifier has no date filter**
+>
+> `audit/verify` takes `--from` and `--to` as row **ids**, not dates. Passing a date (`--from=$(date +%F)`) is read as an id far beyond anything your table holds, so the verifier walks an empty range and cheerfully reports a clean pass over zero rows. Run it with no range, as above. That is also the only mode that tolerates rows removed by the retention purge.
+
+The full-chain walk is the correct nightly recipe. If your chain grows large enough that a nightly full walk stops fitting in your maintenance window, narrow it by row id (capture the current maximum id, verify from there next run) rather than by date, and keep a monthly full walk for the evidence package.
 
 ## Why each command needs cron
 
@@ -36,8 +49,10 @@ Tables pruned:
 
 - `passwordpolicy_password_history`: beyond `passwordHistoryCount` per user AND older than `passwordHistoryExpiryDays`.
 - `passwordpolicy_notification_log`: older than `notificationLogRetentionDays`.
-- `passwordpolicy_alert_cooldowns`: older than `alertCooldownRetentionDays` (default 30 days).
+- `passwordpolicy_alert_cooldowns`: older than the longest configured cooldown window, with a 7-day floor. There is no separate retention setting for this table.
 - `passwordpolicy_audit_log`: older than `auditLogRetentionDays` (default 365 days).
+- `passwordpolicy_known_devices`: older than `deviceRetentionDays` (default 180 days).
+- `passwordpolicy_api_tokens`: rows whose `expiresAt` has passed.
 
 The command reports per-table purge counts on stdout, pipe to a log file if you want auditable retention records:
 
@@ -51,18 +66,21 @@ See [GC and retention](./gc-and-retention.md) for the per-table retention config
 
 Sends reminder emails to users whose passwords expire within the configured window (`expiryReminderDays`, default 14). Without this cron, expiry reminders never fire, passwords expire silently, and users see the "your password has expired" prompt only on their next login attempt.
 
-The command enqueues `SendPasswordExpiryRemindersJob` (a `BaseBatchedJob`) which recomputes its recipient set per batch for natural retry idempotency. Runs on every edition since 5.2.0.
+The command enqueues `SendPasswordExpiryRemindersJob` (a `BaseBatchedJob`) which recomputes its recipient set per batch for natural retry idempotency, 100 users at a time. Runs on every edition since 5.2.0.
 
-For installs with very large user bases (>100k users with expiry enabled), tune the batch size via the `expiryReminderBatchSize` setting.
+### `password-policy/inactive/scan`: dormant accounts
 
-### `password-policy/audit/verify --from=yesterday`: daily chain check
+Pro. Enqueues the scan that finds accounts with no sign-in inside `inactiveThresholdDays` and applies the configured `inactiveAction` to each. Nothing happens unless you both hold the Pro edition and turn on `inactiveAccountsEnabled`; the command exits non-zero otherwise rather than enqueuing a job that would do nothing.
 
-Enterprise-only. Walks yesterday's audit rows and recomputes each row's `rowHash`, comparing against the stored value. Non-zero exit code means the chain broke somewhere in yesterday's window: an alertable event.
+Weekly is usually the right cadence: dormancy is measured in months, so a daily scan buys nothing and, under the `suspend` action, gives you a daily opportunity to be surprised. Run it in `report` mode first and read the list before you switch the setting to `suspend`.
 
-Daily incremental verification + monthly full-chain verification gives you:
+See [Dormant accounts](../features/dormant-accounts.md).
 
-- **Daily detection**: tampering visible within 24 hours.
-- **Monthly attestation**: periodic proof-of-integrity for the entire chain, useful for evidence packages.
+### `password-policy/audit/verify`: chain check
+
+Enterprise. Walks the audit chain and recomputes each row's `rowHash`, comparing against the stored value. A non-zero exit code means the chain broke: an alertable event.
+
+Exit `1` is a chain break, exit `2` is an unreadable row (schema drift, malformed JSON, database failure). Route them differently: the first is a security page, the second is an ops page.
 
 See [Audit verifier](../features/audit-verifier.md) for the verifier's output format + JSON shape.
 
@@ -100,8 +118,8 @@ Most DDEV users don't need cron locally, exercise the commands manually when tes
 
 These platforms ship cron UIs. Add a new cron entry with the command:
 
-```
-cd /home/forge/yoursite.com && /usr/bin/php artisan-craft password-policy/gc/run
+```shell
+cd /home/forge/yoursite.com && /usr/bin/php craft password-policy/gc/run
 ```
 
 Adjust the binary name and path to match your platform's deployment shape.
@@ -128,7 +146,7 @@ spec:
           restartPolicy: OnFailure
 ```
 
-Replicate the pattern for the other two commands. Use Kubernetes secrets to inject `CRAFT_AUDIT_PII_KEY` and other env vars.
+Replicate the pattern for the other commands you schedule. Use Kubernetes secrets to inject `CRAFT_AUDIT_PII_KEY` and other env vars.
 
 ### Laravel-style scheduler (if your Craft project also uses Laravel for something else)
 
@@ -138,7 +156,7 @@ If you're running Laravel alongside Craft for some reason (e.g. an admin SPA), t
 // app/Console/Kernel.php
 $schedule->exec('cd /path/to/project && ./craft password-policy/gc/run')->dailyAt('02:00');
 $schedule->exec('cd /path/to/project && ./craft password-policy/notification/send-expiry-reminders')->dailyAt('06:00');
-$schedule->exec('cd /path/to/project && ./craft password-policy/audit/verify --json --from='.now()->subDay()->format('Y-m-d'))->dailyAt('03:00');
+$schedule->exec('cd /path/to/project && ./craft password-policy/audit/verify --json')->dailyAt('03:00');
 ```
 
 ## Monitoring
@@ -146,7 +164,7 @@ $schedule->exec('cd /path/to/project && ./craft password-policy/audit/verify --j
 The verifier command's non-zero exit code is an alertable event. Pipe to your log aggregator:
 
 ```cron
-0 3 * * * cd /path/to/project && ./craft password-policy/audit/verify --json --from=$(date -d yesterday +%Y-%m-%d) >> /var/log/pp-audit-verify.log 2>&1
+0 3 * * * cd /path/to/project && ./craft password-policy/audit/verify --json >> /var/log/pp-audit-verify.log 2>&1
 ```
 
 Forward `/var/log/pp-audit-verify.log` to your monitoring stack. A non-zero exit code is **the** signal: the only normal day-to-day reason for non-zero is chain tampering or a disk error.
@@ -157,20 +175,20 @@ For expiry reminders, the queue's own observability (Craft's Utilities → Queue
 
 ## Verifying the cron is running
 
-After setting up cron, verify it fires on schedule:
+There is no command that reports "when did this last run". Redirect each command's output to a log file and check the file instead. That is also what an auditor will ask for, so it is worth doing on the first day rather than the day before the audit:
 
-```bash
-# GC last-run timestamp (lives in cache; cron writes it)
-./craft password-policy/gc/last-run
-
-# Most recent verifier run
-./craft password-policy/audit/last-verify
-
-# Most recent expiry-reminder batch
-./craft password-policy/notification/last-reminder-batch
+```cron
+0 2 * * * cd /path/to/project && ./craft password-policy/gc/run >> /var/log/pp-gc.log 2>&1
+0 6 * * * cd /path/to/project && ./craft password-policy/notification/send-expiry-reminders >> /var/log/pp-reminders.log 2>&1
+0 3 * * * cd /path/to/project && ./craft password-policy/audit/verify --json >> /var/log/pp-audit-verify.log 2>&1
 ```
 
-These commands surface metadata that the compliance dashboard's **Retention** and **Audit chain status** sections also read. If the timestamps drift more than 25 hours from "now," your cron isn't firing.
+Then check the tail of each file. If the newest entry is more than 25 hours old, your cron is not firing.
+
+Two control panel surfaces corroborate this from the other direction:
+
+- **Utilities → Compliance dashboard** (Enterprise) shows the audit chain status and a projected next prune date under **Retention**. A projected prune date in the past means the GC cron is not running.
+- **Utilities → Queue Manager** shows whether the reminder and scan jobs are being enqueued and completing.
 
 ## Crontab vs the GC hook
 
@@ -182,9 +200,10 @@ That's a backup mechanism, not a primary one. **For production, use the explicit
 - The hook runs on every Craft GC trigger: including ad-hoc CLI runs that the operator might not intend to drive retention.
 - The cron gives you a predictable retention schedule that auditors can verify against.
 
-> ::: warning Don't say "pruning is automatic"
-> The framing "pruning is automatic" implies operator-free retention. The reality is: the cron is the recommended production setup. Without the cron, retention windows are advisory. Documentation, marketing copy, and compliance attestations should describe the cron as the enforcement mechanism, not the GC hook.
-> :::
+> [!WARNING]
+> **Retention is not automatic**
+>
+> The cron is the enforcement mechanism, not the GC hook. Without the cron, the retention windows you configure are advisory: rows stay in the table past their window until something runs the purge.
 
 ## See also
 

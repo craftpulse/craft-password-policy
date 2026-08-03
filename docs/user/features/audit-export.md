@@ -2,8 +2,6 @@
 
 Enterprise installs can export the audit log to CSV or JSONL for offline analysis, evidence packages, or long-term archival. The export utility supports synchronous downloads for small ranges, queued background jobs for large date spans, any Craft filesystem as the destination, and per-admin download tokens to prevent URL leak across CP admins.
 
-> 📷 *Screenshot: Audit Export utility under Utilities, showing the date range picker (preset of "Last 30 days"), the format selector (CSV / JSONL), the destination dropdown (local runtime / configured S3 filesystem), and the Run export button.*
-
 This page covers the export utility, format choices, filesystem destinations, the per-admin download model, the queued job workflow for large exports, and common evidence-package recipes.
 
 ## Quick start
@@ -74,8 +72,6 @@ return [
 
 Where `auditExports` is the handle of a Craft filesystem you've configured under **Settings → Filesystems**.
 
-> 📷 *Screenshot: Filesystem configuration in Craft showing an S3 filesystem with handle "auditExports", pointing at an S3 bucket with object-lock enabled.*
-
 The download token in this mode serves the file via the filesystem's signed-URL mechanism (S3 presigned URLs, etc.): the file content never round-trips through Craft after the job completes.
 
 ### Disabled (`auditExportFilesystem = null`)
@@ -101,9 +97,10 @@ The mechanism:
 - **Already-downloaded token**: 404 `NotFoundHttpException`.
 - **Token doesn't exist**: 404 `NotFoundHttpException`.
 
-> ::: tip Token URL hygiene
+> [!TIP]
+> **Token URL hygiene**
+>
 > Email forwarding, shared inboxes, and email-archive systems can leak the download URL across admins. The per-admin binding closes the silent-leak risk: even if another admin clicks the URL, they can't pull the file. They get a clear 403; the audit log records the attempt; the legitimate requester can still complete their download.
-> :::
 
 ## Format details
 
@@ -187,8 +184,8 @@ Operations team archives a monthly snapshot to S3 for retention:
 1. Configure `auditExportFilesystem` to point at an S3 filesystem with Object Lock enabled.
 2. Schedule a monthly cron that runs:
 
-   ```bash
-   ./craft password-policy/audit/export --from=$(date -d 'last month' +%Y-%m-01) --to=$(date -d 'today' +%Y-%m-01) --format=jsonl
+   ```shell
+   ./craft password-policy/audit/export --days=31 --format=jsonl --queue
    ```
 
 3. The job writes the JSONL to S3 with the date-stamped filename. Object Lock prevents tampering after write.
@@ -206,18 +203,23 @@ A security incident requires a specific user's audit history:
 
 ## Console commands
 
-```bash
-# Synchronous export from CLI (no row-count limit: beware memory for large exports)
-./craft password-policy/audit/export --from=2026-04-01 --to=2026-05-01 --format=csv > export.csv
+The window is expressed in days back from now. There is no `--from` / `--to` on this command:
 
-# Queue an async export
-./craft password-policy/audit/export --from=2026-01-01 --format=jsonl --async
-
-# List recently-completed exports
-./craft password-policy/audit/exports
+```shell
+# Stream to stdout, no row-count limit (watch memory on very large windows)
+./craft password-policy/audit/export --days=30 --format=csv > export.csv
 ```
 
-The CLI variant of synchronous export streams to stdout, useful for piping into other tools without a temp file.
+```shell
+# Write a file via the queue instead, and print a one-time download token
+./craft password-policy/audit/export --days=365 --format=jsonl --queue
+```
+
+The stdout form is the one to pipe into other tools without a temp file. The `--queue` form is the one to use when the export is large enough that you would rather a job wrote it to your configured filesystem.
+
+There is no command that lists completed exports. The control panel's **Utilities → Audit Export** screen is the surface for that.
+
+For the full option reference, see [Console commands](../reference/console-commands.md#auditexport).
 
 ## Permissions
 

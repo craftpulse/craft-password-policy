@@ -302,7 +302,7 @@ A minimal Lite-compatible password form:
 </form>
 ```
 
-The data accessors deliver the policy info without the Pro AJAX-validation / strength-meter / submit-gate / a11y stack. Lite operators wanting that stack upgrade to Pro.
+The data accessors deliver the policy information itself. They do not bring the AJAX validation, strength meter, submit gating, or the accessibility wiring that the Pro builders add, so if you need those on Lite you are writing them yourself against the rule data above.
 
 ---
 

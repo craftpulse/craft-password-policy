@@ -2,13 +2,12 @@
 
 Different teams need different password rules. Customer-facing front-end accounts may need a friendlier policy than admin staff; vendors and external contractors may need a stricter floor. Per-group policies let you create **named policies** in the control panel, apply one of five compliance presets (or build from scratch), and assign each policy to one or more Craft user groups.
 
-> ::: tip Compliance presets (Pro)
+> [!TIP]
+> **Compliance presets (Pro)**
+>
 > The **Compliance Presets** page at **Settings → Password Policy → Compliance Presets** lets a Pro install overwrite the global policy with NIST 800-63B, OWASP ASVS L1, PCI-DSS v4.0, CIS Controls v8, or Strict Enterprise values in one click. The page is gated to Pro, applying a preset is a framework-named conformance commitment, and the Pro tier is where the named-policy + per-group infrastructure lives. Lite installs can hand-configure the same field values manually via the regular settings pages.
 >
 > Per-group named-policy CRUD (the rest of this page) is the deeper Pro feature: applying *different* presets to *different* groups, divergence indicators, conflict UX, merge resolution.
-> :::
-
-> 📷 *Screenshot: Policies index showing four named policies ("Editors (PCI-DSS)", "Admins (Strict)", "Customers (NIST 800-63B)", "Vendors (OWASP)") each with a divergence indicator and assigned groups column.*
 
 This page covers the policies CRUD workflow, the five bundled presets, tri-state rule overrides, how merging works when a user belongs to multiple groups, and how to use the resolver from your own code.
 
@@ -27,15 +26,14 @@ A policy applies to a user when the user belongs to any of the policy's assigned
 
 Open **Settings → Password Policy → Per-Group Policies** and toggle **Enable per-group policies**. The **Policies** subnav appears between Blocklist and Settings.
 
-> ::: tip Solo Craft installs
+> [!TIP]
+> **Solo Craft installs**
+>
 > Per-group policies require Craft Team or higher (Solo Craft doesn't have user groups). The Pro edition itself is available on every Craft license, but the per-group surface needs groups to apply policies to. On Solo, this toggle is hidden and the global policy applies to all users.
-> :::
 
 ## Creating a policy
 
 Open **Password Policy → Policies → New policy** in the control panel.
-
-> 📷 *Screenshot: New policy form on the General tab, Name field, Preset selector showing the four options, Assigned groups multi-select.*
 
 The edit screen has three tabs:
 
@@ -58,8 +56,6 @@ The edit screen has three tabs:
 | ⚪ Hollow circle | `Global` | Inherit the global setting. |
 | ✓ Green check | `On` | Explicit override: this rule applies to assigned groups, even if globally disabled. |
 
-> 📷 *Screenshot: Rules tab with the tri-state table showing some rules at On (green), some at Off (red), and some at Global (hollow circle).*
-
 The keyboard navigation on the rule overrides table follows the WAI-ARIA radiogroup pattern: Tab into the table, then arrow keys move between options. Home/End jump to the first/last rule.
 
 ### Lifecycle
@@ -74,9 +70,10 @@ Click **Save**. The policy is immediately active for users in the assigned group
 
 Five bundled compliance presets let you start from a known-good policy and customise from there. Presets are a Pro feature, because applying one is a framework-named commitment, and the Pro tier is where the named-policy + per-group infrastructure lives. Lite installs can still hand-configure any preset's underlying field set; what's gated is the one-click apply.
 
-> ::: warning Picking a preset is a framework commitment
+> [!WARNING]
+> **Picking a preset is a framework commitment**
+>
 > Each preset maps to a specific compliance framework. NIST 800-63B Rev. 4 forbids composition rules and periodic rotation; PCI DSS v4.0.1 requires both. CIS Controls v8 requires annual rotation. Don't mix-and-match, pick the preset that matches your audit and customise within its constraints. See [Compliance frameworks](../operations/compliance-frameworks.md) for the clause-by-clause mapping.
-> :::
 
 ### NIST 800-63B Rev. 4
 
@@ -161,8 +158,6 @@ After picking a preset, you can override individual fields. The policy edit scre
 - **Restore preset defaults** button: top-right of the edit screen when divergence > 0. One click reverts every field to the preset's value.
 - **Reset all to global** button: One click clears every override on the policy, making it a no-op clone of the global settings. Useful for starting fresh.
 
-> 📷 *Screenshot: Policy edit screen on Strict Enterprise preset with three fields diverged (minLength=14 (above preset), passwordHistoryCount=8 (above preset), expiryAmount=60 (below preset)) each showing the blue left-border and the override warning text.*
-
 ## Merging
 
 When a user belongs to multiple groups, each of which has a different policy applied, the resolver merges them into a single effective policy.
@@ -233,15 +228,14 @@ $resolved = PasswordPolicy::$plugin->getPolicyResolver()->resolveForUser($user);
 
 For a fully decoupled call site, use the service's `resolveForUserGroupHandles(array $handles)` variant to skip the User object lookup.
 
-## Console: inspecting the resolved policy
+## Inspecting the resolved policy
 
-For debugging a user's effective rules:
+There is no console command for this. Two surfaces answer "what rules actually apply to this user":
 
-```bash
-./craft password-policy/policy/resolve --user=42
-```
+- **The user's Password Security screen** in the control panel, and the **Group policies** column on the Users index, both show which named policies apply to an account.
+- **The REST API's `policy/resolve` endpoint** (Enterprise) returns the resolved rule set as JSON for a given user UID. See [REST API](../reference/rest-api.md#get-policyresolve).
 
-The command prints the resolved policy as JSON, the names of the policies that contributed, and the merge trace (which field came from which policy).
+From your own code, call the resolver directly, as shown above.
 
 ## See also
 

@@ -2,8 +2,6 @@
 
 The Compliance Dashboard is an Enterprise CP utility that surfaces the state of every audit-and-integration component the plugin ships (chain health, alert activity, pending SIEM forwards, retention status) in one place. It also exports HTML and CSV reports for evidence packages.
 
-> 📷 *Screenshot: Compliance Dashboard utility with four sections: Audit chain status (green tip callout, last verifier run + checked-row-count), Activity in last 24h (event-class table), Pending SIEM forwarding (count + oldest age), Retention (per-table windows + projected next prune). "Run report" buttons at the bottom of each section.*
-
 This page covers what's on the dashboard, the three available reports, the permission gates, and the operator workflow for the auditor's "show me what's happening" question.
 
 ## Access
@@ -128,9 +126,10 @@ The reports controller registers two URL rules:
 
 Where `<report>` is one of `audit-summary`, `alert-activity`, `retention-projection`. Unknown report keys return 404.
 
-> ::: tip Bookmarking reports
+> [!TIP]
+> **Bookmarking reports**
+>
 > Each report URL is bookmarkable. Save the CSV URL for a compliance officer who wants to pull the retention projection monthly without navigating through the CP: they hit the URL, authenticate, and the CSV downloads.
-> :::
 
 ## Performance contract
 

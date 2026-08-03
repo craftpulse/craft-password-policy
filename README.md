@@ -1,161 +1,125 @@
-# Password Policy for Craft CMS
+# Password Policy
 
 [![Craft 5](https://img.shields.io/badge/Craft%20CMS-5.9.15+-CE3262)](https://plugins.craftcms.com/password-policy)
 [![Edition: Lite • Pro • Enterprise](https://img.shields.io/badge/Edition-Lite%20%E2%80%A2%20Pro%20%E2%80%A2%20Enterprise-3D8FFF)](./docs/user/editions.md)
 [![License](https://img.shields.io/badge/License-craft-9A6DEF)](./LICENSE.md)
 
-Enforce strong password rules across your Craft site, and prove it. From a simple length requirement on a single-site install to a compliance-grade audit trail with tamper-evident hash chains, breach detection on every login, per-group policy presets, and SIEM forwarding, Password Policy is the combined surface that handles all of it in one plugin.
+Password Policy enforces password rules on a Craft install, from a length requirement on a single site to per-group compliance presets, breach detection on every login, and a tamper-evident audit trail.
 
-> 📷 *Screenshot: Plugin Store hero with the Compliance Dashboard utility, a policy edit screen showing tri-state rule overrides, and the front-end strength meter.*
+## Features
 
-## What you get
+- Length, complexity, and expiry rules, with per-group overrides.
+- Have I Been Pwned checks at password change, and on every login.
+- Password history to block reuse of previous passwords.
+- Common-password blocklist, plus an admin-managed custom deny list.
+- Strength meter on control panel and consumer-facing password fields.
+- Compliance presets for NIST 800-63B, OWASP ASVS L1, PCI DSS v4.0.1, CIS Controls v8, and a strict enterprise baseline.
+- Front-end Twig builders for login, registration, change-password, and reset-password forms.
+- Expiry reminder, breach detection, and new-device notification emails, editable per site.
+- Dormant-account detection, with report, notify, or suspend handling.
+- Hash-chained audit log with an independently runnable verifier.
+- SIEM forwarding over syslog-TLS, HMAC-signed webhooks, and streaming audit export.
+- Read-only REST API for password status and resolved policy.
+- Deep support for Craft features: multi-site, customizable permissions, editions, and events.
 
-| | Lite (free) | Pro | Enterprise |
-|---|---|---|---|
-| Password rules (length, complexity, blocklist) | ✅ | ✅ | ✅ |
-| Password expiry + retention | ✅ | ✅ | ✅ |
-| Have I Been Pwned (HIBP) at password change | ✅ | ✅ | ✅ |
-| Strength meter (CP + front-end) | ✅ | ✅ | ✅ |
-| Force change on first login | ✅ | ✅ | ✅ |
-| Per-group named policies + compliance presets (NIST, OWASP, PCI-DSS, CIS, Strict) | - | ✅ | ✅ |
-| Password history (block reuse of last N) | ✅ | ✅ | ✅ |
-| HIBP-on-login (re-check on every sign-in) | - | ✅ | ✅ |
-| Front-end Twig render builders (login / register / change / reset) | - | ✅ | ✅ |
-| Custom blocklist editor | - | ✅ | ✅ |
-| Expiry-reminder emails (cron + queue, stock template) | ✅ | ✅ | ✅ |
-| Notification template editor + activity log + resend | - | ✅ | ✅ |
-| Tamper-evident hash-chained audit log | - | - | ✅ |
-| Independent verifier CLI (auditor-runnable) | - | - | ✅ |
-| Compliance dashboard + HTML/CSV reports | - | - | ✅ |
-| Syslog-over-TLS forwarder (Splunk HEC, Datadog, generic) | - | - | ✅ |
-| HMAC-signed webhook delivery (replay-window protected) | - | - | ✅ |
-| Streaming audit-log export (any Craft filesystem) | - | - | ✅ |
-| Per-policy custom blocklist | - | - | ✅ |
-| Custom Twig email template paths | - | - | ✅ |
-
-[See the full feature matrix →](./docs/user/editions.md)
-
-## Why this plugin
-
-**Compliance-ready, not just compliance-adjacent.** Pro and Enterprise tiers map directly to specific clauses in NIST 800-63B Rev. 4, NIS2 Article 21, PCI DSS v4.0.1, ISO 27001:2022, SOC 2, and GDPR. The five bundled policy presets (NIST 800-63B, OWASP ASVS L1, PCI-DSS v4.0.1, CIS Controls v8, Strict Enterprise) translate framework requirements into one-click configurations. The audit log is hash-chained from the row level up and verifiable end-to-end via a console command auditors can run from a fresh checkout.
-
-**Privacy by design.** The audit log stores SHA-256 IP hashes, never raw IPs. The userIdentifier column is HMAC-SHA-256 of email, keyed by a dedicated `CRAFT_AUDIT_PII_KEY` env var that's independent of Craft's `securityKey`. Rotate it to destroy historical correlation without breaking sessions, CSRF tokens, or asset URLs. The per-event PII allowlist fails closed: an event type not in the registry is dropped rather than silently leaking unintended fields.
-
-**Built on Craft's grain.** Lockout delegates to Craft core (`maxInvalidLogins`); we don't reinvent it. Audit rows are real Craft elements with sources, sort options, and condition rules. Notification logs are elements too, so the activity index uses the native element-index renderer. Permissions follow Craft's view-vs-manage nesting convention. CP forms use Craft macros throughout. Front-end Twig builders are policy-aware and a11y-baked.
-
-**Front-end first.** A Pro install ships fluent Twig render builders for login, registration, change-password, and reset-password forms, each one policy-aware, AJAX-validated, and accessible by default (live regions, `aria-describedby`, `aria-invalid`, progressbar role on the strength meter, flipping `aria-label` on the show/hide eye toggle). The vanilla-JS client is ~5 KB, framework-free, no build step required on the consumer site.
+Features are split across three editions. See [Editions](./docs/user/editions.md).
 
 ## Requirements
 
-- Craft CMS 5.9.15 or newer
-- PHP 8.2+
-- MySQL 8.0+, MariaDB 10.4+, or PostgreSQL 13+
+### Craft CMS
 
-## Install
+Password Policy requires Craft CMS 5.9.15 or greater.
 
-In your Craft project root:
+### PHP
 
-```bash
+Password Policy requires PHP 8.2 or greater.
+
+### Database
+
+Password Policy requires MySQL 8.0 or greater, MariaDB 10.4 or greater, or PostgreSQL 13 or greater.
+
+## Installation
+
+You can install Password Policy via the Plugin Store, or through Composer.
+
+### Craft Plugin Store
+
+To install **Password Policy**, navigate to the _Plugin Store_ section of your Craft control panel, search for `Password Policy`, and click the _Try_ button.
+
+### Composer
+
+You can also add the package to your project using Composer and the command line.
+
+1. Open your terminal and go to your Craft project:
+
+```shell
+cd /path/to/project
+```
+
+2. Tell Composer to require the plugin:
+
+```shell
 composer require craftpulse/craft-password-policy
-./craft plugin/install password-policy
 ```
 
-Or install through the Plugin Store: **Settings → Plugins → Search "Password Policy"**.
+3. Install the plugin:
 
-Then open the plugin Settings to configure your global policy. [Getting Started →](./docs/user/getting-started.md)
-
-## Upgrading from 5.1.x
-
-The 5.2.0 upgrade ships a single consolidated migration that renames the legacy `pwned` settings key to `hibp` (project config + DB) and seeds the new tables. Your existing 5.1.x configuration is preserved.
-
-5.2.0 requires Craft 5.9.15 or later. Upgrade Craft first, then the plugin:
-
-```bash
-composer update craftcms/cms
-composer update craftpulse/craft-password-policy
-./craft up
+```shell
+php craft plugin/install password-policy
 ```
 
-For the full migration walkthrough, including the new `CRAFT_AUDIT_PII_KEY` env var for Enterprise installs, see [Upgrade Guide →](./docs/user/operations/upgrade-from-5.1.md).
+### DDEV
+
+If your project runs in DDEV, run the same commands through DDEV from the project root:
+
+```shell
+ddev composer require craftpulse/craft-password-policy
+ddev craft plugin/install password-policy
+```
+
+## Next steps
+
+Password Policy enforces nothing beyond Craft's own defaults when first installed. To start enforcing a policy:
+
+- Set your rules under **Settings → Password Policy**.
+- Schedule the retention and reminder commands. See [Cron setup](./docs/user/operations/cron-setup.md).
+- Decide whether existing users must change their passwords. See [Force reset](./docs/user/features/force-reset.md).
+
+See [Getting started](./docs/user/getting-started.md) for the walkthrough.
 
 ## Documentation
 
+Full documentation lives in [`docs/`](./docs/README.md).
+
 | | |
 |---|---|
-| 🚀 [Getting Started](./docs/user/getting-started.md) | Install, configure, and ship your first policy. |
-| 📚 [Documentation Index](./docs/README.md) | All user-facing docs in one place. |
-| 💎 [Edition Matrix](./docs/user/editions.md) | What ships at each tier, with framework anchors. |
-| 🔐 [Audit Logging](./docs/user/features/audit-logging.md) | Hash-chained audit log, verifier CLI, retention. |
-| 📊 [Compliance Dashboard](./docs/user/features/compliance-dashboard.md) | Enterprise utility + HTML/CSV reports. |
-| 🚦 [SIEM Forwarders](./docs/user/features/siem-forwarders.md) | Syslog-over-TLS to Splunk HEC, Datadog, and friends. |
-| 🪝 [Webhooks](./docs/user/features/webhooks.md) | HMAC-signed delivery with replay-window protection. |
-| 🎨 [Front-End Twig](./docs/user/features/frontend-twig.md) | Render builders for consumer-site forms. |
-| 🎟️ [Events](./docs/user/reference/events.md) | Hook into password and audit events. |
+| [Getting started](./docs/user/getting-started.md) | Install, configure, and ship your first policy. |
+| [Documentation index](./docs/README.md) | Every user-facing page in one place. |
+| [Editions](./docs/user/editions.md) | What ships at each edition, and every setting. |
+| [Upgrade from 5.1](./docs/user/operations/upgrade-from-5.1.md) | What changes on the 5.1.x to 5.2.0 upgrade. |
+| [Console commands](./docs/user/reference/console-commands.md) | Every command, with its options. |
+| [Events](./docs/user/reference/events.md) | Hooking into password and audit events. |
 
-## Quick examples
+## Licensing
 
-### Read password status in a Twig template
+You can try Password Policy in a development environment for as long as you like. Once your site goes live, you are required to purchase a license for the plugin.
 
-```twig
-{% set status = craft.passwordPolicy.passwordStatus() %}
-{% if status == 'expiring' %}
-    <p>Your password expires in {{ craft.passwordPolicy.daysUntilExpiry() }} days.</p>
-{% elseif status == 'expired' %}
-    <p>Your password has expired. Please update it.</p>
-{% endif %}
-```
-
-Both `craft.passwordPolicy` (camelCase) and `craft.passwordpolicy` (lowercase) work; new code should prefer the camelCase form.
-
-### Render a policy-aware change-password form
-
-```twig
-{{ craft.passwordPolicy.passwordChangeForm({
-    liveValidation: true,
-    toggleVisibility: true,
-    submitGate: '#submit',
-}).render() }}
-```
-
-The render builders require the Pro edition. The builder resolves the user's effective policy (global by default; per-group when `enablePerGroupPolicies` is on), wires AJAX validation, renders requirements with `aria-describedby`, and gates the submit button on validation state. Lite consumers roll their own markup against the universal data accessors (`craft.passwordPolicy.requirements()`, `requirementsText()`, `requirementRules()`). [See the full builder API →](./docs/user/features/frontend-twig.md)
-
-### Listen for breach detection
-
-```php
-use craftpulse\passwordpolicy\events\BreachDetectedEvent;
-use craftpulse\passwordpolicy\services\PasswordService;
-use yii\base\Event;
-
-Event::on(
-    PasswordService::class,
-    PasswordService::EVENT_BREACH_DETECTED,
-    function(BreachDetectedEvent $event) {
-        // $event->user, $event->sha1Prefix (k-anonymity safe), $event->detectedAt
-        // Plaintext, full SHA-1, and bucket suffix are intentionally absent.
-    }
-);
-```
-
-[Full event catalog →](./docs/user/reference/events.md)
-
-### Verify the audit chain (Enterprise)
-
-```bash
-./craft password-policy/audit/verify --from=2026-01-01
-# Exits 0 on clean pass; 1 on chain break; 2 on unreadable row.
-# Designed to be auditor-runnable from a fresh checkout.
-```
-
-[Audit log + verifier →](./docs/user/features/audit-logging.md)
-
-## License
-
-This plugin requires a commercial license through the Craft Plugin Store. See [LICENSE.md](./LICENSE.md).
+For more information, see [Craft's Commercial Plugin Licensing](https://craftcms.com/docs/5.x/extend/plugin-store.html#commercial-plugins).
 
 ## Support
 
 - **Plugin Store**: [plugins.craftcms.com/password-policy](https://plugins.craftcms.com/password-policy)
 - **Bugs and feature requests**: [github.com/craftpulse/craft-password-policy/issues](https://github.com/craftpulse/craft-password-policy/issues)
 - **Email**: hello@craft-pulse.com
+
+## Credits
+
+Password Policy bundles the **DB-IP IP-to-Country Lite** database for the optional IP geolocation feature, licensed under [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/):
+
+> IP Geolocation by DB-IP (https://db-ip.com)
+
+If you enable geolocation, this attribution must remain visible. See [IP geolocation](./docs/user/features/geoip.md).
+
+Password strength estimation uses [bjeavons/zxcvbn-php](https://github.com/bjeavons/zxcvbn-php). The bundled common-password list is derived from [SecLists](https://github.com/danielmiessler/SecLists).
 
 Brought to you by [CraftPulse](https://craft-pulse.com/).

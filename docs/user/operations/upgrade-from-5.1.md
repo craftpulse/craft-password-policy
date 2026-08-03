@@ -60,9 +60,10 @@ Bump `dateModified` at the top of `project.yaml` (Craft uses this as the project
 
 The Pro subnav (Policies, Blocklist, Notifications) appears in the CP under **Password Policy**. None of your Lite settings change, Pro is purely additive. On the force-reset side that means Pro adds the ability to force a reset on one named user, on top of the expired-only mass reset Lite already has. See [Force password reset](../features/force-reset.md).
 
-> ::: warning Don't set the edition via `app.php` `pluginConfigs`
+> [!WARNING]
+> **Don't set the edition via `app.php` `pluginConfigs`**
+>
 > Edition switching goes through project config, not the runtime `app.php` `pluginConfigs` hash. The `pluginConfigs` approach skips the project-config rebuild and won't surface the new subnav items. Use `project.yaml` + `./craft up`.
-> :::
 
 ### Configuring per-group policies
 
@@ -75,7 +76,7 @@ Visit **Password Policy → Policies → New policy** and pick a preset (NIST 80
 The bundled common-password list (10,000 entries from SecLists) seeds automatically when you enable the `checkCommonPasswords` validator for the first time. To trigger seeding manually:
 
 ```bash
-./craft password-policy/blocklist/seed-common
+./craft password-policy/blocklist/update
 ```
 
 See [Blocklist](../features/blocklist.md).

@@ -1,12 +1,14 @@
 # Editions
 
-Password Policy ships three editions from a single 5.2.0 codebase. Lite is free; Pro and Enterprise are paid upgrades through the Craft Plugin Store.
+Password Policy ships three editions from a single 5.2.0 codebase. Edition selection and licensing happen through the Craft Plugin Store.
 
-| Edition | Price | Focus |
-|---------|-------|-------|
-| **Lite** | Free | Baseline policy enforcement, HIBP at change time, strength meter, common-password blocklist toggle, password history (global), expiry reminder emails (stock template), retention/expiry, force-change-on-first-login |
-| **Pro** | ~$149 | Per-group named policies + one-click compliance presets (NIST / OWASP / PCI-DSS / CIS / Strict Enterprise), advanced validators (sequential / repeated / contextual), blocklist editor, notification template editor + activity log + resend, front-end Twig render-builder surface, HIBP-on-login |
-| **Enterprise** | ~$299 | Hash-chained audit log, compliance dashboard, SIEM forwarders, signed webhooks, audit export, API tokens |
+| Edition | Focus |
+|---------|-------|
+| **Lite** | Baseline policy enforcement, HIBP at change time, strength meter, common-password blocklist toggle, password history (global), expiry reminder emails (stock template), retention/expiry, force-change-on-first-login, device tracking (capture) |
+| **Pro** | Per-group named policies + one-click compliance presets (NIST / OWASP / PCI-DSS / CIS / Strict Enterprise), advanced validators (sequential / repeated / contextual), minimum change interval, blocklist editor, notification template editor + activity log + resend, group alerts, dormant-account handling, front-end Twig render-builder surface, HIBP-on-login |
+| **Enterprise** | Hash-chained audit log, compliance dashboard, SIEM forwarders, signed webhooks, audit export, read-only REST API + API tokens, IP geolocation, new-device alert emails |
+
+Each feature page states its own edition requirement, which is the authoritative statement for that feature.
 
 ## Edition helpers
 
@@ -19,37 +21,6 @@ PasswordPolicy::$plugin->getIsEnterprise();  // True only for Enterprise
 PasswordPolicy::$plugin->isCraftSolo();          // Solo edition (single user, no groups)
 PasswordPolicy::$plugin->isCraftTeamOrBetter();  // Team / Pro / Enterprise
 ```
-
-## Feature comparison
-
-| Feature | Lite | Pro | Enterprise |
-|---------|:----:|:---:|:----------:|
-| Length, complexity, expiry rules | ✓ | ✓ | ✓ |
-| HIBP check at password change | ✓ | ✓ | ✓ |
-| HIBP check on every login | | ✓ | ✓ |
-| CP strength meter (zxcvbn) | ✓ | ✓ | ✓ |
-| Front-end Twig render builders (consumer-site forms) | | ✓ | ✓ |
-| Force change on first login | ✓ | ✓ | ✓ |
-| Mass force password reset on expired accounts (Password Retention utility + console command) | ✓ | ✓ | ✓ |
-| Per-user force password reset (bulk element action, user-edit action menu, Password Security button) | | ✓ | ✓ |
-| Change-password element action | ✓ | ✓ | ✓ |
-| Send-reset-email element action | ✓ | ✓ | ✓ |
-| Password history (global, 0-24) | ✓ | ✓ | ✓ |
-| Per-group named policies + history overrides | | ✓ | ✓ |
-| Compliance preset one-click apply (NIST / OWASP / PCI-DSS / CIS / Strict) | | ✓ | ✓ |
-| Expiry-reminder email (cron + queue) | ✓ stock template | ✓ editor + resend | ✓ |
-| Breach-detected email | | ✓ | ✓ |
-| New-device tracking (capture) | ✓ | ✓ | ✓ |
-| New-device alert email + audit | | | ✓ |
-| Notification activity log (CP screen) | | ✓ | ✓ |
-| Sequential / repeated / contextual validators | | ✓ | ✓ |
-| Common-password blocklist toggle | ✓ | ✓ | ✓ |
-| Custom blocklist editor (CP page) | | ✓ | ✓ |
-| Hash-chained audit log | | | ✓ |
-| Compliance dashboard | | | ✓ |
-| SIEM forwarders + signed webhooks | | | ✓ |
-| Audit export (signed download) | | | ✓ |
-| API token management | | | ✓ |
 
 `PasswordChangedEvent`, `PasswordValidationEvent`, `UserRegisteredEvent`, and `BreachDetectedEvent` are part of every edition. Third-party modules can subscribe regardless of license. See [`reference/events.md`](reference/events.md).
 
@@ -93,6 +64,11 @@ All settings persist in project config regardless of edition. The CP UI hides se
 | `minimumCharacterTypes` | `int` | `0` | When `complexityMode = 'minimum'`, requires this many types (0-4). |
 | `enableHibpOnLogin` | `bool` | `true` | Re-check the user's password against HIBP every login. |
 | `notificationLogRetentionDays` | `int` | `30` | Days to retain notification dedup-log rows. |
+| `minChangeIntervalHours` | `int` | `0` | Hours that must elapse between two password changes for the same account. `0` disables. No global CP field; per-policy overrides have one. See [Minimum change interval](./features/min-change-interval.md). |
+| `inactiveAccountsEnabled` | `bool` | `false` | Whether dormant-account handling is on. No CP field. See [Dormant accounts](./features/dormant-accounts.md). |
+| `inactiveThresholdDays` | `int` | `90` | Days of inactivity before an account counts as dormant. No CP field. |
+| `inactiveAction` | `string` | `'report'` | `'report'`, `'notify'`, or `'suspend'`. No CP field. |
+| `inactiveNotifyAdmin` | `bool` | `false` | Also alert the admin per actioned dormant account. No CP field. |
 
 ### Enterprise settings
 
@@ -102,8 +78,9 @@ Lite/Pro installs cannot save these via the CP: the settings save-action strip b
 |---------|------|---------|-------------|
 | `enableAuditLog` | `bool` | `false` | Enable hash-chained audit logging. |
 | `auditLogRetentionDays` | `int` | `365` | Days to retain audit-log rows before GC purges them. |
-| `enableNewDeviceAlerts` | `bool` | `false` | Email + audit on new-device login. |
-| `deviceRetentionDays` | `int` | `180` | Days to retain known-device records. |
+| `enableNewDeviceAlerts` | `bool` | `false` | Email the user on a new-device sign-in. No CP field. Device capture itself runs on every edition. See [Device tracking](./features/device-tracking.md). |
+| `deviceRetentionDays` | `int` | `180` | Days to retain known-device records. No CP field. |
+| `geoIpEnabled` | `bool` | `false` | Resolve the country of each audit event's IP. Country code only; the raw IP is never stored. Carries a CC BY 4.0 attribution obligation, see [IP geolocation](./features/geoip.md). |
 | `adminAlertEmail` | `?string` | `null` | Email address (env var) for admin security alerts. |
 | `adminAlertEvents` | `?array` | `null` | Audit event types that trigger admin alerts. |
 | `siemEnabled` | `bool` | `false` | Forward audit events to SIEM. |
@@ -116,7 +93,7 @@ Lite/Pro installs cannot save these via the CP: the settings save-action strip b
 | `siemDeviceHandling` | `string` | `'label'` | `'label'` or `'excluded'`. |
 | `webhooksEnabled` | `bool` | `false` | Enable outbound HMAC-signed webhooks. |
 | `webhooks` | `array` | `[]` | Webhook configurations. |
-| `apiEnabled` | `bool` | `false` | Enable API token management. |
+| `apiEnabled` | `bool` | `false` | Enable the read-only REST API. No CP field: set it in `config/password-policy.php`. See [REST API](./reference/rest-api.md). |
 
 ## Compliance notes
 
@@ -128,7 +105,7 @@ NIST SP 800-63B Rev. 4 (finalised 31 July 2025) sets a 15-character minimum for 
 - **Lite installs can hand-configure the §3.1.1.2 SHALL set**: `minLength = 15` + `hibp = true` + `checkCommonPasswords = true` + composition/expiry switches off. The settings are universal; what's Pro-gated is the one-click preset that applies the set as a single named-framework commitment.
 - **`NIST_800_63B` preset (`minLength = 15`, `hibp = true`, `checkCommonPasswords = true`, no composition rules, no rotation)** is the Pro one-click application of §3.1.1.2 SHALL for memorized secrets. Apply globally on Pro via the Compliance Presets settings page; apply per-group on Pro via named-policy CRUD. §3.2.2 rate-limiting at ≤100 consecutive failed attempts is delegated to Craft core (`maxInvalidLogins` site config: the default `5` already satisfies the ceiling).
 
-Rev. 4 explicitly forbids composition rules (`SHALL NOT impose other composition rules`) and explicitly forbids periodic rotation (`SHALL NOT require subscribers to change passwords periodically`). The `cases`, `numbers`, `symbols`, and `expiryAmount` settings remain available because other frameworks require them (PCI DSS §8.3.6 mandates numeric + alphabetic; §8.3.9 mandates 90-day rotation; CIS Controls v8 Safeguard 5.2 references annual expiration via the CIS Password Policy Guide). Mixing stances is fine, pick the preset that matches the framework your audit pack maps to. **Do not market a preset as "compliant" with frameworks it doesn't map to.** The five bundled presets (`NIST_800_63B`, `OWASP_ASVS`, `PCI_DSS_V4`, `CIS_CONTROLS_V8`, `STRICT_ENTERPRISE`) each map to their own framework, choosing one is a framework commitment.
+Rev. 4 explicitly forbids composition rules (`SHALL NOT impose other composition rules`) and explicitly forbids periodic rotation (`SHALL NOT require subscribers to change passwords periodically`). The `cases`, `numbers`, `symbols`, and `expiryAmount` settings remain available because other frameworks require them (PCI DSS §8.3.6 mandates numeric + alphabetic; §8.3.9 mandates 90-day rotation; CIS Controls v8 Safeguard 5.2 references annual expiration via the CIS Password Policy Guide). Mixing stances is fine, pick the preset that matches the framework your audit pack maps to. The five bundled presets (`NIST_800_63B`, `OWASP_ASVS`, `PCI_DSS_V4`, `CIS_CONTROLS_V8`, `STRICT_ENTERPRISE`) each map to their own framework, and choosing one is a framework commitment. A preset does not make you conformant with a framework it does not map to, so if your audit covers two frameworks with conflicting requirements, split them across per-group policies rather than looking for a preset that satisfies both.
 
 ### CIS Controls v8 alignment
 
@@ -139,14 +116,6 @@ The `CIS_CONTROLS_V8` preset defaults to **14 chars** (the safer floor) because 
 The CIS preset's 365-day rotation deliberately diverges from NIST 800-63B Rev. 4 (which forbids periodic rotation). CIS-aligned compliance buyers (US federal contractors using CIS as the actionable companion to NIST, CIS Benchmark shops) expect annual rotation here. Pick the preset that matches the framework you're aligning to; don't apply both NIST and CIS to the same global policy.
 
 The CIS preset applies globally on Pro via the Compliance Presets settings page, and per-group via the named-policy CRUD. Lite installs can hand-configure the same field set, what's Pro-gated is the one-click apply as a framework-named commitment.
-
-### Phrasing discipline
-
-These docs and the Plugin Store listing follow a specific phrasing discipline for compliance claims:
-
-- Never write **"compliant with"** or **"certified"** about a framework. Certification requires an auditor; we ship technical measures.
-- Write **"provides specific technical measures that controllers can rely on as part of their [framework] obligations"** or **"evidence and controls aligned with [specific clause]"** instead.
-- Cite specific clause numbers (NIS2 Article 21(2)(g); ISO 27002:2022 A.8.15; SOC 2 CC7.2; PCI DSS §10.2) rather than framework names alone: auditors read the clause text, not the marketing.
 
 ## Edition gating rules
 
@@ -163,7 +132,7 @@ The plugin layers those gates as defense-in-depth: the UI hides; the controller 
 - **The read-only REST API** (Enterprise) returns the same uniform JSON 404 below Enterprise that it returns when `apiEnabled` is off. No existence oracle, no edition named in the body.
 - **`SettingsController::actionSave`** unconditionally `unset()`s edition-gated keys for sub-edition saves before persisting. Even crafted POST payloads carrying Pro keys can't survive on a Lite install.
 - **Service-layer gates** apply to features whose execution would change behavior, not data capture. Audit log writes go through `AuditLogService::logEvent()` which gates on Enterprise. Per-group policy resolution runs only when `enablePerGroupPolicies = true` AND `getIsPro()` returns true.
-- **Front-end Twig render builders** (`passwordField`, `requirementList`, `strengthMeter`, `requirementsHint`, `passwordWidget`, `loginForm`, `passwordChangeForm`, `passwordResetForm`) throw `craftpulse\passwordpolicy\exceptions\EditionRequiredException` (extends `\RuntimeException`) on Lite via `PasswordPolicyVariable::_assertProForBuilders()`, Twig surfaces the exception in dev mode and renders the friendly error template in production. The friendly consumer-form rendering surface is a Pro upgrade lever; Lite consumers roll their own markup against the universal data accessors (`requirements`, `requirementsText`, `requirementRules`). Per-group resolution gates separately inside `PolicyResolverService`.
+- **Front-end Twig render builders** (`passwordField`, `requirementList`, `strengthMeter`, `requirementsHint`, `passwordWidget`, `loginForm`, `passwordChangeForm`, `passwordResetForm`) throw `craftpulse\passwordpolicy\exceptions\EditionRequiredException` (extends `\RuntimeException`) on Lite via `PasswordPolicyVariable::_assertProForBuilders()`, Twig surfaces the exception in dev mode and renders the friendly error template in production. Lite consumers build their own markup against the universal data accessors (`requirements`, `requirementsText`, `requirementRules`). Per-group resolution gates separately inside `PolicyResolverService`.
 - **HIBP-on-login** registers its `User::EVENT_BEFORE_AUTHENTICATE` listener only on Pro+ installs. Lite installs simply don't fire it.
 - **Force password reset** splits along the mass / per-user line. The **mass** reset is universal: the "Force Reset Passwords" action on the **Password Retention** utility and the `password-policy/retention/force-reset-passwords` console command both flag every account already past the configured expiry window, on every edition, gated by `pp:force-reset-passwords`. The **per-user** reset is Pro: the `ForcePasswordReset` bulk element action on the Users index, the "Force password reset" item in the user-edit action menu, and the Actions pane on the user-edit Password Security screen all target named accounts whether or not their passwords have expired, and all sit behind `pp:user-force-reset`, which registers on Pro+ only. `UserSecurityController::actionForceReset()` gates on edition before permission, so a POST on Lite answers 404. The Password Security screen itself stays universal, it just omits the pane.
 - **A non-admin can never force a password reset on an admin**, on any edition. `pp:user-force-reset` is grantable to non-admins, so the guard sits below the permission: the Password Security pane doesn't render the button, the bulk element action refuses the run rather than partially applying it, and the POST handler answers 403. An admin acting on another admin is allowed.

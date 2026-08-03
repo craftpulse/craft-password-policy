@@ -15,8 +15,6 @@ Two related actions round out the set, both available on every edition:
 - **Change password…** (`ChangeUserPassword`). Opens a modal where an admin sets a new password for one user directly. Single-user only, and it requires an elevated session.
 - **Send reset email** (`SendPasswordResetEmail`). Sends Craft's standard "set your password" email. Bulk-friendly from the Users index.
 
-> 📷 *Screenshot: Users index with three users selected, the bulk actions menu open, and the Password Policy actions highlighted (`Send reset email`, `Force password reset on next sign-in`).*
-
 This page covers each action, its permission requirements, the underlying service API for programmatic use, and the audit-context propagation that distinguishes admin-initiated resets from user-initiated ones in the audit log.
 
 ## When to use which

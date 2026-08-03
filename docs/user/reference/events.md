@@ -578,10 +578,9 @@ Event::on(
 
 ---
 
-## Future events
+## See also
 
-These are scheduled for v5.3 / Phase G but documented here so you can plan around them:
-
-- **`PolicyValidatedEvent`**: fires after a password validation cycle completes (success or failure). Payload includes the resolved policy, which rules ran, which passed/failed.
-- **`PasswordExpiredEvent`**: fires when a password's age crosses the expiry threshold. Triggered by the queue-driven expiry-reminder job and the Force Reset element action.
-- **`LockoutThresholdReachedEvent`**: Enterprise. Fires when a user's failed-login count reaches the lockout threshold. Payload includes the failed attempt history (anonymized) for SIEM forwarding.
+- [Console commands](./console-commands.md): commands that fire these events.
+- [Group alerts](../features/group-alerts.md): the surface behind `GroupAlertDispatchedEvent`.
+- [Dormant accounts](../features/dormant-accounts.md): the surface behind `AccountInactiveEvent`.
+- [Device tracking](../features/device-tracking.md): the surface behind `NewDeviceDetectedEvent`.
