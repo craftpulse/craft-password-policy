@@ -163,10 +163,18 @@ class WebhookEndpointModel extends Model
     /**
      * @var int|null per-endpoint dispatch watermark — the highest
      *     audit-log row id this endpoint has accepted. The job
-     *     dispatches rows where `id > lastDeliveredRowId`; null on a
-     *     fresh endpoint means "deliver from the next row forward."
-     *     Endpoints created mid-stream don't backfill historical rows
-     *     — that's a 5.3 enhancement.
+     *     dispatches rows where `id > lastDeliveredRowId`.
+     *
+     *     `WebhookService::saveEndpoint()` seeds this to the newest
+     *     existing audit row when the endpoint is created, so an
+     *     endpoint added mid-stream starts from the next row forward.
+     *     Without the seed, the job's `id > (lastDeliveredRowId ?? 0)`
+     *     predicate would treat a fresh endpoint as owed every row in
+     *     the retention window. Null therefore means the audit log was
+     *     empty at creation time, not "deliver everything".
+     *
+     *     Backfilling an existing endpoint isn't supported — that's a
+     *     5.3 enhancement.
      */
     public ?int $lastDeliveredRowId = null;
 

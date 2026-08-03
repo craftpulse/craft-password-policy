@@ -562,7 +562,13 @@ class WebhookService extends Component
      *
      * For NEW endpoints, generates an initial `secretCurrent` if the
      * caller hasn't supplied one — keeps the controller and the
-     * console action's "create" path symmetrical.
+     * console action's "create" path symmetrical. Also seeds
+     * `lastDeliveredRowId` to the newest audit row, so a new endpoint
+     * starts from the next row forward instead of replaying the whole
+     * audit log on its first sweep. Without that seed the job's
+     * `id > (lastDeliveredRowId ?? 0)` predicate treats a fresh
+     * endpoint as owed every row ever written, which is the backfill
+     * the feature deliberately doesn't offer.
      *
      * Encryption happens at the model boundary in
      * `WebhookEndpointModel::toRecordAttributes()`; the record stores
@@ -595,6 +601,12 @@ class WebhookService extends Component
         if ($record === null) {
             $record = new WebhookEndpointRecord();
             $endpoint->uid = $endpoint->uid ?: StringHelper::UUID();
+
+            // Start the cursor at the newest existing row. A caller that
+            // set the watermark explicitly is honoured.
+            if ($endpoint->lastDeliveredRowId === null) {
+                $endpoint->lastDeliveredRowId = $this->_newestAuditRowId();
+            }
         }
 
         foreach ($endpoint->toRecordAttributes() as $key => $value) {
@@ -814,6 +826,34 @@ class WebhookService extends Component
         $event->errorMessage = $errorMessage;
 
         $this->trigger(self::EVENT_WEBHOOK_DELIVERY_ATTEMPT, $event);
+    }
+
+    /**
+     * Returns the highest id currently in `passwordpolicy_audit_log`, or
+     * null when the table is empty.
+     *
+     * Used to seed a new endpoint's dispatch watermark. Null on an empty
+     * table rather than 0 because the two are equivalent to the job's
+     * `id > (lastDeliveredRowId ?? 0)` predicate, and null keeps "never
+     * delivered anything" readable on the endpoint row and in
+     * `webhook/list`.
+     *
+     * @return int|null
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _newestAuditRowId(): ?int
+    {
+        $maxId = (new Query())
+            ->from('{{%passwordpolicy_audit_log}}')
+            ->max('[[id]]');
+
+        if ($maxId === null || $maxId === false) {
+            return null;
+        }
+
+        return (int)$maxId;
     }
 
     /**
