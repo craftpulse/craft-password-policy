@@ -1,6 +1,6 @@
 # Cron Setup
 
-Password Policy ships four cron-friendly console commands. This page covers the recommended production cron recipes, what each command does, and how to wire them into your existing scheduler, system cron, Laravel-style scheduler, Kubernetes CronJobs, or whatever you already use.
+Password Policy ships six cron-friendly console commands. This page covers the recommended production cron recipes, what each command does, and how to wire them into your existing scheduler, system cron, Laravel-style scheduler, Kubernetes CronJobs, or whatever you already use.
 
 For the full option reference on every command, see [Console commands](../reference/console-commands.md).
 
@@ -23,14 +23,22 @@ On Pro, if you have turned on dormant-account handling:
 0 4 * * 0 cd /path/to/project && ./craft password-policy/inactive/scan
 ```
 
-On Enterprise, add the audit-chain verifier:
+On Enterprise, add the audit-chain verifier, plus the forward sweeps for whichever outbound delivery you have configured:
 
 ```cron
 # Audit-chain verification nightly at 03:00 local time
 0 3 * * * cd /path/to/project && ./craft password-policy/audit/verify --json
+
+# SIEM forward sweep every five minutes
+*/5 * * * * cd /path/to/project && ./craft password-policy/siem/run
+
+# Webhook delivery sweep every five minutes
+*/5 * * * * cd /path/to/project && ./craft password-policy/webhook/run
 ```
 
-Adjust the times for your timezone and infrastructure preferences. The order is: retention first (small DB cleanup), reminders later (user-facing email), verifier last (read-only check over the day's writes).
+Adjust the times for your timezone and infrastructure preferences. The order is: retention first (small DB cleanup), reminders later (user-facing email), verifier last (read-only check over the day's writes). The two sweeps run all day on a short interval, because their job is to keep the outbound backlog near zero rather than to do a once-daily pass.
+
+Skip the sweep you have no forwarders or endpoints for. Both commands exit zero and enqueue nothing when nothing is configured, so leaving them scheduled ahead of time is harmless, but there is no reason to schedule delivery you have not set up.
 
 > [!WARNING]
 > **The verifier has no date filter**
@@ -83,6 +91,27 @@ Enterprise. Walks the audit chain and recomputes each row's `rowHash`, comparing
 Exit `1` is a chain break, exit `2` is an unreadable row (schema drift, malformed JSON, database failure). Route them differently: the first is a security page, the second is an ops page.
 
 See [Audit verifier](../features/audit-verifier.md) for the verifier's output format + JSON shape.
+
+### `password-policy/siem/run`: audit forwarding
+
+Enterprise. Enqueues the batched job that forwards audit rows to every active SIEM forwarder, stamping each row's `forwardedAt` as a forwarder accepts it.
+
+Nothing enqueues that job for you. Without this cron the forwarders you configured are inert: every row keeps an empty `forwardedAt`, the pending count on the forwarder index climbs, and nothing reaches your SIEM. It fails silently, which is the worst way for a compliance feature to fail, so treat the cron as part of setting up a forwarder rather than as an optimisation.
+
+Two things have to be running, not one:
+
+1. This command, which enqueues the sweep.
+2. A queue runner, which executes it. See the queue note in [SIEM forwarders](../features/siem-forwarders.md).
+
+Five minutes is a reasonable interval. Shorten it if your SIEM ingestion window is tight; the command is cheap and enqueues nothing when no forwarder is active.
+
+### `password-policy/webhook/run`: webhook delivery
+
+Enterprise. Enqueues the batched job that delivers audit rows to every active webhook endpoint, advancing each endpoint's own `lastDeliveredRowId` cursor.
+
+Same shape as the SIEM sweep, and the same failure mode: without the cron, no webhook is ever delivered. Consumers see nothing, and there is no error anywhere, because nothing was ever attempted.
+
+Confirm it is working with `./craft password-policy/webhook/list` and watch the `CURSOR` column advance. A cursor stuck at `-` on an endpoint that should be receiving events means either this cron or your queue runner is not running.
 
 ## Where to put the cron
 
@@ -157,6 +186,8 @@ If you're running Laravel alongside Craft for some reason (e.g. an admin SPA), t
 $schedule->exec('cd /path/to/project && ./craft password-policy/gc/run')->dailyAt('02:00');
 $schedule->exec('cd /path/to/project && ./craft password-policy/notification/send-expiry-reminders')->dailyAt('06:00');
 $schedule->exec('cd /path/to/project && ./craft password-policy/audit/verify --json')->dailyAt('03:00');
+$schedule->exec('cd /path/to/project && ./craft password-policy/siem/run')->everyFiveMinutes();
+$schedule->exec('cd /path/to/project && ./craft password-policy/webhook/run')->everyFiveMinutes();
 ```
 
 ## Monitoring
@@ -173,6 +204,8 @@ For the GC command, monitoring is less critical, non-zero usually means a transi
 
 For expiry reminders, the queue's own observability (Craft's Utilities → Queue Manager, or whatever queue runner you use) covers the operational visibility.
 
+For the two forward sweeps, exit codes are a weak signal by design: the command's job is only to enqueue, so a zero exit means "queued", not "delivered". Monitor the backlog instead. The forwarder index reports pending forwards, `./craft password-policy/webhook/list` reports each endpoint's cursor, and the compliance dashboard surfaces pending SIEM forwards. A backlog that grows monotonically means the sweep cron or the queue runner has stopped, not that a forwarder is refusing rows.
+
 ## Verifying the cron is running
 
 There is no command that reports "when did this last run". Redirect each command's output to a log file and check the file instead. That is also what an auditor will ask for, so it is worth doing on the first day rather than the day before the audit:
@@ -188,7 +221,16 @@ Then check the tail of each file. If the newest entry is more than 25 hours old,
 Two control panel surfaces corroborate this from the other direction:
 
 - **Utilities → Compliance dashboard** (Enterprise) shows the audit chain status and a projected next prune date under **Retention**. A projected prune date in the past means the GC cron is not running.
-- **Utilities → Queue Manager** shows whether the reminder and scan jobs are being enqueued and completing.
+- **Utilities → Queue Manager** shows whether the reminder, scan, and forward-sweep jobs are being enqueued and completing.
+
+The sweeps are worth a second check, because they are the two whose failure produces no error anywhere:
+
+```cron
+*/5 * * * * cd /path/to/project && ./craft password-policy/siem/run >> /var/log/pp-siem.log 2>&1
+*/5 * * * * cd /path/to/project && ./craft password-policy/webhook/run >> /var/log/pp-webhook.log 2>&1
+```
+
+A log full of `No active SIEM forwarders. Nothing enqueued.` means the cron is firing but nothing is configured to receive. A log with no recent lines at all means the cron is not firing.
 
 ## Crontab vs the GC hook
 
@@ -210,4 +252,6 @@ That's a backup mechanism, not a primary one. **For production, use the explicit
 - [GC and retention](./gc-and-retention.md): per-table retention configuration.
 - [Audit verifier](../features/audit-verifier.md): verifier output + JSON shape.
 - [Notifications](../features/notifications.md): expiry reminder template + tokens.
+- [SIEM forwarders](../features/siem-forwarders.md): forwarder configuration + circuit breaker.
+- [Webhooks](../features/webhooks.md): endpoint configuration + signature verification.
 - [Compliance frameworks](./compliance-frameworks.md): retention requirements per framework.

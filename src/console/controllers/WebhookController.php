@@ -11,18 +11,27 @@
 namespace craftpulse\passwordpolicy\console\controllers;
 
 use craft\console\Controller;
+use craft\helpers\Queue;
+use craftpulse\passwordpolicy\jobs\WebhookForwardJob;
 use craftpulse\passwordpolicy\models\WebhookEndpointModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use Throwable;
 use yii\console\ExitCode;
 
 /**
- * Class WebhookController
+ * Manages webhook endpoints and enqueues the webhook delivery sweep.
  *
- * Console parity for the webhook endpoint CP UI (G9). Operators with
- * IaC pipelines provision endpoints from cron, so these actions match
- * the CP CRUD shape so a Terraform module / Ansible playbook doesn't
- * need to drive a CP click.
+ * `create`, `list`, and `rotate-secret` are console parity for the
+ * webhook endpoint control panel screen. Operators with IaC pipelines
+ * provision endpoints from cron, so these actions match the CP CRUD
+ * shape and a Terraform module or Ansible playbook doesn't need to drive
+ * a CP click.
+ *
+ * `run` is the delivery trigger. Deliveries run as a batched queue job
+ * and the plugin never enqueues that job implicitly, so
+ * `password-policy/webhook/run` belongs in cron on any install where
+ * delivery matters. The Cron setup page in the plugin docs carries
+ * ready-made crontab, Forge, and Kubernetes entries.
  *
  * Edition gate: every action returns
  * `ExitCode::UNSPECIFIED_ERROR` with a stderr message on a sub-
@@ -227,6 +236,50 @@ class WebhookController extends Controller
         $this->stdout("Webhook endpoint {$endpointId} secret rotated.\n");
         $this->stdout("New secret (shown ONCE):\n");
         $this->stdout($newSecret . "\n");
+
+        return ExitCode::OK;
+    }
+
+    /**
+     * Enqueues the batched job that delivers pending audit rows to every active webhook endpoint.
+     *
+     * Each endpoint carries its own delivery cursor
+     * (`lastDeliveredRowId`), so the job resumes per endpoint rather than
+     * redelivering, and an endpoint that fails does not hold up the
+     * others.
+     *
+     * Nothing is enqueued when no endpoint is currently active: a
+     * disabled endpoint, or one inside its circuit-breaker cooldown,
+     * would give the job no destination, and a cron running every few
+     * minutes would otherwise fill the queue table with no-op jobs. That
+     * case still exits zero, because "nothing configured yet" is not an
+     * operator-actionable failure.
+     *
+     * @return int
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function actionRun(): int
+    {
+        if (!$this->_requireEnterprise()) {
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        $endpointCount = count(PasswordPolicy::$plugin->getWebhook()->getActiveEndpoints());
+
+        if ($endpointCount === 0) {
+            $this->stdout("No active webhook endpoints. Nothing enqueued.\n");
+
+            return ExitCode::OK;
+        }
+
+        Queue::push(new WebhookForwardJob());
+
+        $this->stdout("Webhook delivery sweep enqueued for {$endpointCount} active endpoint(s).\n");
+        PasswordPolicy::$plugin->log('Webhook delivery sweep queued [endpoints={endpoints}]', [
+            'endpoints' => $endpointCount,
+        ]);
 
         return ExitCode::OK;
     }

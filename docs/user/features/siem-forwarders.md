@@ -142,10 +142,12 @@ The body is the canonical JSON plus a `_meta` envelope with operational fields t
 The plugin uses a watermark model with at-least-once-to-one semantics across multiple endpoints:
 
 1. The `forwardedAt` column on each audit row is `NULL` when the row hasn't been delivered to any endpoint.
-2. `SiemForwardJob` (a `BaseBatchedJob`) reads unforwarded rows in batches of 100 from `UnforwardedAuditRowBatcher`.
+2. `password-policy/siem/run` enqueues `SiemForwardJob` (a `BaseBatchedJob`), which reads unforwarded rows in batches of 100 from `UnforwardedAuditRowBatcher`. That command is the only trigger, so it belongs in cron.
 3. For each row, the job attempts delivery to every configured endpoint in sequence.
 4. The row counts as **forwarded** the moment ONE endpoint returns success, at which point `forwardedAt` is stamped.
 5. Failed endpoints retry on the next forwarder run; the row's `forwardedAt` doesn't roll back.
+
+Note what that means on the first sweep after you configure your first forwarder: `forwardedAt` is empty on every row already in the audit log, so all of them are pending and all of them are forwarded, oldest first. On an install that has been collecting audit events for months, that is a large first pass. It is bounded by the audit log's own retention window, it is batched at 100 rows per slice, and it happens once. If you would rather not ship that history, purge to the window you want to keep with `./craft password-policy/audit/purge --days=<n>` before you schedule the sweep. Webhook endpoints behave differently: they start from the newest row at creation and never replay history.
 
 The trade-off: a SIEM that's slow to come back online will miss some events while it's down. Operators running redundant SIEMs (Splunk + a secondary Graylog as cold backup) accept this: the primary captures everything; the cold backup may have gaps during the primary's downtime windows.
 
@@ -189,7 +191,13 @@ Each forwarder with an open circuit gets a **Reset circuit** action on the index
 
 ## Console commands
 
-The forwarder ships no console commands in 5.2.0. Both operator actions live in the control panel:
+One command, and it is the one that makes forwarding happen:
+
+```shell
+./craft password-policy/siem/run
+```
+
+It enqueues `SiemForwardJob` for the rows waiting to be forwarded. Two of the operator actions stay in the control panel:
 
 | Action | Where |
 |---|---|
@@ -197,9 +205,15 @@ The forwarder ships no console commands in 5.2.0. Both operator actions live in 
 | Close an open circuit breaker | The **Reset circuit** action on the forwarder index. |
 
 > [!WARNING]
-> **Delivery needs a queue runner**
+> **Forwarding needs a cron entry and a queue runner**
 >
-> Forwarding is done by `SiemForwardJob`, which reads unforwarded audit rows in batches and stamps each row's `forwardedAt` as it goes. Like every Craft queue job it only makes progress when something is running the queue. If your install relies on Craft's default web-request-triggered queue runner and the site is quiet, the backlog reported on the forwarder index will sit still. Run the queue from cron (`./craft queue/listen` under a process supervisor, or `./craft queue/run` on a schedule) on any install where forwarding matters.
+> Two separate things have to be running, and a forwarder configured without both delivers nothing while reporting no error.
+>
+> `password-policy/siem/run` is what puts `SiemForwardJob` on the queue. Nothing else does: no request hook, no garbage-collection pass, no control panel action. Without that command on a schedule, every audit row keeps an empty `forwardedAt` forever.
+>
+> A queue runner is what executes the job once it is queued. If your install relies on Craft's default web-request-triggered runner and the site is quiet, the backlog reported on the forwarder index will sit still even with the cron in place. Run the queue from cron too (`./craft queue/listen` under a process supervisor, or `./craft queue/run` on a schedule).
+>
+> See [Cron setup](../operations/cron-setup.md) for both entries.
 
 ## Permissions
 

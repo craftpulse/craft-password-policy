@@ -90,9 +90,11 @@
 - Added HTML and CSV reports at `password-policy/reports/<report>/html` and `password-policy/reports/<report>/csv` for `audit-summary`, `alert-activity`, and `retention-projection` (Enterprise).
 - Added an audit schema utility and the `password-policy/audit/schema` command, which publish the per-event detail allowlist an auditor needs to read the log (Enterprise).
 - Added a "SIEM forwarders" screen and syslog-over-TLS forwarding of audit rows, with a circuit breaker and RFC 5424 framing (Enterprise).
+- Added the `password-policy/siem/run` console command, which enqueues the batched job that forwards pending audit rows to every active SIEM forwarder and needs a cron entry to forward on a schedule (Enterprise).
 - Added a "Webhooks" screen and HMAC-signed webhook delivery of audit rows, which sends a per-endpoint watermark, a signed `X-PasswordPolicy-Timestamp` for consumer-side replay rejection, and an `X-PasswordPolicy-Event-Id` for idempotency (Enterprise).
 - Added webhook secret rotation with a grace window during which both the old and the new signature verify (Enterprise).
 - Added the `password-policy/webhook/create`, `password-policy/webhook/list`, and `password-policy/webhook/rotate-secret` console commands (Enterprise).
+- Added the `password-policy/webhook/run` console command, which enqueues the batched job that delivers pending audit rows to every active webhook endpoint and needs a cron entry to deliver on a schedule (Enterprise).
 - Added audit log export, returned inline for up to 1,000 rows and queued behind a one-time download link beyond that, writing to any Craft filesystem named by `auditExportFilesystem` (Enterprise).
 - Added the `passwordpolicy_siem_forwarders` and `passwordpolicy_webhook_endpoints` tables.
 - Added the `pp:audit-view`, `pp:audit-verify`, `pp:audit-export`, `pp:siem-manage`, and `pp:webhooks-manage` permissions.

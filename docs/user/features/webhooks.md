@@ -179,7 +179,7 @@ Unlike SIEM forwarders (at-least-once-to-one across endpoints), webhooks use a p
 
 This means:
 
-- **Adding a new endpoint** doesn't retroactively deliver the entire history: it starts from the current row.
+- **Adding a new endpoint** doesn't retroactively deliver the entire history: the cursor is set to the newest audit row at the moment you save the endpoint, so delivery starts from the next row written after that.
 - **An endpoint that's down for a week** catches up the missed rows on recovery (subject to retention: rows pruned by GC are not redelivered).
 - **Two endpoints with different filters** maintain independent watermarks: a Slack channel filtered to `hibp_breach_detected` and a SOC API filtered to all events deliver independently.
 
@@ -240,7 +240,12 @@ The **Activity** tab is useful for debugging: every delivery is captured with th
 
 ## Console commands
 
-Three commands, all Enterprise:
+Four commands, all Enterprise:
+
+```shell
+# Enqueue the delivery sweep; this is what makes deliveries happen
+./craft password-policy/webhook/run
+```
 
 ```shell
 # Register an endpoint; prints the signing secret once
@@ -263,9 +268,15 @@ Three commands, all Enterprise:
 Test-firing and resetting a circuit are control panel actions, not commands. See [Console commands](../reference/console-commands.md#webhooks) for the full option reference.
 
 > [!WARNING]
-> **Delivery needs a queue runner**
+> **Delivery needs a cron entry and a queue runner**
 >
-> Deliveries are made by `WebhookForwardJob`, which reads undelivered audit rows and advances each endpoint's `lastDeliveredRowId`. Like every Craft queue job, it only makes progress when something is running the queue. On a quiet site relying on Craft's default web-request-triggered runner, the pending count sits still. Run the queue from cron (`./craft queue/listen` under a process supervisor, or `./craft queue/run` on a schedule) on any install where delivery matters.
+> Two separate things have to be running, and an endpoint configured without both delivers nothing while reporting no error.
+>
+> `password-policy/webhook/run` is what puts `WebhookForwardJob` on the queue. Nothing else does: no request hook, no audit-write hook, no control panel action. Without that command on a schedule, no delivery is ever attempted and every endpoint's `lastDeliveredRowId` stays empty.
+>
+> A queue runner is what executes the job once it is queued. On a quiet site relying on Craft's default web-request-triggered runner, the pending count sits still even with the cron in place. Run the queue from cron too (`./craft queue/listen` under a process supervisor, or `./craft queue/run` on a schedule).
+>
+> See [Cron setup](../operations/cron-setup.md) for both entries.
 
 ## Permissions
 

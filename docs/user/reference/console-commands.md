@@ -15,13 +15,15 @@ ddev craft password-policy/gc/run
 `./craft help password-policy` lists the same set at any time, and
 `./craft help password-policy/<command>` prints the per-command options.
 
-Three commands are the ones you schedule. Everything else is run by hand.
+Five commands are the ones you schedule. Everything else is run by hand.
 
 | Command | Purpose |
 |---|---|
 | [`gc/run`](#gcrun) | Enforce every retention window. |
 | [`notification/send-expiry-reminders`](#notificationsend-expiry-reminders) | Send expiry reminder emails. |
 | [`inactive/scan`](#inactivescan) | Act on dormant accounts. |
+| [`siem/run`](#siemrun) | Forward audit rows to your SIEM forwarders. |
+| [`webhook/run`](#webhookrun) | Deliver audit rows to your webhook endpoints. |
 
 See [Cron setup](../operations/cron-setup.md) for the schedules.
 
@@ -252,9 +254,29 @@ Generates a 32-byte HMAC key and writes it to your local `.env` as `CRAFT_AUDIT_
 
 See [Audit logging](../features/audit-logging.md).
 
+## SIEM forwarding
+
+### `siem/run`
+
+Enqueues the batched job that forwards pending audit rows to every active SIEM forwarder. Requires the Enterprise edition; on a lower edition the command writes to stderr and exits non-zero.
+
+```shell
+./craft password-policy/siem/run
+```
+
+Takes no options.
+
+This is the only thing that starts a forward pass. Nothing enqueues the sweep for you, so without this command on a schedule your audit rows keep an empty `forwardedAt` and nothing reaches your SIEM. Schedule it, and make sure something is running the queue.
+
+The job walks the audit log by watermark, stamping each row as a forwarder accepts it, so a run that is interrupted resumes from where it stopped rather than resending. Re-running the command while a sweep is still queued is harmless.
+
+When no forwarder is currently active, the command prints `No active SIEM forwarders. Nothing enqueued.` and exits zero without queuing anything. A forwarder counts as inactive when it is disabled, or while its circuit breaker is inside the cooldown window. Suppressing the job in that case keeps a five-minute cron from filling the queue table with no-op jobs.
+
+See [SIEM forwarders](../features/siem-forwarders.md) and [Cron setup](../operations/cron-setup.md).
+
 ## Webhooks
 
-All three commands require the Enterprise edition.
+All four commands require the Enterprise edition.
 
 ### `webhook/create`
 
@@ -293,7 +315,23 @@ Rotates an endpoint's signing secret and prints the new plaintext once. The endp
 
 Run `webhook/list` first if you do not know the id.
 
-See [Webhooks](../features/webhooks.md).
+### `webhook/run`
+
+Enqueues the batched job that delivers pending audit rows to every active webhook endpoint.
+
+```shell
+./craft password-policy/webhook/run
+```
+
+Takes no options.
+
+This is the only thing that starts a delivery pass. Nothing enqueues the sweep for you, so without this command on a schedule no webhook is ever delivered. Schedule it, and make sure something is running the queue.
+
+Each endpoint carries its own delivery cursor, the `lastDeliveredRowId` shown by `webhook/list`, so endpoints resume independently and one failing endpoint does not hold up the others.
+
+When no endpoint is currently active, the command prints `No active webhook endpoints. Nothing enqueued.` and exits zero without queuing anything. An endpoint counts as inactive when it is disabled, or while its circuit breaker is inside the cooldown window.
+
+See [Webhooks](../features/webhooks.md) and [Cron setup](../operations/cron-setup.md).
 
 ## See also
 
