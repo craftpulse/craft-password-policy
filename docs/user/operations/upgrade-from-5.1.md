@@ -21,7 +21,7 @@ composer update craftpulse/craft-password-policy
 
 `composer update` pulls 5.2.0. `./craft up` applies the migration that ships in the new release: your install is now on 5.2.0 in Lite mode with all your existing 5.1.x settings preserved.
 
-That's it for the Lite tier upgrade.
+That's it for the Lite tier upgrade. Everything 5.1.x could do, Lite still does. That includes the **Password Retention** utility's "Force Reset Passwords" action and the `password-policy/retention/force-reset-passwords` console command, both of which force a reset on every account already past your expiry window. The `pp:force-reset-passwords` permission that gates them is registered on every edition, so existing grants keep working untouched.
 
 ## Verifying after `./craft up`
 
@@ -56,7 +56,7 @@ Bump `dateModified` at the top of `project.yaml` (Craft uses this as the project
 ./craft up
 ```
 
-The Pro subnav (Policies, Blocklist, Notifications) appears in the CP under **Password Policy**. None of your Lite settings change, Pro is purely additive.
+The Pro subnav (Policies, Blocklist, Notifications) appears in the CP under **Password Policy**. None of your Lite settings change, Pro is purely additive. On the force-reset side that means Pro adds the ability to force a reset on one named user, on top of the expired-only mass reset Lite already has. See [Force password reset](../features/force-reset.md).
 
 > ::: warning Don't set the edition via `app.php` `pluginConfigs`
 > Edition switching goes through project config, not the runtime `app.php` `pluginConfigs` hash. The `pluginConfigs` approach skips the project-config rebuild and won't surface the new subnav items. Use `project.yaml` + `./craft up`.

@@ -63,15 +63,15 @@ Three plugin-owned actions register on `User::EVENT_REGISTER_ACTIONS`. All three
 
 | Action | Edition | Notes |
 |--------|---------|-------|
-| `ForcePasswordReset` | Pro | Sets `passwordResetRequired = true` on selected users. Pins an `AdminForceReset` pending reason on `user_state` so the next history row records why. Bulk-friendly. |
+| `ForcePasswordReset` | Pro | Sets `passwordResetRequired = true` on selected users, expired or not. Pins an `AdminForceReset` pending reason on `user_state` so the next history row records why, and writes a `password_reset_forced` audit event. Bulk-friendly. Refuses the whole run when a non-admin has swept an admin into the selection. |
 | `ChangeUserPassword` | All editions | Single-user modal: the admin types a new password, the action validates it against the resolved policy, then writes the new hash. The audit context propagates as `AdminChange` with `changedByUserId` set to the operator. Bulk-change-with-same-password is a security anti-pattern; the modal is single-user only. |
 | `SendPasswordResetEmail` | All editions | Pins an `AdminForceReset` pending reason on `user_state` and sends Craft's standard reset email. Bulk-friendly. |
 
-`ChangeUserPassword` and `SendPasswordResetEmail` are NOT Pro-gated. The decision is intentional: every operator running Craft has this capability already (via `users/set-password` console command, or the user edit screen's password field). Wiring them as element actions is convenience UX, not a Pro-tier upsell. Pro's actual upsell here is `ForcePasswordReset`: the `AdminForceReset` pending reason that propagates to the audit row is what Pro/Enterprise customers pay for.
+`ChangeUserPassword` and `SendPasswordResetEmail` are NOT Pro-gated. Every operator running Craft has this capability already, via the `users/set-password` console command or the user edit screen's password field, so wiring them as element actions is convenience UX. `ForcePasswordReset` is Pro because it aims a forced reset at named accounts regardless of expiry; the expired-only sweep on the Password Retention utility is universal. See [Force password reset](./force-reset.md).
 
 ## User edit screen: Password Security tab
 
-The User edit screen ships a **Password Security** tab via `UsersController::EVENT_DEFINE_EDIT_SCREENS`. The tab is gated on either `pp:force-reset-passwords` or `pp:change-user-passwords` permission and is visible on every edition (the tab itself is permission-gated, not edition-gated). Individual panes inside it are edition-gated: the force-reset Actions pane and the notification activity panel are Pro+, and below Pro they are absent rather than disabled.
+The User edit screen ships a **Password Security** tab via `UsersController::EVENT_DEFINE_EDIT_SCREENS`. The tab is gated on either `pp:user-force-reset` or `pp:change-user-passwords` permission and is visible on every edition (the tab itself is permission-gated, not edition-gated). Individual panes inside it are edition-gated: the force-reset Actions pane and the notification activity panel are Pro+, and below Pro they are absent rather than disabled. The force-reset pane is also absent when a non-admin is viewing an admin.
 
 > 📷 *Screenshot: User edit screen with the Password Security tab selected, showing the resolved policy panel, status indicators (last change date, days until expiry, force-reset state), and three action buttons (Change password…, Send reset email, Force password reset on next sign-in).*
 
@@ -89,7 +89,8 @@ Read-only mode (`allowAdminChanges = false`) keeps the tab visible but disables 
 
 | Handle | Notes |
 |--------|-------|
-| `pp:force-reset-passwords` | Pro+. Required to use the `ForcePasswordReset` action, the user-edit action-menu item, and the force-reset button on the user-edit Password Security page. Registers on Pro+ only, so a Lite permissions screen doesn't list it. |
-| `pp:change-user-passwords` | Required to use `ChangeUserPassword` and `SendPasswordResetEmail` actions. |
+| `pp:user-force-reset` | Pro+. Required to use the `ForcePasswordReset` action, the user-edit action-menu item, and the force-reset button on the user-edit Password Security page. Registers on Pro+ only, so a Lite permissions screen doesn't list it. Never lets a non-admin target an admin. |
+| `pp:change-user-passwords` | Required to use `ChangeUserPassword` and `SendPasswordResetEmail` actions. Every edition. |
+| `pp:force-reset-passwords` | Every edition. Gates the mass expired-only reset on the Password Retention utility and its console command. Not required for, and not sufficient for, any of the per-user surfaces above. |
 
-Either permission also unlocks the Password Security sidebar link on the user edit screen. Defense-in-depth: the permission predicate runs both at sidebar render time AND in `UserSecurityController::beforeAction()`.
+Either of the first two permissions also unlocks the Password Security sidebar link on the user edit screen. Defense-in-depth: the permission predicate runs both at sidebar render time AND in `UserSecurityController::beforeAction()`.

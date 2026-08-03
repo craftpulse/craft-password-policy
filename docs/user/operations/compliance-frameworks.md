@@ -137,7 +137,7 @@ Document this delegation in your operator runbook: the plugin's audit log captur
 
 > *"Passwords/passphrases are immediately changed when any of the following occurs: a known compromise..."*
 
-HIBP-on-login + force-reset is the literal implementation. The `BreachDetectedForceReset` audit reason on every breach-driven change provides the evidence trail.
+HIBP-on-login + force-reset is the literal implementation. The `BreachForced` audit reason on every breach-driven change provides the evidence trail.
 
 ### §8.3.6: Minimum length
 

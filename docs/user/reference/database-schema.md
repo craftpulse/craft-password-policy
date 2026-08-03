@@ -114,7 +114,7 @@ Stores bcrypt hashes of previous passwords for reuse prevention. Capture is univ
 | `id` | int PK | |
 | `userId` | int, NOT NULL | FK to `craft_users.id`, CASCADE on user delete |
 | `passwordHash` | varchar(255), NOT NULL | bcrypt (same format as Craft's `users.password`) |
-| `changeReason` | enum, nullable | `UserChange`, `AdminChange`, `AdminForceReset`, `BreachDetectedForceReset`, `ExpiryForceReset` |
+| `changeReason` | enum, nullable | `SelfService`, `AdminChange`, `AdminForceReset`, `FirstLoginForced`, `ExpiryForced`, `BreachForced`, `Cli`, `MigrationSeed` |
 | `changedByUserId` | int, nullable | FK to `craft_users.id`, `SET NULL`, who initiated the change |
 | `changedFromIp` | varchar(45), nullable | The IP the change came from (full address, see privacy note below) |
 | `changedFromUserAgent` | text, nullable | UA string at change time |

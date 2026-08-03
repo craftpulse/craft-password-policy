@@ -46,11 +46,12 @@ Every history row carries the `changeReason` enum value that tells the audit log
 
 | `changeReason` | When |
 |---|---|
-| `UserChange` | The user changed their own password. |
+| `SelfService` | The user changed their own password. |
 | `AdminChange` | An admin used the **Change password…** action to set the user's password directly. |
-| `AdminForceReset` | The user changed their password after an admin forced a reset (`SendPasswordResetEmail`, `ForcePasswordReset`, bulk `force-reset-passwords` command). |
-| `BreachDetectedForceReset` | The user changed their password after HIBP-on-login detected a breach. |
-| `ExpiryForceReset` | The user changed their password after the password expired. |
+| `AdminForceReset` | The user changed their password after an operator forced a reset on their account by name (`SendPasswordResetEmail`, `ForcePasswordReset`, the user-edit action-menu item, or the Password Security screen's button). |
+| `ExpiryForced` | The user changed their password after the mass expired-account reset flagged it (the Password Retention utility or the `retention/force-reset-passwords` console command), or after the expiry cron did. |
+| `BreachForced` | The user changed their password after HIBP-on-login detected a breach. |
+| `FirstLoginForced` | The user changed their password on first sign-in under the force-change-on-first-login policy. |
 
 The reason is determined by the **pending reason** on `passwordpolicy_user_state`. When an admin or automation forces a reset, the pending reason is pinned in advance; when the user actually changes their password, the history listener picks up the pending reason and stamps it on the new history row.
 
