@@ -4,6 +4,9 @@
 
 > Pro and Enterprise edition expansion. New editions, per-group named policies, password history, advanced validators, HIBP-on-login, front-end Twig render builders, Pest test suite, hash-chained audit log with independent verifier CLI, syslog and webhook forwarders, compliance dashboard with HTML/CSV reports, native element types for audit + notification + policy records, and a redesigned settings UI.
 
+> [!WARNING]
+> 5.2.0 requires Craft 5.9.15 or later. Run `composer update craftcms/cms` first, then update the plugin.
+
 ### Added
 
 #### Editions and policy infrastructure
@@ -179,6 +182,7 @@
 
 ### Changed
 
+- Password Policy now requires Craft 5.9.15 or later.
 - **Edition gating hides, it never badges.** Higher-edition functionality no longer renders at all on lower editions: no disabled fields, no locked sidebar rows, no upsell callouts, and no copy naming a surface the edition can't reach. Three layers carry it. (1) CP nav entries, settings sidebar sections, utilities, element-index columns, condition-rule options, and the per-user notifications panel are omitted below their edition. (2) Permissions for higher-edition surfaces register only on those editions. (3) A direct hit on a higher-edition CP URL now answers **404** (`NotFoundHttpException`) instead of 403, via the shared `RequiresEditionTrait` on `SettingsController`, `PolicyController`, `BlocklistController`, `InactiveAccountController`, `NotificationTemplateController`, `NotificationActivityController`, `GroupAlertController`, `ReportController`, `AuditExportController`, `SiemForwarderController`, `WebhookEndpointController`, and `ApiTokenController`: a 403 would confirm a screen the hidden nav withholds. The read-only REST API returns its existing uniform JSON 404 below Enterprise, byte-identical to the `apiEnabled = false` response. Service, Twig-variable, queue-job, and console gates are unchanged (`EditionRequiredException`, graceful skip, non-zero exit).
 - **Force password reset now splits into a universal mass path and an additive Pro per-user path.** The mass path is unchanged from 5.1.2 and runs on every edition: the **Password Retention** utility's "Force Reset Passwords" action and the `password-policy/retention/force-reset-passwords` console command both flag every account already past the configured expiry window, still gated by `pp:force-reset-passwords`, which registers on every edition. The per-user path is Pro and targets named accounts whether or not their passwords have expired: the `ForcePasswordReset` bulk element action, the "Force password reset" user-edit action-menu item, and the Actions pane on the user-edit **Password Security** screen. Those three moved onto a new `pp:user-force-reset` permission that registers on Pro+ only, and `UserSecurityController::actionForceReset()` gates on edition before permission so a Lite POST answers **404** rather than 403. Below Pro the pane is absent rather than disabled or badged (driven by a `showForceReset` flag that defaults closed, so a missing variable fails safe); the Password Security screen itself stays universal and just omits the pane.
 - The per-user force reset pins `ChangeReason::AdminForceReset` where the mass path pins `ChangeReason::ExpiryForced`, so the history row records whether an operator named the account or a retention sweep reached it. Both write a `password_reset_forced` audit event.

@@ -1,6 +1,6 @@
 # Password Policy for Craft CMS
 
-[![Craft 5](https://img.shields.io/badge/Craft%20CMS-5.0+-CE3262)](https://plugins.craftcms.com/password-policy)
+[![Craft 5](https://img.shields.io/badge/Craft%20CMS-5.9.15+-CE3262)](https://plugins.craftcms.com/password-policy)
 [![Edition: Lite • Pro • Enterprise](https://img.shields.io/badge/Edition-Lite%20%E2%80%A2%20Pro%20%E2%80%A2%20Enterprise-3D8FFF)](./docs/user/editions.md)
 [![License](https://img.shields.io/badge/License-craft-9A6DEF)](./LICENSE.md)
 
@@ -47,7 +47,7 @@ Enforce strong password rules across your Craft site, and prove it. From a simpl
 
 ## Requirements
 
-- Craft CMS 5.0 or newer
+- Craft CMS 5.9.15 or newer
 - PHP 8.2+
 - MySQL 8.0+, MariaDB 10.4+, or PostgreSQL 13+
 
@@ -68,7 +68,10 @@ Then open the plugin Settings to configure your global policy. [Getting Started 
 
 The 5.2.0 upgrade ships a single consolidated migration that renames the legacy `pwned` settings key to `hibp` (project config + DB) and seeds the new tables. Your existing 5.1.x configuration is preserved.
 
+5.2.0 requires Craft 5.9.15 or later. Upgrade Craft first, then the plugin:
+
 ```bash
+composer update craftcms/cms
 composer update craftpulse/craft-password-policy
 ./craft up
 ```

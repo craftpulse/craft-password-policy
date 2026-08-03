@@ -12,9 +12,9 @@ namespace craftpulse\passwordpolicy\controllers;
 
 use Craft;
 use craft\elements\User;
+use craft\filters\IpRateLimitIdentity;
 use craft\validators\UserPasswordValidator;
 use craft\web\Controller;
-use craftpulse\passwordpolicy\filters\IpRateLimit;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\validators\CommonPasswordValidator;
 use craftpulse\passwordpolicy\validators\MinimumCharacterTypesValidator;
@@ -108,13 +108,16 @@ class ValidationController extends Controller
      *
      * Yii's `RateLimiter` meters `Yii::$app->user->getIdentity()` by default
      * and does nothing when there isn't one, which on an anonymous endpoint is
-     * every request. The identity is therefore supplied explicitly, keyed on
-     * IP, and it applies to authenticated callers too: a session is not
-     * evidence of restraint.
+     * every request. `craft\filters\IpRateLimitIdentity` is therefore supplied
+     * as the identity, keyed on IP, and it applies to authenticated callers
+     * too: a session is not evidence of restraint. Its allowance lives in
+     * Craft's cache, so the bucket is shared across web workers and expires on
+     * its own.
      *
      * Rate-limit headers are suppressed, matching Craft core's own limited
-     * anonymous endpoint (`UsersController::behaviors()`). There is no reason
-     * to hand an attacker the exact shape of the bucket.
+     * anonymous endpoint (`UsersController::behaviors()`, which wires the same
+     * identity class the same way). There is no reason to hand an attacker the
+     * exact shape of the bucket.
      *
      * @return array<string, mixed>
      *
@@ -128,10 +131,13 @@ class ValidationController extends Controller
                 'class' => RateLimiter::class,
                 'only' => ['validate'],
                 'enableRateLimitHeaders' => false,
-                'user' => fn() => new IpRateLimit([
+                'user' => fn() => new IpRateLimitIdentity([
                     'limit' => self::RATE_LIMIT,
                     'window' => self::RATE_LIMIT_WINDOW,
                     'keyPrefix' => 'pp:validate',
+                    // Callers whose IP won't resolve share one bucket, which is
+                    // the intended failure mode: a caller the plugin cannot
+                    // distinguish is safer metered than unmetered.
                     'ip' => Craft::$app->getRequest()->getUserIP() ?? 'unknown',
                 ]),
             ],

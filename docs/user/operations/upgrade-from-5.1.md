@@ -6,6 +6,7 @@ This guide walks you through the upgrade, the one new environment variable Enter
 
 ## Before you start
 
+- **Upgrade Craft to 5.9.15 or later first.** 5.2.0 requires it; 5.1.x ran on any Craft 5. Composer refuses the plugin upgrade while your install is below that, so move Craft, then move the plugin.
 - Take a database backup. The migration is reversible but reverting after a failure is faster from a backup than a rollback.
 - Note your current 5.1.x edition (Lite is the only option in 5.1.x). 5.2.0 starts Lite by default; you upgrade to Pro or Enterprise after the schema migration lands.
 - If you've customised `config/password-policy.php`, review the [Settings key renames](#settings-key-renames) below, `pwned` → `hibp` is the one breaking change in config-file land.
@@ -15,11 +16,12 @@ This guide walks you through the upgrade, the one new environment variable Enter
 In your Craft project root:
 
 ```bash
+composer update craftcms/cms
 composer update craftpulse/craft-password-policy
 ./craft up
 ```
 
-`composer update` pulls 5.2.0. `./craft up` applies the migration that ships in the new release: your install is now on 5.2.0 in Lite mode with all your existing 5.1.x settings preserved.
+The first `composer update` moves Craft to 5.9.15 or later, which 5.2.0 requires. The second pulls 5.2.0. `./craft up` applies the migration that ships in the new release: your install is now on 5.2.0 in Lite mode with all your existing 5.1.x settings preserved.
 
 That's it for the Lite tier upgrade. Everything 5.1.x could do, Lite still does. That includes the **Password Retention** utility's "Force Reset Passwords" action and the `password-policy/retention/force-reset-passwords` console command, both of which force a reset on every account already past your expiry window. The `pp:force-reset-passwords` permission that gates them is registered on every edition, so existing grants keep working untouched.
 
