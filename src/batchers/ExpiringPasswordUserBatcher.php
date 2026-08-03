@@ -24,13 +24,39 @@ use craftpulse\passwordpolicy\PasswordPolicy;
  * `expiryReminderDays` window AND have no `notification_log` row for
  * `(userId, type='expiry_reminder')` within the dedup window.
  *
- * Recomputes the pending-recipients query each `getSlice()` call rather
- * than caching the user list at construction time. That gives natural
- * idempotency on retry — if a batch partially completes (some users
- * notified, log rows written) and the job is retried, the next slice
- * re-queries and skips the already-notified users.
+ * ## Why this paginates by watermark and not by offset
  *
- * Same shape as putenv/Campaign uses for batched contact resolution.
+ * The pending-recipients predicate is SELF-CONSUMING: sending a reminder
+ * writes a `notification_log` row, which the `NOT EXISTS` subquery below
+ * then excludes, so every notified user leaves the result set.
+ * `craft\queue\BaseBatchedJob` meanwhile advances `itemOffset`
+ * monotonically across the batches it spawns. An offset-paginated
+ * `getSlice()` therefore skips exactly as many users as it notified: with
+ * a batch size of 100 and 250 eligible users, the second batch asks for
+ * rows 101-200 of a result set that now holds 150, and the job reports
+ * clean completion having emailed roughly half of them. Users silently not
+ * warned before their password expires is the whole point of the feature,
+ * so this is not a tolerable rounding error.
+ *
+ * The fix is the watermark pattern already used by
+ * {@see \craftpulse\passwordpolicy\jobs\WebhookForwardJob::processItem()}:
+ * pagination is keyed on the last id the campaign consumed rather than on
+ * a row count. Two constructor arguments carry the campaign's position,
+ * both fed from public properties on the job so they survive the
+ * `clone` + serialize that spawns the next batch:
+ *
+ *  - `$afterId` bounds the slice to `users.id > $afterId`, so `$offset` is
+ *    ignored entirely and no user is ever handed out twice.
+ *  - `$processedCount` is added back into `count()`, because
+ *    `BaseBatchedJob` terminates on `itemOffset < totalItems()` and a
+ *    shrinking total would strand the tail of the campaign.
+ *
+ * A user whose send fails writes no log row and sits BELOW the watermark,
+ * so they are skipped for the rest of the campaign and picked up by the
+ * next scheduled run (which starts from a null watermark). That is
+ * deliberate: re-offering a permanently failing recipient inside the same
+ * campaign would grow `count()` on every batch and the job would never
+ * terminate.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -45,24 +71,35 @@ class ExpiringPasswordUserBatcher implements Batchable
      * Constructor.
      *
      * @param int|null $userId optional single-user mode (for `--user=<id>`)
+     * @param int|null $afterId the highest user id the campaign has already
+     *     consumed; null starts a fresh campaign
+     * @param int $processedCount how many users earlier batches of this
+     *     campaign already consumed, added back into {@see self::count()}
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function __construct(
         private readonly ?int $userId = null,
+        private readonly ?int $afterId = null,
+        private readonly int $processedCount = 0,
     ) {
     }
 
     /**
      * @inheritdoc
      *
+     * Users this campaign already consumed plus the recipients still
+     * pending past the watermark. The offset `BaseBatchedJob` compares
+     * against is cumulative across batches, so a bare remaining-rows count
+     * would fall below it and end the campaign early.
+     *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function count(): int
     {
-        return $this->_buildQuery()->count();
+        return $this->processedCount + $this->_buildQuery()->count();
     }
 
     /**
@@ -71,13 +108,15 @@ class ExpiringPasswordUserBatcher implements Batchable
      * Returns User elements rather than rows so the job can call into the
      * notification service with the full user model.
      *
+     * `$offset` is deliberately unused: the slice is bounded by the
+     * campaign's watermark instead. See the class docblock.
+     *
      * @author CraftPulse
      * @since 5.2.0
      */
     public function getSlice(int $offset, int $limit): iterable
     {
         $userIds = $this->_buildQuery()
-            ->offset($offset)
             ->limit($limit)
             ->orderBy(['users.id' => SORT_ASC])
             ->column();
@@ -86,9 +125,14 @@ class ExpiringPasswordUserBatcher implements Batchable
             return [];
         }
 
+        // Ascending id order matters: the job advances its watermark per
+        // processed item, and `BaseBatchedJob::execute()` can break out of a
+        // slice early under memory or TTR pressure. Handing items out in id
+        // order means whatever it didn't reach still sits above the watermark.
         return User::find()
             ->id($userIds)
             ->status(null)
+            ->orderBy(['users.id' => SORT_ASC])
             ->all();
     }
 
@@ -135,6 +179,10 @@ class ExpiringPasswordUserBatcher implements Batchable
 
         if ($this->userId !== null) {
             $query->andWhere(['users.id' => $this->userId]);
+        }
+
+        if ($this->afterId !== null) {
+            $query->andWhere(['>', 'users.id', $this->afterId]);
         }
 
         return $query;

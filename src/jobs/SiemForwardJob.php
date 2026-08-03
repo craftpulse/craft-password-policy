@@ -36,6 +36,11 @@ use yii\queue\RetryableJobInterface;
  * `processItem` — kept explicit rather than configurable to avoid
  * over-engineering 5.2.0.
  *
+ * Pagination is by watermark, not offset: `forwardedAt` is written as
+ * rows are delivered, so the forwardable result set shrinks by exactly
+ * what `BaseBatchedJob`'s `itemOffset` grows. {@see UnforwardedAuditRowBatcher}
+ * carries the full explanation.
+ *
  * Edition gate: the job exits early when the plugin is not running
  * Enterprise. Mirror of P1.4's pattern, with the exception that this
  * job's `execute()` does NOT throw on a sub-edition — it logs and
@@ -53,6 +58,28 @@ use yii\queue\RetryableJobInterface;
  */
 class SiemForwardJob extends BaseBatchedJob implements RetryableJobInterface
 {
+    // Public Properties
+    // =========================================================================
+
+    /**
+     * The highest audit-row id this campaign has already consumed, carried
+     * across the batches `BaseBatchedJob` spawns.
+     *
+     * Public and serializable on purpose: spawned batches are a `clone` of
+     * this job pushed back onto the queue, and `BaseBatchedJob::__sleep()`
+     * keeps only public properties. A private cursor would reset to null on
+     * every batch and the campaign would restart from the beginning.
+     *
+     * {@see UnforwardedAuditRowBatcher} explains why the campaign needs a
+     * watermark at all: `forwardedAt` is written as rows are delivered, so
+     * the forwardable result set shrinks by exactly what `itemOffset` grows.
+     *
+     * @var int|null
+     *
+     * @since 5.2.0
+     */
+    public ?int $afterId = null;
+
     // Public Methods
     // =========================================================================
 
@@ -139,7 +166,10 @@ class SiemForwardJob extends BaseBatchedJob implements RetryableJobInterface
      */
     protected function loadData(): UnforwardedAuditRowBatcher
     {
-        return new UnforwardedAuditRowBatcher();
+        return new UnforwardedAuditRowBatcher(
+            afterId: $this->afterId,
+            processedCount: $this->itemOffset,
+        );
     }
 
     /**
@@ -157,6 +187,12 @@ class SiemForwardJob extends BaseBatchedJob implements RetryableJobInterface
      * unwind the batch. One unreachable forwarder doesn't poison the
      * other forwarders' chances on the same row.
      *
+     * The campaign watermark advances first, before any forwarding is
+     * attempted, and for every row handed to this method regardless of
+     * outcome. A row left below the watermark would be re-offered by the
+     * next batch, and a row that no forwarder ever accepts would then be
+     * re-offered forever.
+     *
      * @param array<string, mixed> $item the audit-log row
      * @return void
      *
@@ -170,6 +206,7 @@ class SiemForwardJob extends BaseBatchedJob implements RetryableJobInterface
         }
 
         $rowId = (int)$item['id'];
+        $this->afterId = max($this->afterId ?? 0, $rowId);
         $service = PasswordPolicy::$plugin->getSiem();
         $forwarders = $service->getActiveForwarders();
 

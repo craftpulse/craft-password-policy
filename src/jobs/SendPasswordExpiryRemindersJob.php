@@ -32,9 +32,13 @@ use yii\queue\RetryableJobInterface;
  * the Notification Templates editor wrote.
  *
  * Pattern: Campaign-style. Each batch's `getSlice()` re-runs the
- * pending-recipients query, so retries are naturally idempotent —
- * already-notified users drop out via the `notification_log` exclusion
- * subquery.
+ * pending-recipients query, so a retried batch skips users who were
+ * already notified — their `notification_log` row drops them out of the
+ * exclusion subquery.
+ *
+ * That shrinking result set is also why pagination is by watermark rather
+ * than by offset. {@see ExpiringPasswordUserBatcher} carries the full
+ * explanation.
  *
  * Per-user soft-fail: a single send failure logs and continues; the
  * batch never bubbles, so one bad user can't poison the rest.
@@ -54,6 +58,26 @@ class SendPasswordExpiryRemindersJob extends BaseBatchedJob implements Retryable
      * @var int|null optional single-user mode for `--user=<id>` invocations
      */
     public ?int $userId = null;
+
+    /**
+     * The highest user id this campaign has already consumed, carried across
+     * the batches `BaseBatchedJob` spawns.
+     *
+     * Public and serializable on purpose: spawned batches are a `clone` of
+     * this job pushed back onto the queue, and `BaseBatchedJob::__sleep()`
+     * keeps only public properties. A private cursor would reset to null on
+     * every batch and the campaign would restart from the beginning.
+     *
+     * {@see ExpiringPasswordUserBatcher} explains why the campaign needs a
+     * watermark at all: a `notification_log` row is written as each reminder
+     * is sent, so the recipient result set shrinks by exactly what
+     * `itemOffset` grows.
+     *
+     * @var int|null
+     *
+     * @since 5.2.0
+     */
+    public ?int $afterId = null;
 
     // Public Methods
     // =========================================================================
@@ -132,7 +156,11 @@ class SendPasswordExpiryRemindersJob extends BaseBatchedJob implements Retryable
      */
     protected function loadData(): ExpiringPasswordUserBatcher
     {
-        return new ExpiringPasswordUserBatcher($this->userId);
+        return new ExpiringPasswordUserBatcher(
+            userId: $this->userId,
+            afterId: $this->afterId,
+            processedCount: $this->itemOffset,
+        );
     }
 
     /**
@@ -141,6 +169,11 @@ class SendPasswordExpiryRemindersJob extends BaseBatchedJob implements Retryable
      * Soft-fail: catch every Throwable so one bad user doesn't poison the
      * batch. The error is logged via the plugin's sensitive-key-stripping
      * logger and processing continues.
+     *
+     * The campaign watermark advances first, before the send is attempted,
+     * and for every user handed to this method regardless of outcome. A user
+     * left below the watermark would be re-offered by the next batch, and a
+     * user whose send permanently fails would then be re-offered forever.
      *
      * @param User $item
      * @return void
@@ -153,6 +186,8 @@ class SendPasswordExpiryRemindersJob extends BaseBatchedJob implements Retryable
         if (!$item instanceof User) {
             return;
         }
+
+        $this->afterId = max($this->afterId ?? 0, (int)$item->id);
 
         try {
             $daysRemaining = $this->_daysRemaining($item);

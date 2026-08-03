@@ -26,9 +26,13 @@ use yii\queue\RetryableJobInterface;
  * (`report` | `notify` | `suspend`) to each.
  *
  * Pattern: mirrors {@see SendPasswordExpiryRemindersJob}. Each batch's
- * `getSlice()` re-runs the detection query, so retries are naturally
- * idempotent — a user suspended in an earlier batch drops out of the next
- * slice (the detection query excludes suspended accounts).
+ * `getSlice()` re-runs the detection query, so a retried batch skips
+ * accounts the `suspend` action already handled — the detection query
+ * excludes suspended accounts.
+ *
+ * That shrinking result set is also why pagination is by watermark rather
+ * than by offset. {@see InactiveAccountBatcher} carries the full
+ * explanation.
  *
  * Per-user soft-fail: a single action failure logs and continues; the batch
  * never bubbles, so one bad user can't poison the rest.
@@ -63,6 +67,26 @@ class ScanInactiveAccountsJob extends BaseBatchedJob implements RetryableJobInte
      *     `inactiveAction` setting when null
      */
     public ?string $action = null;
+
+    /**
+     * The highest user id this campaign has already consumed, carried across
+     * the batches `BaseBatchedJob` spawns.
+     *
+     * Public and serializable on purpose: spawned batches are a `clone` of
+     * this job pushed back onto the queue, and `BaseBatchedJob::__sleep()`
+     * keeps only public properties. A private cursor would reset to null on
+     * every batch and the campaign would restart from the beginning.
+     *
+     * {@see InactiveAccountBatcher} explains why the campaign needs a
+     * watermark at all: under the `suspend` action the detection result set
+     * shrinks by exactly what `itemOffset` grows, and under `report` and
+     * `notify` it doesn't shrink at all.
+     *
+     * @var int|null
+     *
+     * @since 5.2.0
+     */
+    public ?int $afterId = null;
 
     // Public Methods
     // =========================================================================
@@ -154,7 +178,11 @@ class ScanInactiveAccountsJob extends BaseBatchedJob implements RetryableJobInte
      */
     protected function loadData(): InactiveAccountBatcher
     {
-        return new InactiveAccountBatcher($this->_thresholdDays());
+        return new InactiveAccountBatcher(
+            thresholdDays: $this->_thresholdDays(),
+            afterId: $this->afterId,
+            processedCount: $this->itemOffset,
+        );
     }
 
     /**
@@ -163,6 +191,12 @@ class ScanInactiveAccountsJob extends BaseBatchedJob implements RetryableJobInte
      * Soft-fail: catch every Throwable so one bad user doesn't poison the
      * batch. The error is logged via the plugin's sensitive-key-stripping
      * logger and processing continues.
+     *
+     * The campaign watermark advances first, before the action is applied,
+     * and for every account handed to this method regardless of outcome. An
+     * account left below the watermark would be re-offered by the next batch,
+     * which under the non-mutating `report` and `notify` actions means
+     * re-offered forever.
      *
      * @param User $item
      * @return void
@@ -175,6 +209,8 @@ class ScanInactiveAccountsJob extends BaseBatchedJob implements RetryableJobInte
         if (!$item instanceof User) {
             return;
         }
+
+        $this->afterId = max($this->afterId ?? 0, (int)$item->id);
 
         try {
             PasswordPolicy::$plugin->getInactiveAccounts()

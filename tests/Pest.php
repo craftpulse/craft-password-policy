@@ -45,6 +45,7 @@ use craftpulse\passwordpolicy\tests\TestCase;
 uses(MigrationTestCase::class)->in('Integration/Migrations');
 uses(MultiSiteTestCase::class)->in('Integration/MultiSite');
 uses(TestCase::class)->in(
+    'Integration/Batchers',
     'Integration/ConditionRules',
     'Integration/Console',
     'Integration/Controllers',
