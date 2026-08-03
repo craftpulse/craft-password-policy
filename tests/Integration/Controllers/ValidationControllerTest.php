@@ -29,6 +29,7 @@
  * @since     5.2.0
  */
 
+use craft\validators\UserPasswordValidator;
 use craft\web\Response;
 use craftpulse\passwordpolicy\controllers\ValidationController;
 use craftpulse\passwordpolicy\PasswordPolicy;
@@ -36,6 +37,7 @@ use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
 use craftpulse\passwordpolicy\tests\Support\HibpClientFake;
 use craftpulse\passwordpolicy\tests\Support\UserStub;
 use craftpulse\passwordpolicy\tests\Support\WebRequestStub;
+use yii\web\TooManyRequestsHttpException;
 
 // =============================================================================
 // Setup
@@ -50,6 +52,7 @@ beforeEach(function() {
     $this->originalUser = Craft::$app->getUser();
     $this->originalEdition = $this->plugin->edition;
     $this->originalHibp = $this->settings->hibp;
+    $this->originalMaxLength = $this->settings->maxLength;
     $this->originalHibpClient = $this->plugin->getHibpClient();
 
     // Default ValidationController context: web request, anonymous user,
@@ -76,6 +79,7 @@ afterEach(function() {
     Craft::$app->set('user', $this->originalUser);
     $this->plugin->edition = $this->originalEdition;
     $this->settings->hibp = $this->originalHibp;
+    $this->settings->maxLength = $this->originalMaxLength;
     $this->plugin->set('hibpClient', $this->originalHibpClient);
 });
 
@@ -91,6 +95,18 @@ function invokeValidate(): array
     $data = $response->data;
 
     return $data;
+}
+
+/**
+ * Runs the action through `Controller::runAction()` so `beforeAction()` fires
+ * and the `behaviors()` action filters attach. The rate limiter is one of those
+ * filters, so it is invisible to `invokeValidate()` above.
+ */
+function runValidateAction(): mixed
+{
+    $controller = new ValidationController('validation', PasswordPolicy::$plugin);
+
+    return $controller->runAction('validate');
 }
 
 // =============================================================================
@@ -265,6 +281,10 @@ it('clamps the authenticated session context to 254 characters', function() {
 // =============================================================================
 // HIBP integration — fail-open + breach detection through the controller
 // =============================================================================
+//
+// Every test below authenticates first. The live breach lookup is an
+// authenticated-only path since 5.2.0; the anonymous contract is pinned in its
+// own section further down.
 
 it('omits the hibp rule when settings.hibp is off (default)', function() {
     $this->settings->hibp = false;
@@ -284,6 +304,7 @@ it('emits hibp rule with pass=null when settings.hibp is on but the client repor
     // Fail-open: client returns null → service returns null → controller
     // emits a rule with `pass: null` so the client UI can render
     // "couldn't check" rather than green/red.
+    $this->userStub->setIdentity(UserFactory::nonAdmin());
     $this->settings->hibp = true;
     $this->hibpFake->nextResponse = null;
 
@@ -300,6 +321,7 @@ it('emits hibp rule with pass=null when settings.hibp is on but the client repor
 });
 
 it('emits hibp rule with pass=true when the client returns clean response (no suffix match)', function() {
+    $this->userStub->setIdentity(UserFactory::nonAdmin());
     $this->settings->hibp = true;
     $this->hibpFake->setCleanResponse();
 
@@ -316,6 +338,7 @@ it('emits hibp rule with pass=true when the client returns clean response (no su
 });
 
 it('emits hibp rule with pass=false when the client returns a matching suffix', function() {
+    $this->userStub->setIdentity(UserFactory::nonAdmin());
     $this->settings->hibp = true;
 
     // Build a known SHA-1 hash and feed it back through the fake.
@@ -340,6 +363,7 @@ it('only sends the 5-char SHA-1 prefix to the HIBP client (k-anonymity)', functi
     // it at the service level, but a refactor that bypasses the service
     // (e.g. adds a controller-level check) shouldn't accidentally leak
     // the full hash.
+    $this->userStub->setIdentity(UserFactory::nonAdmin());
     $this->settings->hibp = true;
     $this->hibpFake->setCleanResponse();
 
@@ -354,6 +378,165 @@ it('only sends the 5-char SHA-1 prefix to the HIBP client (k-anonymity)', functi
 
     expect($this->hibpFake->queryPrefixes)->toBe([$expectedPrefix])
         ->and($this->hibpFake->queryPrefixes[0])->toMatch('/^[0-9A-F]{5}$/');
+});
+
+// =============================================================================
+// HIBP — anonymous callers never reach the network
+// =============================================================================
+//
+// The backoff this protects is site-wide and lasts up to
+// `GuzzleHibpClient::MAX_BACKOFF_SECONDS` (24 hours). While it is set,
+// `PasswordService::hibp()` returns null for EVERY caller and `HibpValidator`
+// fail-opens under the default `hibpFailMode = 'open'`, so an unauthenticated
+// caller able to drive HIBP to 429 through this endpoint would switch breach
+// checking off across the whole site, on the save path and on login, for a day.
+//
+// The per-IP rate limit cannot substitute for this. The backoff is one shared
+// bucket reached through the site's single egress IP, so a handful of source
+// addresses stays under any per-IP limit and still trips it.
+
+it('never queries the HIBP client on an anonymous request', function() {
+    // No identity set: the default context in `beforeEach` is anonymous.
+    $this->settings->hibp = true;
+    $this->hibpFake->setCleanResponse();
+
+    $this->request->stubBodyParams = [
+        'password' => 'ZQ7nUJfp8d!anonymous-probe',
+    ];
+
+    invokeValidate();
+
+    // The client is what sets the 429 backoff, so a client that was never
+    // called is a backoff that can never be induced from here.
+    expect($this->hibpFake->queryPrefixes)->toBeEmpty();
+});
+
+it('reports the hibp rule as unverified rather than passed for an anonymous caller', function() {
+    // Emitting the rule with `pass = null` keeps the requirement visible as an
+    // in-progress state. Dropping it would tell the visitor there is no breach
+    // requirement, and there is: `HibpValidator` still runs on save.
+    $this->settings->hibp = true;
+    $this->hibpFake->setCleanResponse();
+
+    $this->request->stubBodyParams = [
+        'password' => 'ZQ7nUJfp8d!anonymous-probe',
+    ];
+
+    $payload = invokeValidate();
+
+    $hibpRule = collect($payload['rules'])->firstWhere('key', 'hibp');
+
+    expect($hibpRule)->not->toBeNull()
+        ->and($hibpRule['pass'])->toBeNull()
+        ->and($payload['pendingKeys'])->toContain('hibp')
+        // Unverified is not a failure, so it stays out of the error map.
+        ->and($payload['errorsByKey'])->not->toHaveKey('hibp');
+});
+
+it('still queries the HIBP client once a session exists', function() {
+    // The guard is about anonymity, not about switching the feature off.
+    $this->userStub->setIdentity(UserFactory::nonAdmin());
+    $this->settings->hibp = true;
+    $this->hibpFake->setCleanResponse();
+
+    $this->request->stubBodyParams = [
+        'password' => 'ZQ7nUJfp8d!anonymous-probe',
+    ];
+
+    invokeValidate();
+
+    expect($this->hibpFake->queryPrefixes)->toHaveCount(1);
+});
+
+// =============================================================================
+// Input length ceiling — bounds the CPU an anonymous request can buy
+// =============================================================================
+
+it('caps analysed plaintext at Craft’s own maximum password length', function() {
+    // zxcvbn's matchers are roughly quadratic in input length, so the ceiling
+    // is what keeps one request from costing hundreds of times a real
+    // password's worth of CPU. Craft refuses to save anything longer, so
+    // analysing past this is work spent on a password that can never exist.
+    $reflection = new ReflectionClass(ValidationController::class);
+    $cap = $reflection->getConstant('MAX_PASSWORD_LENGTH');
+
+    expect($cap)->toBe(UserPasswordValidator::MAX_PASSWORD_LENGTH)
+        ->and($cap)->toBeLessThan(4096);
+});
+
+it('judges the maxLength rule on the submitted length, not the clamped one', function() {
+    // The clamp is a cost control and must not become a correctness hole: a
+    // caller submitting more than the configured maximum still has to be told
+    // so, even when the clamp already discarded the tail.
+    $this->settings->maxLength = 200;
+
+    $this->request->stubBodyParams = [
+        'password' => str_repeat('aB3!', 75), // 300 characters
+    ];
+
+    $payload = invokeValidate();
+
+    $maxRule = collect($payload['rules'])->firstWhere('key', 'maxLength');
+
+    expect($maxRule)->not->toBeNull()
+        ->and($maxRule['pass'])->toBeFalse()
+        ->and($payload['isValid'])->toBeFalse();
+});
+
+// =============================================================================
+// Rate limit — the endpoint refuses a sustained caller
+// =============================================================================
+
+it('refuses a caller that exhausts its per-IP burst', function() {
+    // Driven through `runAction()` rather than `actionValidate()` because the
+    // limiter is an action filter on `behaviors()`: calling the action method
+    // directly bypasses `beforeAction()` and would never meter anything.
+    Craft::$app->getCache()->flush();
+    $this->request->stubUserIp = '198.51.100.10';
+    $this->request->stubBodyParams = ['password' => 'aB3!xY9z'];
+
+    $accepted = 0;
+    $refused = false;
+
+    // The bucket refills at limit/window per second, so a run that takes a few
+    // seconds legitimately earns a few extra requests. Loop past the burst and
+    // assert on where it stops rather than on an exact request number.
+    for ($i = 0; $i < ValidationController::RATE_LIMIT * 3; $i++) {
+        try {
+            runValidateAction();
+            $accepted++;
+        } catch (TooManyRequestsHttpException) {
+            $refused = true;
+            break;
+        }
+    }
+
+    expect($refused)->toBeTrue()
+        // And it didn't refuse a legitimate opening burst: one debounced form
+        // fill is roughly twenty requests.
+        ->and($accepted)->toBeGreaterThanOrEqual(ValidationController::RATE_LIMIT);
+});
+
+it('meters each IP separately', function() {
+    // A shared limit across all callers would let one attacker lock every
+    // visitor out of live validation.
+    Craft::$app->getCache()->flush();
+    $this->request->stubBodyParams = ['password' => 'aB3!xY9z'];
+
+    $this->request->stubUserIp = '198.51.100.20';
+
+    for ($i = 0; $i < ValidationController::RATE_LIMIT * 3; $i++) {
+        try {
+            runValidateAction();
+        } catch (TooManyRequestsHttpException) {
+            break;
+        }
+    }
+
+    // Same process, same action, different source address: full bucket.
+    $this->request->stubUserIp = '198.51.100.21';
+
+    expect(fn() => runValidateAction())->not->toThrow(TooManyRequestsHttpException::class);
 });
 
 // =============================================================================

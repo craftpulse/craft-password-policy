@@ -12,12 +12,15 @@ namespace craftpulse\passwordpolicy\controllers;
 
 use Craft;
 use craft\elements\User;
+use craft\validators\UserPasswordValidator;
 use craft\web\Controller;
+use craftpulse\passwordpolicy\filters\IpRateLimit;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\validators\CommonPasswordValidator;
 use craftpulse\passwordpolicy\validators\MinimumCharacterTypesValidator;
 use craftpulse\passwordpolicy\validators\RepeatedCharsValidator;
 use craftpulse\passwordpolicy\validators\SequentialCharsValidator;
+use yii\filters\RateLimiter;
 use yii\web\Response;
 
 /**
@@ -25,6 +28,18 @@ use yii\web\Response;
  *
  * AJAX endpoint for real-time password validation. Returns per-rule
  * pass/fail results for the front-end validation checklist.
+ *
+ * The endpoint is anonymous-allowed because registration and reset forms
+ * need it before a session exists, which makes it the plugin's most
+ * exposed surface and the reason for the three limits below:
+ *
+ *  - A per-IP rate limit ({@see self::behaviors()}), because the response
+ *    is CPU-bound.
+ *  - A plaintext length ceiling ({@see self::MAX_PASSWORD_LENGTH}), because
+ *    zxcvbn's matchers are roughly quadratic in input length.
+ *  - No live breach lookup for anonymous callers
+ *    ({@see self::actionValidate()}), because a shared upstream rate limit
+ *    can't be defended by a per-IP one.
  *
  * @author      CraftPulse
  * @package     PasswordPolicy
@@ -36,14 +51,41 @@ class ValidationController extends Controller
     // =========================================================================
 
     /**
-     * Hard cap on the plaintext length this endpoint will analyse. zxcvbn-php
-     * and the SHA-1 prefix hash both run over the full string; an anonymous
-     * caller could otherwise POST a multi-megabyte `password` and burn CPU.
-     * 4096 is far beyond any legitimate password yet bounds the work.
+     * Burst capacity per IP on `actionValidate()`, refilling over
+     * {@see self::RATE_LIMIT_WINDOW} seconds.
+     *
+     * Sized off the reference client, which debounces at 250ms: continuous
+     * typing produces at most four requests a second, and one form fill runs
+     * to roughly twenty. Sixty absorbs two or three fills back to back and
+     * then meters the IP to one request a second, which is far below what it
+     * takes to make this endpoint's CPU cost matter. A shared NAT that
+     * exhausts the bucket loses live feedback, not the ability to register:
+     * the save-path validators are the authoritative gate and are untouched
+     * by this.
      *
      * @since 5.2.0
      */
-    private const MAX_PASSWORD_LENGTH = 4096;
+    public const RATE_LIMIT = 60;
+
+    /**
+     * Seconds {@see self::RATE_LIMIT} refills over.
+     *
+     * @since 5.2.0
+     */
+    public const RATE_LIMIT_WINDOW = 60;
+
+    /**
+     * Hard cap on the plaintext length this endpoint will analyse.
+     *
+     * Pinned to Craft's own ceiling: `craft\validators\UserPasswordValidator`
+     * refuses to save anything longer, so analysing past it is work spent on a
+     * password that can never exist. It matters because zxcvbn's matchers are
+     * roughly O(n squared), so the previous 4096-character cap let one
+     * anonymous request cost several hundred times what a real password does.
+     *
+     * @since 5.2.0
+     */
+    private const MAX_PASSWORD_LENGTH = UserPasswordValidator::MAX_PASSWORD_LENGTH;
 
     // Public Properties
     // =========================================================================
@@ -57,7 +99,52 @@ class ValidationController extends Controller
     // =========================================================================
 
     /**
+     * @inheritdoc
+     *
+     * Attaches a per-IP rate limit to `validate`. The endpoint is
+     * anonymous-allowed and its response is CPU-bound (zxcvbn plus every
+     * configured validator), so without a limit a single caller can spend a
+     * site's CPU budget from a laptop.
+     *
+     * Yii's `RateLimiter` meters `Yii::$app->user->getIdentity()` by default
+     * and does nothing when there isn't one, which on an anonymous endpoint is
+     * every request. The identity is therefore supplied explicitly, keyed on
+     * IP, and it applies to authenticated callers too: a session is not
+     * evidence of restraint.
+     *
+     * Rate-limit headers are suppressed, matching Craft core's own limited
+     * anonymous endpoint (`UsersController::behaviors()`). There is no reason
+     * to hand an attacker the exact shape of the bucket.
+     *
+     * @return array<string, mixed>
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function behaviors(): array
+    {
+        return parent::behaviors() + [
+            'rateLimiter' => [
+                'class' => RateLimiter::class,
+                'only' => ['validate'],
+                'enableRateLimitHeaders' => false,
+                'user' => fn() => new IpRateLimit([
+                    'limit' => self::RATE_LIMIT,
+                    'window' => self::RATE_LIMIT_WINDOW,
+                    'keyPrefix' => 'pp:validate',
+                    'ip' => Craft::$app->getRequest()->getUserIP() ?? 'unknown',
+                ]),
+            ],
+        ];
+    }
+
+    /**
      * Validates a password against the current policy and returns per-rule results.
+     *
+     * Anonymous callers get no live breach lookup; the `hibp` rule comes back
+     * with `pass = null` for them. The inline comment on that branch carries
+     * the reasoning, and `HibpValidator` on the save path is unaffected either
+     * way.
      *
      * @return Response
      *
@@ -74,12 +161,19 @@ class ValidationController extends Controller
         // Coerce to string — `password[]=x` would otherwise hand
         // `getRequiredBodyParam` an array and 500 an anonymous endpoint (a
         // raw `(string)` cast would emit an "Array to string conversion"
-        // warning). Non-scalar input collapses to an empty string. Clamp the
-        // length defensively before any rule, hash, or zxcvbn analysis.
+        // warning). Non-scalar input collapses to an empty string.
         $passwordParam = $request->getRequiredBodyParam('password');
         $password = is_scalar($passwordParam) ? (string)$passwordParam : '';
 
-        if (mb_strlen($password) > self::MAX_PASSWORD_LENGTH) {
+        // The submitted length is captured BEFORE the clamp, so the length
+        // rules below judge what the caller actually sent. Only the expensive
+        // analysis (pattern validators, SHA-1 prefix, zxcvbn) runs on the
+        // clamped copy: those are quadratic-ish in input length and the
+        // discarded tail belongs to a password Craft would refuse to save
+        // anyway.
+        $length = mb_strlen($password);
+
+        if ($length > self::MAX_PASSWORD_LENGTH) {
             $password = mb_substr($password, 0, self::MAX_PASSWORD_LENGTH);
         }
 
@@ -100,11 +194,11 @@ class ValidationController extends Controller
 
         $rules = [];
 
-        // Min length — `mb_strlen` so multibyte passwords count code points,
-        // not bytes (consistent with Yii's `string` validator on the save path).
+        // Min length — counted in code points, not bytes, so multibyte
+        // passwords agree with Yii's `string` validator on the save path.
         $rules[] = [
             'key' => 'minLength',
-            'pass' => mb_strlen($password) >= $settings->minLength,
+            'pass' => $length >= $settings->minLength,
             'message' => Craft::t('password-policy', 'At least {min} characters', ['min' => $settings->minLength]),
         ];
 
@@ -112,7 +206,7 @@ class ValidationController extends Controller
         if ($settings->maxLength > 0) {
             $rules[] = [
                 'key' => 'maxLength',
-                'pass' => mb_strlen($password) <= $settings->maxLength,
+                'pass' => $length <= $settings->maxLength,
                 'message' => Craft::t('password-policy', 'No more than {max} characters', ['max' => $settings->maxLength]),
             ];
         }
@@ -192,9 +286,31 @@ class ValidationController extends Controller
             ];
         }
 
-        // HIBP check (async-friendly — returns null if still checking)
+        // HIBP check (async-friendly — pass is null when the answer is unknown).
+        //
+        // Anonymous callers never reach the network. A 429 from HIBP sets a
+        // site-wide backoff for up to 24 hours, during which `hibp()` returns
+        // null for EVERY caller and `HibpValidator` fail-opens under the
+        // default `hibpFailMode = 'open'` — so an unauthenticated caller who
+        // can drive this endpoint can switch breach checking off across the
+        // whole site, on the real password-save path and on login, for a day.
+        // The per-IP rate limit above does not close that: the backoff is one
+        // shared global bucket reached through the site's single egress IP, so
+        // a handful of source addresses stays under any per-IP limit and still
+        // trips it. The only structural fix is to keep unauthenticated input
+        // off the wire. It also stops the endpoint being a free HIBP proxy
+        // through the customer's egress IP.
+        //
+        // The rule is still emitted with `pass = null`, the same shape the
+        // client already renders as an unverified in-progress state. Dropping
+        // it instead would tell a visitor there is no breach requirement at
+        // all, and there is: `HibpValidator` runs on save regardless of what
+        // this hint said, so an anonymous registrant who picks a breached
+        // password is still refused. What degrades is the live hint, not the
+        // control.
         if ($settings->hibp) {
-            $result = $plugin->getPasswords()->hibp($password);
+            $isAnonymous = Craft::$app->getUser()->getIdentity() === null;
+            $result = $isAnonymous ? null : $plugin->getPasswords()->hibp($password);
             $rules[] = [
                 'key' => 'hibp',
                 'pass' => $result === null ? null : !$result,
