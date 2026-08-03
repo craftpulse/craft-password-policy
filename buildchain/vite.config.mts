@@ -30,7 +30,10 @@ export default defineConfig(({command}) => ({
       filter: /\.(js|mjs|json|css|map)$/i
     }),
     visualizer({
-      filename: '../src/web/assets/dist/stats.html',
+      // Stays inside buildchain/ and out of the published asset tree: anything
+      // written under src/web/assets/dist/ ends up in the Composer dist archive
+      // and in every install's vendor/ directory.
+      filename: path.resolve(__dirname, './stats.html'),
       template: 'treemap',
       sourcemap: true,
     }),
