@@ -83,17 +83,26 @@ Lite/Pro installs cannot save these via the CP: the settings save-action strip b
 | `geoIpEnabled` | `bool` | `false` | Resolve the country of each audit event's IP. Country code only; the raw IP is never stored. Carries a CC BY 4.0 attribution obligation, see [IP geolocation](./features/geoip.md). |
 | `adminAlertEmail` | `?string` | `null` | Email address (env var) for admin security alerts. |
 | `adminAlertEvents` | `?array` | `null` | Audit event types that trigger admin alerts. |
-| `siemEnabled` | `bool` | `false` | Forward audit events to SIEM. |
-| `siemDestinationType` | `string` | `'syslog'` | `'syslog'`, `'http'`, or `'event'`. |
-| `siemEndpointUrl` | `?string` | `null` | SIEM HTTP endpoint URL (env var). |
-| `siemAuthType` | `string` | `'bearer'` | `'bearer'`, `'basic'`, or `'header'`. |
-| `siemAuthToken` | `?string` | `null` | SIEM auth token (env var, never echoed after save). |
-| `siemCustomHeaders` | `?array` | `null` | Custom SIEM HTTP headers. |
-| `siemIpHandling` | `string` | `'masked'` | `'masked'`, `'hashed'`, `'raw'`, or `'excluded'`. |
-| `siemDeviceHandling` | `string` | `'label'` | `'label'` or `'excluded'`. |
-| `webhooksEnabled` | `bool` | `false` | Enable outbound HMAC-signed webhooks. |
-| `webhooks` | `array` | `[]` | Webhook configurations. |
 | `apiEnabled` | `bool` | `false` | Enable the read-only REST API. No CP field: set it in `config/password-policy.php`. See [REST API](./reference/rest-api.md). |
+
+#### Declared but not consumed
+
+The settings below are declared on the settings model and stripped from a sub-Enterprise save, but nothing in the plugin reads them. They are leftovers from the 5.2.0 development line, when SIEM forwarding and webhook delivery were configured as one global destination. Both features shipped as multi-destination registries instead, and each destination carries its own configuration row.
+
+Setting any of these has no effect. They are listed here so the table matches the settings model, not because they do anything.
+
+| Setting | Type | Default | What actually applies instead |
+|---------|------|---------|-------------------------------|
+| `siemEnabled` | `bool` | `false` | Nothing gates forwarding globally. A forwarder forwards when its own **Enabled** switch is on and its circuit breaker is closed, on an Enterprise install. See [SIEM forwarders](./features/siem-forwarders.md). |
+| `siemDestinationType` | `string` | `'syslog'` | Each forwarder row's own protocol (`syslog-tls` or `http`). |
+| `siemEndpointUrl` | `?string` | `null` | Each forwarder row's own URL, or host and port for syslog. |
+| `siemAuthType` | `string` | `'bearer'` | Each forwarder row's own auth headers. |
+| `siemAuthToken` | `?string` | `null` | Each forwarder row's own auth headers, encrypted at rest. |
+| `siemCustomHeaders` | `?array` | `null` | Each forwarder row's own headers. |
+| `siemIpHandling` | `string` | `'masked'` | Nothing. The audit log stores `ipHash` only, so there is no raw IP for a forwarder to shape. |
+| `siemDeviceHandling` | `string` | `'label'` | Nothing. |
+| `webhooksEnabled` | `bool` | `false` | Nothing gates delivery globally. An endpoint receives when its own **Enabled** switch is on and its circuit breaker is closed, on an Enterprise install. See [Webhooks](./features/webhooks.md). |
+| `webhooks` | `array` | `[]` | The `passwordpolicy_webhook_endpoints` table, managed from **Password Policy → Webhooks** or from `password-policy/webhook/create`. |
 
 ## Compliance notes
 

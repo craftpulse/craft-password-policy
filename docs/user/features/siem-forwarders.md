@@ -9,7 +9,8 @@ This page covers configuring forwarders, the supported protocols, the at-least-o
 1. Open **Password Policy → Forwarders → New forwarder** in the control panel.
 2. Pick a protocol: **Syslog over TLS** for traditional SIEMs, or **HTTP** for SaaS log platforms.
 3. Configure the destination URL + auth headers (for HTTP) or host + port (for syslog).
-4. Save. The first audit-row write after save triggers a forwarder run that delivers the unforwarded backlog.
+4. Save.
+5. Put `password-policy/siem/run` on a cron schedule and make sure a queue runner is running. Nothing is forwarded until both are in place, see [Console commands](#console-commands) below.
 
 The forwarder works on a watermark model: every audit row tracks whether it's been delivered (`forwardedAt` column). New rows are delivered on the next forwarder run; backlogs are caught up automatically.
 
