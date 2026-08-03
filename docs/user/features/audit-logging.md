@@ -95,7 +95,7 @@ Both surface the same `event → allowed-keys` mapping as static evidence for au
 
 ## Hash chain (G1)
 
-Every row stores the SHA-256 of its canonical JSON plus the previous row's `rowHash`. Tampering with any historical row breaks the chain at that point, detectable by the [verifier](#verifier-cli).
+Every row stores the SHA-256 of its canonical JSON plus the previous row's `rowHash`. Tampering with any historical row breaks the chain at that point, detectable by the [verifier](#verifier-cli-g2).
 
 ### Canonical payload
 

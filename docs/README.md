@@ -69,8 +69,7 @@ Each feature has its own page covering what it does, how to configure it, and ho
 
 ## How the docs are organised
 
-- **`docs/user/`** is for end users and integrators: anything we'd publish on the Plugin Store or hand to a partner. Plain Markdown, no badges, no fancy tooling.
-- **`docs/internal/`** is for plugin maintainers and AI agents. It carries the handover doc, master plan, manual-test register, ideas log. Skip it unless you're contributing to the plugin itself.
+`docs/user/` is for end users and integrators: anything we'd publish on the Plugin Store or hand to a partner. Plain Markdown, no badges, no fancy tooling.
 
 ## See also
 

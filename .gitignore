@@ -36,9 +36,11 @@
 config.codekit3
 prepros-6.config
 
-# CLAUDE
-.claude/settings.local.json
-.claude/plans/
+# LOCAL TOOLING
+/.claude/
+/CLAUDE.md
 
-# AI-assisted smoke-run checklists, local only
+# Internal working records: plans, progress logs, handovers, research,
+# manual-test and smoke-run registers. Never tracked, never published.
+/internal-docs/
 /smoke-testing/

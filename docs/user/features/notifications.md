@@ -129,7 +129,7 @@ Click any row to see the rendered subject, the full body, the error (if any), an
 
 The Resend button re-renders the template **from the current state**, not a snapshot replay. If you've edited the template since the original send, the resend reflects your edits. The original row's `notificationType`, `userId`, and `recipientEmail` are reused; everything else is regenerated.
 
-`new-device-alert` and `admin-security-alert` are not resendable in 5.2.0: these types require their original event payload (`deviceLabel`, `maskedIp`, `event`, `context`) to re-render, and the plugin doesn't snapshot those inputs. Clicking Resend on a row of either type returns a no-op. (A future release may add `templateVarsJson` to unlock resend for these types, captured in `docs/internal/ideas.md`.)
+`new-device-alert` and `admin-security-alert` are not resendable in 5.2.0: these types require their original event payload (`deviceLabel`, `maskedIp`, `event`, `context`) to re-render, and the plugin doesn't snapshot those inputs. Clicking Resend on a row of either type returns a no-op.
 
 ### Retention
 

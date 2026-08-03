@@ -4,7 +4,7 @@ Every table the plugin creates, with columns, indexes, foreign keys, and the Cra
 
 The schema is created by `Install.php` on fresh install and by dated migrations on upgrade. Both paths produce the same schema and are idempotent, re-running them on an existing schema is a no-op.
 
-Current schema version: `2.11.0`.
+Current schema version: `2.18.0`.
 
 ## Element-backed tables
 
@@ -274,7 +274,7 @@ When uninstalling the plugin or dropping tables manually, drop in reverse FK-dep
 
 ## Schema-version tracking
 
-`PasswordPolicy::$schemaVersion` is the source of truth, `2.11.0` as of release. Increment on every structural change (column add, table add, index change). Used by Craft to determine "needs craft up" state.
+`PasswordPolicy::$schemaVersion` is the source of truth, `2.18.0` as of release. Increment on every structural change (column add, table add, index change). Used by Craft to determine "needs craft up" state.
 
 ## Migration filenames
 

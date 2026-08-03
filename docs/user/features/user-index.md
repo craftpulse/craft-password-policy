@@ -34,7 +34,7 @@ When multiple states apply, the composite `passwordpolicy_status` badge shows th
 6. **never_changed** (gray): no history row exists for the user
 7. **ok** (green): none of the above
 
-The 90-day breached window and 7-day expiring window are hardcoded for 5.2.0; promotion to plugin settings is captured in `docs/internal/ideas.md` for a 5.2.x follow-up.
+The 90-day breached window and 7-day expiring window are fixed and not configurable.
 
 ## Sort options
 

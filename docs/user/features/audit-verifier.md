@@ -170,7 +170,7 @@ The verifier proves cryptographic chain integrity at the time of verification. I
 
 For tamper detection beyond the chain itself, combine verification with:
 
-- **External anchoring**: periodically hash the latest `rowHash` and submit it to a public timestamp authority (RFC 3161 TSA, S3 Object Lock, blockchain anchor). The plugin doesn't ship this in 5.2.0; it's captured in `docs/internal/ideas.md` as a 5.3+ candidate.
+- **External anchoring**: periodically hash the latest `rowHash` and submit it to a public timestamp authority (RFC 3161 TSA, S3 Object Lock, blockchain anchor). The plugin doesn't ship this.
 - **SIEM forwarding**: see [SIEM forwarders](./siem-forwarders.md). Forwarded rows in a SIEM you don't control are tamper-resistant once received; the verifier's job is to prove the source-side chain hasn't been tampered with after the fact.
 - **DB-level access controls**: restrict `INSERT/UPDATE/DELETE` on `passwordpolicy_audit_log` to the application user only. Audit DB privileges separately.
 

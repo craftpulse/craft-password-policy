@@ -1,22 +1,20 @@
 # Compliance Frameworks
 
-This page maps every Pro and Enterprise feature in the plugin to specific clauses across six compliance frameworks. The citations are anchors for an operator's evidence package, they're not certifications. The plugin provides specific technical measures that controllers can rely on as part of their framework obligations.
+This page maps every Pro and Enterprise feature in the plugin to specific clauses across seven compliance frameworks. The citations are anchors for an operator's evidence package, they're not certifications. The plugin provides specific technical measures that controllers can rely on as part of their framework obligations.
 
 > ::: warning Phrasing discipline
 > Never write "compliant with [framework]" or "[framework]-certified", certification requires an auditor, not a plugin. Write "provides specific technical measures that controllers can rely on as part of their [framework] obligations" or "evidence and controls aligned with [specific clause]". Cite clause numbers, not framework names alone: auditors read the clause text, not the marketing.
 > :::
 
-The six frameworks covered:
+The seven frameworks covered:
 
 - [NIS2 Directive (EU 2022/2555)](#nis2)
 - [NIST SP 800-63B Rev. 4](#nist-800-63b-rev-4)
 - [PCI DSS v4.0.1](#pci-dss-v401)
 - [CIS Controls v8](#cis-controls-v8)
-- [ISO/IEC 27001:2022 + 27002:2022](#iso-iec-270012022)
+- [ISO/IEC 27001:2022 + 27002:2022](#isoiec-270012022)
 - [SOC 2 (AICPA TSC 2017 + 2022 Revised Points of Focus)](#soc-2)
 - [GDPR (Regulation EU 2016/679)](#gdpr)
-
-For Plugin Store positioning + competitive landscape framing, see also `docs/internal/competitive-landscape.md` (internal docs).
 
 ## Quick reference matrix
 
