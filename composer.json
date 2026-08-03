@@ -30,7 +30,7 @@
         "php": "^8.2.0",
         "bjeavons/zxcvbn-php": "^1.4",
         "craftcms/cms": "^5.9.15",
-        "craftpulse/craft-audit-kit": "^1.1.1",
+        "craftpulse/craft-audit-kit": "^1.1.2",
         "geoip2/geoip2": "^3.0",
         "nesbot/carbon": "^2.0.0",
         "nystudio107/craft-plugin-vite": "^5.0.0"

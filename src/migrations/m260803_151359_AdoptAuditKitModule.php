@@ -44,6 +44,15 @@ use craftpulse\auditkit\helpers\PluginAdoption;
  * turned automatic YAML writing off for the whole migration; the stored config is
  * still updated, and `project-config/diff` is the check for the YAML.
  *
+ * Since kit 1.1.2, `adopt()` also ends by running the kit migrator's `up()` on
+ * the `module:audit-kit` track, which makes it a strict superset of the bare
+ * pump and means this migration is the whole contract on the update path. PP's
+ * own pump in {@see Install::safeUp()} stays: it covers the fresh-install path,
+ * where Craft marks plugin migrations as applied without running them. The two
+ * calls never collide, because `MigrationManager::up()` only applies what
+ * `getNewMigrations()` reports and an applied migration is never a candidate
+ * again.
+ *
  * It never touches kit or consumer tables, so PP's hash-chained
  * `passwordpolicy_audit_log`, its exports and its anchors are unaffected.
  *
