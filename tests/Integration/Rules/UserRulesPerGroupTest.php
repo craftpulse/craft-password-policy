@@ -22,7 +22,7 @@
  * table, and the users are hard-deleted rather than left in the trash. Fixture
  * ownership belongs to the test, not to the transaction.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

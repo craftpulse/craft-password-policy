@@ -18,7 +18,7 @@
  * The HIBP transport is swapped for `HibpClientFake` so no live calls
  * happen and breach / null / clean branches are driven deterministically.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

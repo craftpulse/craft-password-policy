@@ -19,7 +19,7 @@
  * fidelity. Source-level assertions still catch the realistic regression:
  * a Pro gate accidentally getting wrapped around the strength toggle.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

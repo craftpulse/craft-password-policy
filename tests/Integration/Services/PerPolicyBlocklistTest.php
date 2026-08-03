@@ -16,7 +16,7 @@
  * The validator itself is covered separately in
  * `CommonPasswordValidatorPolicyTest`; this file is service-shape only.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

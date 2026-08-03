@@ -4,7 +4,7 @@
  *
  * Pest base TestCase for Integration tests.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  */
 

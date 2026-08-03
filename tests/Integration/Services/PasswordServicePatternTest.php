@@ -13,7 +13,7 @@
  * core would just be retesting upstream, so this file scopes to the
  * behavior we own.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

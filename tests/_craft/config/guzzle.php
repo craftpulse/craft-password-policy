@@ -9,7 +9,7 @@
  * call splices the mock into the handler chain. `null` means "fall back
  * to Guzzle's default cURL handler" — every non-mocked test path.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  */
 

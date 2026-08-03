@@ -14,7 +14,7 @@
  * secrets in every edit-save JSON response — once-and-only-once on
  * create became forever-on-every-edit.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -15,7 +15,7 @@
  *    entry. Cache miss returns 404. Concurrent click races to a
  *    404 because we delete-on-read.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

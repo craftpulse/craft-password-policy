@@ -17,7 +17,7 @@
  * auto-pass every `User::can()` check); permission-denial tests
  * elevate a non-admin user via `UserFactory::nonAdmin()`.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

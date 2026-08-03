@@ -23,7 +23,7 @@
  * and the diagnostic must reach a maintainer even when the audit
  * feature flag is off.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -15,7 +15,7 @@
  * service contract so a future engine swap doesn't have to renegotiate
  * call sites. Edition is irrelevant: the meter ships on every edition.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

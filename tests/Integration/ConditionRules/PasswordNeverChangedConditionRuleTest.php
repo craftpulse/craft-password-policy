@@ -9,7 +9,7 @@
  * hydrates the value from a direct DB scalar query, mirroring
  * `PasswordExpiredConditionRule`.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

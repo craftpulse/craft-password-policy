@@ -18,7 +18,7 @@
  * `UserPasswordControllerTest`: console-bootstrap-friendly stubs for
  * `request`, `user`, and the elevated-session signal.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

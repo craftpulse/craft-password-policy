@@ -17,7 +17,7 @@
  * Settings + edition mutate during tests — `beforeEach` snapshots and
  * `afterEach` restores. The DB transaction wrapper handles row isolation.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

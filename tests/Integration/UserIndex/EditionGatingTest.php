@@ -10,7 +10,7 @@
  * no inline actions (D3 ships those), so the assertion is simply
  * "rendering still works."
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

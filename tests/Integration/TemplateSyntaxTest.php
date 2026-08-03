@@ -14,7 +14,7 @@
  * leaves `extends` / `include` targets to runtime, so this is a pure syntax
  * check over the whole `src/templates` tree, macros and partials included.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

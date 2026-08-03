@@ -6,7 +6,7 @@
  * `Sites::EVENT_AFTER_SAVE_SITE` and `EVENT_AFTER_DELETE_SITE` against a
  * real Craft `Sites` service.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  */
 

@@ -26,7 +26,7 @@
  * The Guzzle transport is mocked via `MockHandler` spliced through
  * `TestGuzzleConfig`, mirroring `GuzzleHibpClientTest`'s pattern.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

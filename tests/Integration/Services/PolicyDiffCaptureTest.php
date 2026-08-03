@@ -25,7 +25,7 @@
  * Maps to ISO 27002 A.5.37, SOC 2 CC8.1, NIS2 Article 21(2)(e)
  * change-management evidence.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -5,7 +5,7 @@
  * `hibpClient` service. If this passes, every Phase E2-E6 sub-suite
  * has a known-good baseline to build on.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  */
 

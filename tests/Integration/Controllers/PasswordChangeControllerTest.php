@@ -25,7 +25,7 @@
  * (POST requirement) fires in the same order it would on a real request —
  * mirroring `UserPasswordControllerTest` and `DestroyOtherSessionsTest`.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

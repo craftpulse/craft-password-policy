@@ -11,7 +11,7 @@
  * this file scopes to "what does PasswordService do when the client
  * reports the backoff is active" + the breach/clean/null result mapping.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -18,7 +18,7 @@
  * The Guzzle transport is mocked via `MockHandler` spliced through
  * `TestGuzzleConfig` (mirrors `WebhookServiceTest`).
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

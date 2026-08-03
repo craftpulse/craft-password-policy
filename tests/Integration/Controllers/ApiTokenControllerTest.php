@@ -16,7 +16,7 @@
  * `WebhookEndpointControllerTest`: web-shaped `request`, `user`, and
  * elevated-session stubs.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

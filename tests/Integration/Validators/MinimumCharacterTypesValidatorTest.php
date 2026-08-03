@@ -8,7 +8,7 @@
  * transaction wrapper handles DB isolation, but property mutation needs
  * its own teardown.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

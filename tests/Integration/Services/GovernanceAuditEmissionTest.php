@@ -21,7 +21,7 @@
  * a real recorder's storage (Ledger's table is off-limits in the shared
  * playground).
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

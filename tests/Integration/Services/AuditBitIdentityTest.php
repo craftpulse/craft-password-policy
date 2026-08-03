@@ -22,7 +22,7 @@
  * still passes `password-policy/audit/verify` post-refactor because the kit
  * recomputes identical bytes — the same property this vector pins in code.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

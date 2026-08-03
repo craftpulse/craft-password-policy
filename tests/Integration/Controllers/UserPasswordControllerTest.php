@@ -27,7 +27,7 @@
  * after `actionChange` and asserts on the persisted row's audit columns
  * directly.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

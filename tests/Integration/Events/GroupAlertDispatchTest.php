@@ -20,7 +20,7 @@
  * identity cache memoizes an empty `_groups` on the original instance after
  * `assignUserToGroups`).
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

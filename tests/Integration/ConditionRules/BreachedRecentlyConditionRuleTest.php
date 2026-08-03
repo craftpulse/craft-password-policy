@@ -4,7 +4,7 @@
  * filtering users whose `passwordpolicy_user_state.lastBreachDetectedAt`
  * falls within the last N days.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

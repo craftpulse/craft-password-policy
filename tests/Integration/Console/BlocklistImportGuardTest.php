@@ -17,7 +17,7 @@
  * via `fwrite(\STDOUT|\STDERR, …)`, which PHP output buffering doesn't
  * catch. Tests use `CapturingBlocklistController` to buffer the output.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

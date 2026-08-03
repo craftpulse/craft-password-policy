@@ -20,7 +20,7 @@
  *     `Audit::EVENT_REGISTER_AUDIT_SINKS` event and calling `Audit::record()`
  *     lands the row on the hash-chained log, proving the bootstrap wiring.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

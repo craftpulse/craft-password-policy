@@ -27,7 +27,7 @@
  * provably backwards-incompatible only for sites that ignored two
  * minor versions of deprecation warnings.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

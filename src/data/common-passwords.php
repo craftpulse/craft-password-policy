@@ -10,7 +10,7 @@
  * (https://github.com/danielmiessler/SecLists). All entries lowercased and
  * deduplicated. 10000 entries after normalization.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  */
 

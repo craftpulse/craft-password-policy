@@ -15,7 +15,7 @@
  * Rows are seeded via the element save path (paired `craft_elements`
  * row required); no direct INSERT.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

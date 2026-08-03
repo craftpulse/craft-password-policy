@@ -21,7 +21,7 @@
  *  - Enterprise + templatePath pointing at a non-existent file → save
  *    fails validation with the expected error message.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

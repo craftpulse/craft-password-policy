@@ -9,7 +9,7 @@
  * `defaultScheme`; an env-var reference (`$VAR`) skips the rule (resolved
  * + re-checked at dispatch time).
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

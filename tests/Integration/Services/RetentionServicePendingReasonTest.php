@@ -17,7 +17,7 @@
  * pre-D1 contract (a retention sweep never force-resets admins) must
  * apply to the pending-reason write too. Tests pin both branches.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

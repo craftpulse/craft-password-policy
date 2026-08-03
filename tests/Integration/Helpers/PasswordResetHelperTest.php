@@ -9,7 +9,7 @@
  * helper now mirrors the guard in the condition rules / variable and
  * returns an empty list when expiry isn't meaningfully configured.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

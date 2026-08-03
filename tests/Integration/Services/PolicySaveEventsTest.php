@@ -26,7 +26,7 @@
  * event handlers persist across Pest tests if not cleaned up, which
  * would cross-contaminate other tests in the same run.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -7,7 +7,7 @@
  * query params (handle, preset, groupId), the canonical `enabled`
  * status, element-type registration, and FK count post-migration.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

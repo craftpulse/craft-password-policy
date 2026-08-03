@@ -9,7 +9,7 @@
  * constraint rejects unknown values that bypass the validator, and FK
  * CASCADE on userId removes the state row when the user is deleted.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

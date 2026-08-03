@@ -23,7 +23,7 @@
  * mocking the service. Tests that don't need the wire-level capture
  * point at port 1 to deterministically force a connect refusal.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

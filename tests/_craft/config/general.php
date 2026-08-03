@@ -4,7 +4,7 @@
  * in fixture failures, and disables the queue auto-run so jobs stay in the
  * queue table for assertions instead of executing inline.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  */
 

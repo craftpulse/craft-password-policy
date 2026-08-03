@@ -22,7 +22,7 @@
  * uses to assemble its children) and the markup asserted with substring
  * checks — no DOM-parser dependency.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

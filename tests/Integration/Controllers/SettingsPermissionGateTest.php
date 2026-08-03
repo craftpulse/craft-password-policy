@@ -19,7 +19,7 @@
  * exactly as an HTTP request would. `UserFactory::nonAdmin()` forces the Craft
  * edition to Pro so permission checks engage (Solo passes everyone).
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

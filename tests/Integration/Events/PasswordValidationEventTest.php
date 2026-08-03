@@ -26,7 +26,7 @@
  * exists for the property set; if a future refactor adds a
  * `plaintext` slot, the test fails.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

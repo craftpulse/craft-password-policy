@@ -5,7 +5,7 @@
  * because operators reach for different ergonomics ("expired yes/no"
  * vs. "expiring within N days").
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

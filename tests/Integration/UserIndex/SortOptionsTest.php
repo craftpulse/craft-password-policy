@@ -5,7 +5,7 @@
  * Users element index sort menu — composite/subquery-based columns are
  * deliberately absent to avoid surprising query costs.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

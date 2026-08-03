@@ -23,7 +23,7 @@
  * UTC-10 with no DST, so any latent shift would be deterministic
  * year-round.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

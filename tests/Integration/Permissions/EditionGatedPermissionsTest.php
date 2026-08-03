@@ -17,7 +17,7 @@
  * which leaves the edition as the only thing that can hide an entry. That's
  * what makes these tests about edition gating and not about permissions.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

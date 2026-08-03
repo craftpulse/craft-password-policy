@@ -19,7 +19,7 @@
  * via the element save path rather than direct INSERT (so the paired
  * `craft_elements` row exists).
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

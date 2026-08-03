@@ -5,7 +5,7 @@
  * current pick. Pro + Craft Team-or-better only — Solo and Lite gates
  * verified at the registration listener level (D2.1 / D2.2 EditionGatingTest).
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

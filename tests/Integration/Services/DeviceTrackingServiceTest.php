@@ -19,7 +19,7 @@
  * Capture is universal — these run on whatever edition the playground is
  * at without elevation; the service has no edition gate.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

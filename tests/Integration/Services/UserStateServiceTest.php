@@ -12,7 +12,7 @@
  * The DB transaction wrapper handles per-test isolation; no afterEach
  * cleanup needed for the user_state rows.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

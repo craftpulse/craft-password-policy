@@ -16,7 +16,7 @@
  * The tests exercise the controller through `runAction()` so
  * `beforeAction()` fires the same way it would on a real HTTP request.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

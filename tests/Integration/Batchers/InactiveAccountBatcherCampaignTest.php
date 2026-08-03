@@ -19,7 +19,7 @@
  * A single-batch test cannot see any of that, which is why there was no
  * coverage under `src/batchers/` and why the bug survived.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

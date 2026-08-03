@@ -13,7 +13,7 @@
  * query at entry to `matchElement()`; the freshly-loaded path is the
  * regression-pre-fix surface and gets its own pinned test.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

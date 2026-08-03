@@ -4,7 +4,7 @@
  * Verifies the element-record pairing, status filtering, custom query
  * params, and read shapes the activity surface depends on.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

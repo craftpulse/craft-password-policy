@@ -7,7 +7,7 @@
  * requires the broader test fixture (UserGroup, NamedPolicy, history
  * row with a snapshot column) that's only meaningful on Pro+.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

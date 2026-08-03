@@ -12,7 +12,7 @@
  * Universal capture — runs on whatever edition the playground is at; the
  * prune is edition-agnostic (device rows are written on every edition).
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

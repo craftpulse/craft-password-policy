@@ -32,7 +32,7 @@
  *    (e.g. "we want a positive-cached-clean for k-anon dedup") fails
  *    loudly here.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

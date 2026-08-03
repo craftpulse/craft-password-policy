@@ -15,7 +15,7 @@
  * a retention sweep reached the account, the per-user path says
  * `AdminForceReset` because an operator pointed at it.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

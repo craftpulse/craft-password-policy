@@ -9,7 +9,7 @@
  * attribute must be present when associated and absent otherwise (a stray
  * empty `data-pp-for` would make the JS scope to the wrong nodes).
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

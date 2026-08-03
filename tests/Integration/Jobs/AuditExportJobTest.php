@@ -14,7 +14,7 @@
  *    policy/exports/`. Cloud filesystems are not exercised here —
  *    smoke-tested per real-world deployment.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

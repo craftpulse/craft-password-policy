@@ -14,7 +14,7 @@
  * extensions; this file covers the Lite-tier subset and the priority
  * resolution between those.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -16,7 +16,7 @@
  * `__toString()` path stays a plain string for PHP-context concatenation
  * (which is how the composite assembles its child output).
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

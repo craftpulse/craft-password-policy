@@ -11,7 +11,7 @@
  * Pacific/Honolulu is used as the non-UTC fixture zone: it's a fixed
  * UTC-10 with no DST, so the induced shift is deterministic year-round.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -16,7 +16,7 @@
  * Tests run through `runAction()` so `beforeAction()` fires the same
  * permission gates a real HTTP request would.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

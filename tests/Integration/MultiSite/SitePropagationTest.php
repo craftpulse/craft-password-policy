@@ -19,7 +19,7 @@
  * base deletes every non-primary site in `tearDown` to reset the
  * fixture between tests.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

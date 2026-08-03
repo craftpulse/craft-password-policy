@@ -19,7 +19,7 @@
  * Tests run the action through `runAction()` so `beforeAction()` fires the
  * usual permission + admin-changes gates in the right order.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

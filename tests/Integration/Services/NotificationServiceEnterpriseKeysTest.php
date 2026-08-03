@@ -27,7 +27,7 @@
  *    future `templateVarsJson` column would unlock resend (additive
  *    future work, not part of G12).
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

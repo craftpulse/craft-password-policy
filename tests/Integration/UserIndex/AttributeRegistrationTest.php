@@ -9,7 +9,7 @@
  * tests assert each cell of the (plugin × Craft) matrix renders the
  * right column set.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

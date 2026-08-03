@@ -15,7 +15,7 @@
  * restores. The DB transaction wrapper keeps the policy/group rows
  * isolated.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

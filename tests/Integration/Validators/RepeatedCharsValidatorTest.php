@@ -5,7 +5,7 @@
  * points in a row). Lives under `Integration/` so the rejection branch's
  * `Craft::t()` call has a booted application to translate against.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

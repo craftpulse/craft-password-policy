@@ -3,7 +3,7 @@
  * Pest coverage for `PasswordStatusConditionRule`. Multi-select rule
  * filtering users by the composite password-status badge value.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -25,7 +25,7 @@
  * doesn't capture warnings cleanly) but the swallowing contract is exercised
  * indirectly: the helper returns void in every branch.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

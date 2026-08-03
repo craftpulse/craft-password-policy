@@ -12,7 +12,7 @@
  * the listener consume-and-fall-back; coverage of those lives where
  * the direct callers are tested.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

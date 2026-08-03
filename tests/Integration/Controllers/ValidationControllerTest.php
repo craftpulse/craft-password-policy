@@ -22,7 +22,7 @@
  * SHA-1 hashes, or full HIBP bucket suffixes. Strength scores are
  * compared as integers; `hibp` is asserted as `bool|null` shape.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -16,7 +16,7 @@
  *
  * No DB, no edition gate — the service is a pure transform.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

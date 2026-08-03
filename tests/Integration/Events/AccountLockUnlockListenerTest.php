@@ -8,7 +8,7 @@
  * resolves from `UserEvent::$user->id` — NOT from `$event->sender`
  * (which is the Users service instance, not a User element).
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -23,7 +23,7 @@
  * because `User::find()` doesn't expose `lastLoginDate` for write and the
  * factory can't easily age a user.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

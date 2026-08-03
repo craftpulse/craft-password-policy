@@ -10,7 +10,7 @@
  * Add global helpers here if a pattern repeats across multiple tests.
  * Factories belong in `tests/Support/Factories/`.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  */
 

@@ -20,7 +20,7 @@
  * the API controller), so these run on whatever edition the playground is
  * at without elevation.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

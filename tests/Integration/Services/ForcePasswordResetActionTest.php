@@ -11,7 +11,7 @@
  * action's `performAction()`, and assert on both the User column flip
  * AND the pending-reason write.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

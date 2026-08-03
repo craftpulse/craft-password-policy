@@ -2,7 +2,7 @@
 /**
  * Yii application config for the Pest test suite.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  */
 

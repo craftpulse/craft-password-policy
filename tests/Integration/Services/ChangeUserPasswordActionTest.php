@@ -15,7 +15,7 @@
  * actual save, audit-context propagation, pending-reason clear,
  * permission gate, and elevated session.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

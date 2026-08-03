@@ -19,7 +19,7 @@
  * manage-settings permission gate a real HTTP request would, and the `section`
  * param binds exactly as the `password-policy/settings/<section>` route supplies it.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

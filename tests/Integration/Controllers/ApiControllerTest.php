@@ -17,7 +17,7 @@
  * component (so `asJson()` + the 401/404/429 status writes have somewhere
  * to land), mirroring the console-bootstrap CP-test pattern.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

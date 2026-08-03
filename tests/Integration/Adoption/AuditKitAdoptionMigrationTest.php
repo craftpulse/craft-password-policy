@@ -30,7 +30,7 @@
  * project config write is flushed by the kit helper, so `afterEach` resets the
  * service to resync its in-memory state with the rolled-back rows.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

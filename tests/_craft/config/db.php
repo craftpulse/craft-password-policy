@@ -4,7 +4,7 @@
  * `phpunit.xml.dist` so the test DB stays isolated from the playground's
  * primary database.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  */
 

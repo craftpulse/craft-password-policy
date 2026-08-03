@@ -20,7 +20,7 @@
  * playground is at (the GroupFactory elevates the Craft license to Pro for
  * group saves; the plugin service itself has no edition gate).
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -11,7 +11,7 @@
  * starting state and `afterEach` restores it so tests don't bleed into
  * one another. The DB transaction wrapper handles row-level isolation.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

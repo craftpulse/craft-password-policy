@@ -25,7 +25,7 @@
  *  - SIEM / webhook / API / admin-alert keys are Enterprise EXPOSURE —
  *    stripped on Pro, survive on Enterprise.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -15,7 +15,7 @@
  * universal-capture invariant. The audit-log feature flag (`enableAuditLog`)
  * is enabled at setup since the playground default is `false`.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

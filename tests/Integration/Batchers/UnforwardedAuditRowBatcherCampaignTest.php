@@ -20,7 +20,7 @@
  * including the real serialize/unserialize round trip, so the test also pins
  * that the campaign cursor survives the queue hop.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

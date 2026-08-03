@@ -15,7 +15,7 @@
  *    fixed canonical key set. This is the regression that guards
  *    `password-policy/audit/verify` against the geo addition.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

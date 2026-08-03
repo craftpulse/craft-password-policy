@@ -18,7 +18,7 @@
  * Yii2 + Craft.php require, app config merge), then construct the console
  * application directly.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  */
 
@@ -223,7 +223,7 @@ if (!$app->getIsInstalled(true)) {
         'db' => $db,
         'username' => 'pesttester',
         'password' => 'craftcms2024!!',
-        'email' => 'tests@craftpulse.com',
+        'email' => 'tests@craft-pulse.com',
         'site' => new Site([
             'name' => 'Password Policy Test Site',
             'handle' => 'default',

@@ -15,7 +15,7 @@
  * The runtime whole-screen deny (Lite 403 on the Pro-only sections) is covered
  * separately in `SettingsSectionEditionGuardTest`.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

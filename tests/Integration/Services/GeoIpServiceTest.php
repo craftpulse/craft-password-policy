@@ -14,7 +14,7 @@
  *  - A custom provider can be injected (the test seam) and a missing
  *    database file degrades to null without throwing.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

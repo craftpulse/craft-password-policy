@@ -15,7 +15,7 @@
  * third-party handles are untouched, the migration is idempotent, and it reverses
  * cleanly on the way down.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  */
 

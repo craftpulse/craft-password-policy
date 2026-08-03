@@ -14,7 +14,7 @@
  *    CSV body containing the expected header row.
  *  - Unknown report keys → 404 from both actions.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

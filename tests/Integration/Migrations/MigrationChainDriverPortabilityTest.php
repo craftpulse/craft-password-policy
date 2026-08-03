@@ -25,7 +25,7 @@
  * they are a regression guard against the driver check drifting back above the
  * guards; on PostgreSQL they are the actual coverage.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

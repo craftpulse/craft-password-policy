@@ -24,7 +24,7 @@
  * dashboard's contract is "data freshish-within-5-minutes", not
  * "every render hits the DB".
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

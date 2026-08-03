@@ -25,7 +25,7 @@
  *  - hard delete cascades — proves the schema FK is actually wired
  *    correctly so the eventual GC sweep cleans up cleanly
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

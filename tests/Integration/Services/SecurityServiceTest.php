@@ -23,7 +23,7 @@
  *    `applyCsp()` would silently hand an `unsafe-inline` policy to anyone who
  *    called it, defeating the nonce.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

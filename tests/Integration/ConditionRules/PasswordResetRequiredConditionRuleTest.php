@@ -9,7 +9,7 @@
  * ON branch. The rule now hydrates the flag from a direct DB scalar
  * query, mirroring `PasswordExpiredConditionRule`'s date hydration.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -18,7 +18,7 @@
  *    written (with the masked `deviceLabel`, never the raw UA/IP).
  *  - The `NewDeviceDetectedEvent` fires on every edition after capture.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

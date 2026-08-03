@@ -7,7 +7,7 @@
  * application — the bootstrap supplies one, so each test rolls back
  * cleanly via the `TestCase` transaction wrapper.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

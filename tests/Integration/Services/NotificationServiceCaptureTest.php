@@ -14,7 +14,7 @@
  * which propagates into the dispatch path's catch block, which writes
  * `status = 'failed'` with the Twig exception message captured.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

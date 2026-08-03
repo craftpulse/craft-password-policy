@@ -18,7 +18,7 @@
  * `AuditExportJobTest` uses) so the action behaviour is pinned without
  * standing up a real queue runner.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

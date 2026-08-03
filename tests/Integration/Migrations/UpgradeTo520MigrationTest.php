@@ -33,7 +33,7 @@
  * string `'1'` here. Asserting on the cast value pins the number rather than
  * the driver's scalar type.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

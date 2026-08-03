@@ -17,7 +17,7 @@
  * Tests run through `runAction()` so `beforeAction()` fires the same gates a
  * real HTTP request would. Mirrors `BlocklistControllerGuardsTest`.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

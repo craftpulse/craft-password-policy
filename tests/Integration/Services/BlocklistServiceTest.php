@@ -6,7 +6,7 @@
  * flushes the cache. Tests verify both the service's read/write behavior
  * and the cache-flush handshake the validator depends on.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

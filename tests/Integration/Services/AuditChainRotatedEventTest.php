@@ -18,7 +18,7 @@
  * `logEvent()` so the rotation event sees real chain data, not test
  * placeholders.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

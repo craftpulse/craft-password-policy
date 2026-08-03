@@ -13,7 +13,7 @@
  *    renders empty server-side so the no-JS baseline conveys no misleading
  *    state.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

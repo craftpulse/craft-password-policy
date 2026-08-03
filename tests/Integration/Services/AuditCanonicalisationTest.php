@@ -17,7 +17,7 @@
  *  - One golden-string regression test as a tripwire on silent flag
  *    drift across PHP minor versions.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -9,7 +9,7 @@
  * Yii's profiler — count the queries against the relevant plugin tables
  * + `Table::USERS` after the preload run.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

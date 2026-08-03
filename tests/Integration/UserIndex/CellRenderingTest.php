@@ -14,7 +14,7 @@
  * Each test seeds a deliberate user state via the existing factories,
  * preloads the cache, and asserts the rendered cell.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

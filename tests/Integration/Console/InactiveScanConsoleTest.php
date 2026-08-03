@@ -14,7 +14,7 @@
  * Stdout/stderr capture via `CapturingInactiveController` — see
  * `AuditExportConsoleTest` for the buffering rationale.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

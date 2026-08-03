@@ -24,7 +24,7 @@
  * Craft's User authentication pipeline (which would also write a
  * separate audit log entry and complicate the assertions).
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

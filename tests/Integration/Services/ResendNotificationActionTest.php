@@ -12,7 +12,7 @@
  *  - When every selected row is non-resendable, the action returns
  *    false with a useful message.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

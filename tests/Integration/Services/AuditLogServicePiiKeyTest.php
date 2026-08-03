@@ -22,7 +22,7 @@
  * use a real saved user via `UserFactory::admin()` so `_hashUserIdentifier()`
  * resolves an email.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -18,7 +18,7 @@
  * No DB needed — the model validates entirely in memory. The Integration
  * suite still wraps it in a transaction so adjacent tests stay clean.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

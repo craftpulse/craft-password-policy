@@ -26,7 +26,7 @@
  * exercise. This is the only test path that touches the audit table
  * outside the chain-aware writer.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

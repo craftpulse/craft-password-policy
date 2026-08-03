@@ -18,7 +18,7 @@
  * "common" rows emit "too common", per-policy "custom" rows emit
  * "blocked".
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  *
  * @author    CraftPulse

@@ -4,7 +4,7 @@
  * boot. If this fails, the suite isn't installed correctly; everything
  * else is downstream of this passing.
  *
- * @link      https://craftpulse.com
+ * @link      https://craft-pulse.com
  * @copyright Copyright (c) 2024 CraftPulse
  */
 
