@@ -1,0 +1,37 @@
+# Keep development and maintainer-only artifacts out of the Composer dist
+# archive. Everything listed here still lives in the git repository; it just
+# stops being copied into each install's vendor/ directory.
+#
+# Paths are root-anchored on purpose: a bare `tests` pattern would also match
+# `src/.../tests`, and a bare `docs` would match `docs/` nested anywhere.
+#
+# docs/ is deliberately NOT listed. The end-user documentation ships with the
+# plugin so integrators can read it offline, next to the code.
+
+# Test suite and its harness
+/tests               export-ignore
+/phpunit.xml.dist    export-ignore
+
+# Front-end build chain: sources, node config, lint config, bundler config.
+# The BUILT assets under src/web/assets/dist/ are what installs consume.
+/buildchain          export-ignore
+
+# CI
+/.github             export-ignore
+
+# Static analysis and coding standards
+/ecs.php                  export-ignore
+/phpstan.neon             export-ignore
+/phpstan-baseline.neon    export-ignore
+
+# Git metadata itself
+/.gitignore          export-ignore
+/.gitattributes      export-ignore
+
+# Maintainer-only working records. These are gitignored, so they cannot reach
+# an archive today; listed defensively so a future tracked path or a `git
+# archive` run over a dirty tree can't leak them either.
+/.claude             export-ignore
+/internal-docs       export-ignore
+/smoke-testing       export-ignore
+/docs/internal       export-ignore
