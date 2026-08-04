@@ -299,6 +299,35 @@ if (!$plugins->isPluginInstalled('password-policy')) {
 PasswordPolicy::$plugin ?? PasswordPolicy::getInstance();
 
 // =============================================================================
+// Pending plugin migrations
+//
+// The install block above only fires on an EMPTY database. A `db_test` carried
+// over from an earlier schema version therefore keeps its old columns, and every
+// Integration test then runs against them — which surfaces as
+// `UnknownPropertyException: Setting unknown property …Record::<newColumn>`
+// from whichever test touches the record first, rather than as a schema error
+// naming the cause. Applying the pending chain here keeps a long-lived local
+// test database on the same schema CI gets from a fresh install.
+//
+// No-op on a fresh install (`installPlugin()` records the whole chain) and on an
+// already-current database.
+//
+// It does NOT rescue one specific broken state: a `db_test` whose `plugins` row
+// is gone but whose tables remain. `installPlugin()` then runs `Install`, every
+// `_create*Table()` returns early on the tables that still exist, and the whole
+// migration chain is recorded as applied without running — so a column added by
+// a dated migration is missing and nothing will ever add it. Drop and recreate
+// `db_test`; the next run reinstalls from scratch, which is what CI does anyway.
+// =============================================================================
+
+$migrator = PasswordPolicy::$plugin?->getMigrator();
+
+if ($migrator !== null && $migrator->getNewMigrations() !== []) {
+    $migrator->up();
+    $db->getSchema()->refresh();
+}
+
+// =============================================================================
 // Fail-fast harness assertions
 //
 // Both of these were reachable-but-unasserted, and both surfaced downstream as a
