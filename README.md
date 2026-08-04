@@ -18,7 +18,7 @@ Password Policy enforces password rules on a Craft install, from a length requir
 - Expiry reminder, breach detection, and new-device notification emails, editable per site.
 - Dormant-account detection, with report, notify, or suspend handling.
 - Hash-chained audit log with an independently runnable verifier.
-- SIEM forwarding over syslog-TLS, HMAC-signed webhooks, and streaming audit export.
+- SIEM forwarding over syslog-TLS or HTTPS, HMAC-signed webhooks, and streaming audit export.
 - Read-only REST API for password status and resolved policy.
 - Deep support for Craft features: multi-site, customizable permissions, editions, and events.
 

@@ -115,7 +115,7 @@ Enterprise adds the audit and integration surface, on top of everything in Pro:
 
 - **[Hash-chained audit log](./features/audit-logging.md)**: tamper-evident from the row level up, with a [bundled verifier CLI](./features/audit-verifier.md) auditors can run from a fresh checkout.
 - **[Compliance dashboard](./features/compliance-dashboard.md)**: Enterprise CP utility with aggregates over the audit infrastructure, plus HTML and CSV report exports.
-- **[SIEM forwarders](./features/siem-forwarders.md)**: Syslog-over-TLS to rsyslog, syslog-ng, Graylog, QRadar, or any RFC 5424 receiver.
+- **[SIEM forwarders](./features/siem-forwarders.md)**: Syslog over TLS to rsyslog, syslog-ng, Graylog, QRadar, or any RFC 5424 receiver, or a JSON POST over HTTPS to a collector that ingests raw JSON.
 - **[Webhook delivery](./features/webhooks.md)**: HMAC-signed HTTPS delivery with a replay-window timestamp and a stable event id per row.
 - **[Audit export](./features/audit-export.md)**: Streaming CSV/JSONL to any Craft filesystem.
 - **[Per-policy custom blocklist](./features/blocklist.md#per-policy-blocklist-enterprise)**: Scope custom blocked words to specific named policies (e.g. customer names for sales reps, project codenames for engineering).

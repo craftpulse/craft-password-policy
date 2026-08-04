@@ -96,8 +96,15 @@
 - Added the `password-policy/webhook/create`, `password-policy/webhook/list`, and `password-policy/webhook/rotate-secret` console commands (Enterprise).
 - Added the `password-policy/webhook/run` console command, which enqueues the batched job that delivers pending audit rows to every active webhook endpoint and needs a cron entry to deliver on a schedule (Enterprise).
 - Added a sweep warning to the SIEM forwarders index and the webhooks index, which appears when an audit row has been waiting more than two hours for a first delivery attempt and names the console command that has to be scheduled, so a forward sweep that was never added to cron stops failing silently (Enterprise).
+- Added an HTTP destination type to SIEM forwarders, which POSTs each audit row's canonical JSON to an HTTPS collector with an optional bearer or basic credential and any custom request headers the platform needs (Enterprise).
+- Added per-forwarder syslog message framing, defaulting to the octet counting RFC 5425 requires of a receiver on port 6514, with newline delimiting available for a receiver that expects line-delimited input (Enterprise).
+- A SIEM forwarder's HTTP credential is encrypted at rest, is never rendered back into the edit form, and never appears in a save response (Enterprise).
+- The HTTP destination refuses a plaintext URL, re-checks the scheme after resolving an environment variable, never follows a redirect, and treats anything other than a 2xx as a failure (Enterprise).
+- Switching a forwarder from the HTTP destination to syslog now clears its URL, authentication type, credential, and custom headers in the same save (Enterprise).
+- A forwarder carrying a protocol neither transport handles now records a failure instead of being sent over the syslog transport regardless (Enterprise).
 - Added audit log export, returned inline for up to 1,000 rows and queued behind a one-time download link beyond that, writing to any Craft filesystem named by `auditExportFilesystem` (Enterprise).
 - Added the `passwordpolicy_siem_forwarders` and `passwordpolicy_webhook_endpoints` tables.
+- Added the `url`, `authType`, `authToken`, `headers`, and `framing` columns to the `passwordpolicy_siem_forwarders` table, and relaxed `host` and `port` to nullable so an HTTP forwarder can omit them.
 - Added the `pp:audit-view`, `pp:audit-verify`, `pp:audit-export`, `pp:siem-manage`, and `pp:webhooks-manage` permissions.
 - The audit chain internals now run on `craftpulse/craft-audit-kit`, a new hard dependency shared with the rest of the CraftPulse estate, with no change to the schema, the canonical payload, or any existing row hash.
 - A failed inline audit chain write is retried through a queue job with a jittered backoff, and logged at error level with its full payload if the retry budget runs out (Enterprise).
@@ -152,6 +159,7 @@
 
 ### System
 - Password Policy now requires Craft 5.9.15 or later.
+- Removed the `siemEnabled`, `siemDestinationType`, `siemEndpointUrl`, `siemAuthType`, `siemAuthToken`, `siemCustomHeaders`, `siemIpHandling`, `siemDeviceHandling`, `webhooksEnabled`, and `webhooks` settings, none of which were ever read; each SIEM destination carries its own configuration on the forwarder row instead.
 - Added `bjeavons/zxcvbn-php` and dropped `@zxcvbn-ts/core`, `@zxcvbn-ts/language-common`, and `@zxcvbn-ts/language-en`, cutting the control panel JavaScript bundle from about 1.65 MB to about 2.2 KB.
 - Added the `passwordpolicy_known_devices` and `passwordpolicy_group_alert_subscriptions` tables, documented with the rest of the schema at `docs/user/reference/database-schema.md`.
 - The control panel strength indicator now scores passwords server-side over `password-policy/validation/validate` rather than running the scoring engine in the browser.

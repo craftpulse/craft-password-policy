@@ -1,44 +1,109 @@
 # SIEM Forwarders (Enterprise)
 
-Enterprise installs can forward every audit row to one or more syslog receivers over TLS. Each row goes out as an RFC 5424 message whose payload is the audit row as canonical JSON. The forwarder ships TLS peer verification on by default, a per-endpoint circuit breaker, and at-least-once delivery semantics.
+Enterprise installs can forward every audit row to one or more SIEM destinations. There are two transports, and each forwarder picks one:
 
-Syslog over TLS is the only transport. If your log platform ingests over HTTPS instead of syslog, use [Webhooks](./webhooks.md): the plugin POSTs the same canonical JSON to a URL you control, signed with an HMAC, and you supply the receiver that reshapes the body into whatever envelope your platform expects.
+- **Syslog over TLS** writes an RFC 5424 message per row to a `tls://` socket. This is the transport for a collector you run.
+- **HTTP** POSTs the same canonical JSON to an HTTPS collector, with an optional `Authorization` header and any custom headers your platform needs.
 
-This page covers configuring forwarders, event eligibility, the at-least-once delivery model, the circuit breaker, the audit-row format on the wire, and troubleshooting.
+Both ship TLS peer verification on by default, a per-destination circuit breaker, and at-least-once delivery semantics.
+
+This page covers configuring forwarders on either transport, what the HTTP transport does and does not reach, event eligibility, the at-least-once delivery model, the circuit breaker, the audit-row format on the wire, and troubleshooting.
 
 ## Quick start
 
 1. Open **Password Policy → SIEM forwarders → New forwarder** in the control panel.
-2. Enter the receiver's **Host** and **Port**. Port 6514 is prefilled.
+2. Pick a **Protocol**.
+   - For **Syslog over TLS**, enter the receiver's **Host** and **Port**. Port 6514 is prefilled.
+   - For **HTTP**, enter the collector's **Endpoint URL** and, if it needs one, an **Authentication** type and **Credential**.
 3. Save.
 4. Put `password-policy/siem/run` on a cron schedule and make sure a queue runner is running. Nothing is forwarded until both are in place, see [Console commands](#console-commands) below.
 
 The forwarder works on a watermark model: every audit row tracks whether it's been delivered (`forwardedAt` column). New rows are delivered on the next forwarder run; backlogs are caught up automatically.
 
-## Transport
+## Forwarder fields
 
-The plugin opens a `tls://` stream socket to the configured host and port and writes one RFC 5424 message per audit row. There is no other protocol, and the **Protocol** field on the edit screen offers `syslog-TLS` as its only value.
-
-This reaches rsyslog, syslog-ng, Graylog, IBM QRadar, and any collector with a TLS syslog listener, including a self-hosted Splunk indexer configured with a TCP-SSL input.
-
-Messages are delimited by a trailing newline rather than by a leading octet count. That is what rsyslog's `imtcp` and the collectors above accept by default. A receiver configured to require octet-counted framing will need that requirement relaxed.
-
-### Forwarder fields
+Three fields are shared by both transports, and the rest depend on the protocol you pick.
 
 | Field | Required | Notes |
 |---|---|---|
-| Name | No | Display label, for example "Central rsyslog". The index falls back to `host:port` when it's empty. |
+| Name | No | Display label, for example "Central rsyslog". The index falls back to the destination when it's empty. |
+| Protocol | Yes | **Syslog over TLS** or **HTTP**. |
+| Enabled | Yes | On by default. Disabled forwarders are skipped by the queue job entirely. |
+| Custom CA bundle path | No | Path to a PEM CA bundle, for example `/etc/ssl/certs/siem-ca-bundle.pem`. Accepts an environment variable reference such as `$PP_SIEM_CA_BUNDLE`. Honoured by both transports. |
+| Event class allowlist | No | Empty means "use the global setting". See [Event eligibility](#event-eligibility). |
+
+## Syslog over TLS
+
+The plugin opens a `tls://` stream socket to the configured host and port and writes one RFC 5424 message per audit row.
+
+This reaches rsyslog, syslog-ng, Graylog, IBM QRadar, and any collector with a TLS syslog listener, including a self-hosted Splunk indexer configured with a TCP-SSL input.
+
+| Field | Required | Notes |
+|---|---|---|
 | Host | Yes | The receiver's hostname or IP, for example `siem.acme.internal`. |
 | Port | Yes | Prefilled with `6514`, the IANA registered port for syslog over TLS. |
-| Protocol | Yes | `syslog-TLS`, the only option. |
-| Enabled | Yes | On by default. Disabled forwarders are skipped by the queue job entirely. |
+| Message framing | Yes | **Octet-counted (RFC 5425)** by default, or **Newline-delimited**. See below. |
 | Verify TLS certificate | No | On by default. |
-| Custom CA bundle path | No | Path to a PEM CA bundle, for example `/etc/ssl/certs/siem-ca-bundle.pem`. Accepts an environment variable reference such as `$PP_SIEM_CA_BUNDLE`. |
-| Event class allowlist | No | Empty means "use the global setting". See [Event eligibility](#event-eligibility). |
 
 The connection verifies the receiver's certificate chain against the system trust store unless you point **Custom CA bundle path** at your own bundle. Turning **Verify TLS certificate** off disables peer and peer-name verification together, so use it only against a receiver you trust by network path.
 
 Timeouts are not configurable. The connect timeout is 5 seconds, and the same bound applies to the write, which is what turns a receiver that accepts the connection but never drains the frame into a recorded failure instead of a stalled queue job.
+
+### Message framing
+
+RFC 5425 §4.3 defines the TLS transport mapping for syslog as `MSG-LEN SP SYSLOG-MSG`, and §4.3.1 requires a transport receiver to use that length to delimit each message. **Octet-counted** does exactly that: the message is prefixed with its own byte count and a space, and nothing follows it.
+
+```
+70 <133>1 2026-05-15T03:33:14Z craft-prod password-policy 4821 audit-log - {...}
+```
+
+**Newline-delimited** appends a `\n` to each message instead, with no length prefix. That is RFC 6587-style non-transparent framing, and it is what rsyslog's `imtcp` accepts by default.
+
+Pick octet counting unless your receiver expects line-delimited input. Both are common: rsyslog with `SupportOctetCountedFraming` on (its default) accepts either, while a strict RFC 5425 receiver accepts only the octet-counted form. Getting it wrong is quiet from this side, because syslog has no application-level acknowledgement, so confirm on the receiver after switching.
+
+## HTTP
+
+The plugin POSTs the canonical JSON of each audit row to the configured URL, one request per row.
+
+| Field | Required | Notes |
+|---|---|---|
+| Endpoint URL | Yes | The collector's HTTPS URL. Accepts an environment variable reference such as `$PP_SIEM_URL`. |
+| Authentication | Yes | **None**, **Bearer token**, or **Basic**. |
+| Credential | When authentication is not None | Sent as the `Authorization` header. Encrypted at rest, and never shown again after saving. Accepts an environment variable reference such as `$PP_SIEM_TOKEN`. |
+| Custom headers | No | Name and value pairs added to every request. Values accept environment variable references. |
+
+What the request looks like:
+
+| Part | Value |
+|---|---|
+| Method | `POST` |
+| `Content-Type` | `application/json`, always. It cannot be overridden. |
+| `Authorization` | `Bearer <credential>` for Bearer, `Basic <base64 of the credential>` for Basic, absent for None. For Basic, enter the credential as `user:password`; the plugin base64-encodes it. |
+| Other headers | Whatever you add under **Custom headers**. |
+| Body | The audit row as canonical JSON, byte-identical to the syslog message payload and to the webhook body. See [Payload](#payload). |
+| Timeout | 10 seconds total, covering connect, TLS handshake, send, and receive. Not configurable. |
+
+Four things about this transport are deliberate and not configurable:
+
+- **HTTPS only.** A plain `http://` URL is refused when you save, and a URL that comes from an environment variable is re-checked when the row is forwarded, so an env var pointing at `http://` fails there instead of leaking a credential. **Verify TLS certificate** applies to the syslog transport only: an HTTP forwarder always verifies, because it carries a credential.
+- **Redirects are never followed.** A 3xx counts as a failure. Following one would re-POST the audit row and the credential to whatever host the response names.
+- **Only a 2xx counts as delivered.** Everything else, including a 3xx, increments the failure counter.
+- **`Content-Type`, `Content-Length`, `Host`, `Transfer-Encoding`, and `Connection` cannot be set through Custom headers**, and `Authorization` is only accepted there when **Authentication** is None. That combination is how you send a vendor's own scheme, for example `Authorization: Splunk <token>`.
+
+An environment variable that isn't set resolves to the literal `$NAME` string. Rather than sending that, the forward fails and names the field in the plugin log, so a missing variable looks like a configuration problem instead of an authentication failure from the far end.
+
+### What the HTTP transport reaches
+
+The body is the audit row and nothing else. There is no vendor envelope around it, and no per-destination payload format to choose.
+
+| Destination | Reachable |
+|---|---|
+| A collector or gateway you write, an HTTP source that accepts arbitrary JSON (for example a Sumo Logic HTTP Logs and Metrics source), a Logstash `http` input, or an Elasticsearch-compatible endpoint that takes a JSON document | **Yes.** Point the URL at it, add whatever header it authenticates with, done. |
+| Splunk HTTP Event Collector | **No.** HEC expects its own event wrapper around the payload, which the plugin does not build. |
+| Datadog Logs intake | **No.** Its API expects an array of log items, not a single JSON object. |
+| Microsoft Sentinel Logs Ingestion API | **No.** It expects an array shaped to a Data Collection Rule, and its bearer token has to be minted and refreshed through Microsoft Entra rather than stored. |
+
+For the three in the "No" column, the shape of the request is right and the shape of the body is not, so the integration needs something that reshapes it: a small relay of your own, or a vendor-supplied agent such as Splunk Connect for Syslog in front of the syslog transport.
 
 ## Event eligibility
 
@@ -74,7 +139,7 @@ For per-endpoint at-least-once delivery, where every endpoint receives every row
 
 ## Wire format
 
-Each audit row produces one RFC 5424 message:
+On the syslog transport, each audit row produces one RFC 5424 message. On the HTTP transport the same JSON is the whole request body, with no header fields and no envelope around it.
 
 ```
 <133>1 2026-05-15T03:33:14Z craft-prod password-policy 4821 audit-log - {"changedByIdentifier":null,"changedByUserId":null,"dateCreated":"2026-05-15 03:33:14","details":"{\"source\":\"front-end-change\"}","event":"password_changed","forwardAttempts":0,"forwardedAt":null,"geoCountry":null,"geoRegion":null,"id":8821,"ipHash":"c91d7...","outcome":"success","previousHash":"...","rowHash":"...","source":"web","uid":"6f7e8d9c-1234-5678-9abc-def012345678","userId":42,"userIdentifier":"a3f4b..."}
@@ -90,11 +155,11 @@ Header field by field:
 - **PROCID**: the id of the PHP process that built the message.
 - **MSGID**: `audit-log`.
 - **STRUCTURED-DATA**: `-`. The plugin sends no structured-data elements.
-- **MSG**: the audit row as canonical JSON, followed by the newline that terminates the message on the stream.
+- **MSG**: the audit row as canonical JSON. What surrounds it on the stream is the [message framing](#message-framing): a leading octet count, or a trailing newline.
 
 ### Payload
 
-The MSG is the whole audit-log row, encoded by the same canonicaliser that feeds the hash chain: keys sorted recursively as strings, with unescaped slashes and unescaped unicode. The keys are:
+The payload is the whole audit-log row, encoded by the same canonicaliser that feeds the hash chain: keys sorted recursively as strings, with unescaped slashes and unescaped unicode. The keys are:
 
 `changedByIdentifier`, `changedByUserId`, `dateCreated`, `details`, `event`, `forwardAttempts`, `forwardedAt`, `geoCountry`, `geoRegion`, `id`, `ipHash`, `outcome`, `previousHash`, `rowHash`, `source`, `uid`, `userId`, `userIdentifier`.
 
@@ -107,7 +172,7 @@ Two things to know before writing a parser against it:
 
 The payload is a wider key set than the hash chain covers. The chain hashes nine keys (`changedByIdentifier`, `dateCreated`, `details`, `event`, `ipHash`, `outcome`, `source`, `uid`, `userIdentifier`) with `details` as a decoded object, so recomputing `rowHash` from what arrives on the wire will not reproduce the stored value. For chain verification, run the [audit verifier](./audit-verifier.md) against the source install. See [Audit logging](./audit-logging.md) for what each column means and which of them are identifying.
 
-Webhook deliveries carry the same canonical JSON as their request body, so a receiver written against one shape parses the other. The two can disagree on `forwardedAt` and `forwardAttempts`, which track forwarder progress and therefore depend on which sweep read the row first.
+All three surfaces carry the same bytes: the syslog MSG, the HTTP transport's request body, and a webhook delivery's request body, so a receiver written against one parses the others. The two can disagree on `forwardedAt` and `forwardAttempts`, which track forwarder progress and therefore depend on which sweep read the row first.
 
 ## Circuit breaker
 
@@ -135,7 +200,7 @@ The compliance dashboard's **Pending SIEM forwarding** section reports how many 
 **Password Policy → SIEM forwarders** lists every configured forwarder in a table of:
 
 - Name, linking to the edit screen
-- Endpoint, as `host:port`
+- Endpoint: `host:port` on a syslog forwarder, the URL on an HTTP one
 - Protocol
 - Status pill (green when enabled, grey when disabled)
 - Circuit pill (green when closed, red when open, with the consecutive-failure count inline)
@@ -152,12 +217,15 @@ Two hours is roughly twenty-four consecutive missed sweeps at the documented fiv
 
 ### Forwarder edit screen
 
-One screen, in sections:
+One screen, in sections. Which fields the **Destination** section shows follows the **Protocol** you pick, and switching it swaps them immediately.
 
-- **General**: name, host, port, protocol, enabled.
-- **TLS**: certificate verification toggle and custom CA bundle path.
+- **General**: name, protocol, enabled.
+- **Destination**: host, port, and message framing on syslog; endpoint URL, authentication, credential, and custom headers on HTTP.
+- **TLS**: the certificate verification toggle (syslog only) and the custom CA bundle path (both transports).
 - **Eligibility**: the per-forwarder event class allowlist.
 - **Circuit breaker**: current circuit state, plus the **Reset circuit** and **Send test event** buttons. This section only renders on a forwarder that has been saved.
+
+Switching a saved forwarder from HTTP to syslog clears its URL, authentication type, credential, and custom headers in the same save, so a credential is never left behind for a destination the forwarder no longer talks to. The reverse switch clears host and port.
 
 ### Send test event
 
@@ -166,10 +234,10 @@ One screen, in sections:
 Three things follow from that:
 
 - The test row is a real audit row. It stays in the audit log, and webhook endpoints will deliver it too.
-- Syslog has no application-level acknowledgement, so "Test event delivered." means the frame was written to the socket without error. It does not prove the receiver parsed or indexed it. Confirm that on the receiver.
+- On the syslog transport there is no application-level acknowledgement, so "Test event delivered." means the message was written to the socket without error. It does not prove the receiver parsed or indexed it. Confirm that on the receiver. The HTTP transport is stricter: it only reports success on a 2xx response.
 - A test event counts towards the circuit breaker like any other forward. A failing test increments the failure counter, and a succeeding one clears it.
 
-Connection-level detail is deliberately kept out of the response, because raw TLS errors carry internal hostnames, IPs and ports. When a test fails, the exception is in the plugin log.
+Connection-level detail is deliberately kept out of the response, because raw transport errors carry internal hostnames, IPs and ports. When a test fails, the reason is in the plugin log, including the response status and a bounded slice of the response body on the HTTP transport.
 
 ### Reset circuit
 
@@ -220,7 +288,7 @@ Work through these in order:
 
 After fixing the underlying issue, use **Reset circuit** to resume delivery without waiting out the cooldown.
 
-### Test event fails
+### Test event fails on a syslog forwarder
 
 The message in the control panel is deliberately generic. The actual exception is in the plugin log (`storage/logs/password-policy-*.log`). Common causes:
 
@@ -228,18 +296,29 @@ The message in the control panel is deliberately generic. The actual exception i
 2. **DNS**: the host doesn't resolve from the Craft host.
 3. **Port**: the receiver isn't listening on the configured port, or is listening for plain TCP rather than TLS.
 4. **Certificate**: the receiver's chain doesn't verify against the system trust store. Point **Custom CA bundle path** at the issuing CA rather than turning verification off.
-5. **Half-open peer**: the receiver accepts the connection but never drains the frame. This surfaces as a write timeout after 5 seconds.
+5. **Half-open peer**: the receiver accepts the connection but never drains the message. This surfaces as a write timeout after 5 seconds.
+
+### Test event fails on an HTTP forwarder
+
+The plugin log carries the response status and a bounded slice of the response body, which is usually enough on its own. Common causes:
+
+1. **401 or 403**: the credential is wrong, or the collector wants it in a header rather than in `Authorization`. Set **Authentication** to None and add the vendor's header under **Custom headers**.
+2. **400 or 422**: the collector accepted the request but rejected the body, which usually means it wants a vendor envelope the plugin does not build. See [What the HTTP transport reaches](#what-the-http-transport-reaches).
+3. **A 3xx in the log**: the URL redirects. Redirects are never followed, so point the forwarder at the final URL.
+4. **"The resolved endpoint URL is not https://"**: the URL, or the environment variable it resolves to, is plain http.
+5. **"The forwarder auth token is empty once resolved"** or **"The … header is empty once resolved"**: an environment variable named in that field isn't set in this environment.
+6. **A TLS error**: the collector's chain doesn't verify. Point **Custom CA bundle path** at the issuing CA. There is no verification opt-out on this transport.
 
 ### The receiver connects but logs nothing usable
 
-1. **Framing**: the plugin newline-delimits messages. A listener configured to require octet-counted framing will discard them.
+1. **Framing**: the receiver and the forwarder's **Message framing** disagree. A listener requiring octet counting discards newline-delimited messages, and a listener reading line-delimited input sees the octet count as part of the message. See [Message framing](#message-framing).
 2. **`details` is a string**: parsers expecting a nested object see a quoted JSON string. See [Payload](#payload).
 3. **Message size**: a row with an unusually large `details` blob makes for a long message. Check what's being captured if your receiver truncates.
 
 ## See also
 
 - [Audit logging](./audit-logging.md): the source of the audit rows that get forwarded, and what each column means.
-- [Webhooks](./webhooks.md): HMAC-signed HTTPS delivery with per-endpoint at-least-once semantics, for platforms that ingest over HTTP.
+- [Webhooks](./webhooks.md): HMAC-signed HTTPS delivery with per-endpoint at-least-once semantics, and a signature a receiver can verify. Use it over the HTTP transport here when the receiver is yours and you want the payload signed, or when you need every endpoint to receive every row independently.
 - [Audit verifier](./audit-verifier.md): proving the source-side hash chain hasn't been tampered with.
 - [Compliance Dashboard](./compliance-dashboard.md): the pending-forwarding count and oldest-pending age.
 - [Audit export](./audit-export.md): batch export to filesystem for offline analysis.

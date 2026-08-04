@@ -204,18 +204,23 @@ See [Alert cooldowns](../features/alert-cooldowns.md).
 
 ### `passwordpolicy_siem_forwarders` (Enterprise)
 
-Configured syslog-over-TLS receivers.
+Configured SIEM destinations. `protocol` decides which half of the row is in use, which is why the three address columns are all nullable.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | int PK | |
-| `name` | varchar(255), nullable | Display name. The index falls back to `host:port` when it's null |
+| `name` | varchar(255), nullable | Display name. The index falls back to the destination (`host:port` or the URL) when it's null |
 | `enabled` | tinyint(1), NOT NULL DEFAULT 1 | Soft toggle |
-| `protocol` | varchar(32), NOT NULL DEFAULT `'syslog-tls'` | `syslog-tls` is the only accepted value |
-| `host` | varchar(255), NOT NULL | Receiver hostname or IP |
-| `port` | int, NOT NULL | Receiver port. The new-forwarder form prefills 6514 |
-| `tlsCertVerify` | tinyint(1), NOT NULL DEFAULT 1 | Verify the receiver's certificate chain and hostname |
-| `tlsCaBundlePath` | varchar(255), nullable | PEM CA bundle path. Accepts an env var reference, resolved at use |
+| `protocol` | varchar(32), NOT NULL DEFAULT `'syslog-tls'` | `syslog-tls` or `http` |
+| `host` | varchar(255), nullable | Receiver hostname or IP. Required on `syslog-tls`, null on `http` |
+| `port` | int, nullable | Receiver port. Required on `syslog-tls`, null on `http`. The new-forwarder form prefills 6514 |
+| `framing` | varchar(32), NOT NULL DEFAULT `'octet-counted'` | Syslog message delimiting: `octet-counted` (RFC 5425) or `newline`. Ignored on `http` |
+| `url` | varchar(2048), nullable | HTTPS collector URL. Required on `http`, null on `syslog-tls`. Accepts an env var reference, resolved at forward time |
+| `authType` | varchar(32), NOT NULL DEFAULT `'none'` | `none`, `bearer`, or `basic`. Ignored on `syslog-tls` |
+| `authToken` | text, nullable | HTTP credential, encrypted at rest via Craft's `Security::encryptByKey()`. Null when `authType` is `none` |
+| `headers` | JSON, nullable | Extra request headers as a name to value map, for example `{"DD-API-KEY": "$PP_DATADOG_KEY"}`. Values accept env var references. Null on `syslog-tls` |
+| `tlsCertVerify` | tinyint(1), NOT NULL DEFAULT 1 | Verify the receiver's certificate chain and hostname. Applies to `syslog-tls` only: an `http` forwarder always verifies |
+| `tlsCaBundlePath` | varchar(255), nullable | PEM CA bundle path. Accepts an env var reference, resolved at use. Honoured by both transports |
 | `eventClasses` | JSON, nullable | Per-forwarder event-class allowlist override. Null or empty falls back to `siemForwardEventClasses` |
 | `consecutiveFailures` | int, NOT NULL DEFAULT 0 | Circuit-breaker state |
 | `circuitOpenAt` | datetime, nullable | When the breaker opened |
