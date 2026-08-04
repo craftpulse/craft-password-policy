@@ -46,16 +46,13 @@
         disabled: readOnly,
     }) }}
 
-    {# Compose `<code>` HTML via `tag()` rather than injecting through
-       the translation source — keeps translation strings plain text. #}
-    {% set urlInstructions %}
-        {{ 'The endpoint URL audit-log payloads will be POSTed to. Supports env variables (e.g. {example}). Always uses HTTPS in production; TLS verify is forced on.'|t('password-policy', {
-            example: tag('code', { text: '$PP_WEBHOOK_URL' }),
-        })|raw }}
-    {% endset %}
+    {# Instructions go through `Cp::parseMarkdown()`, so inline code is a
+       markdown backtick in the translation string. An `{% set %}` capture
+       would carry this file's indentation into that markdown and render the
+       whole instruction as an indented code block, HTML and all. #}
     {{ forms.autosuggestField({
         label: 'URL'|t('password-policy'),
-        instructions: urlInstructions|raw,
+        instructions: 'The endpoint URL audit-log payloads will be POSTed to. Supports env variables (e.g. `$PP_WEBHOOK_URL`). Always uses HTTPS in production; TLS verify is forced on.'|t('password-policy'),
         id: 'url',
         name: 'url',
         value: endpoint.url,
@@ -85,15 +82,9 @@
     <h2>{{ 'Eligibility'|t('password-policy') }}</h2>
 
     {% set eventClassesValue = endpoint.eventClasses ? endpoint.eventClasses|join(', ') : '' %}
-    {% set eventClassesInstructions %}
-        {{ 'Comma-separated list of audit-log streams this endpoint receives. Leave empty to use the global setting (currently: {current}). The only supported stream in this release is {audit}.'|t('password-policy', {
-            current: tag('code', { text: 'audit_log' }),
-            audit: tag('code', { text: 'audit_log' }),
-        })|raw }}
-    {% endset %}
     {{ forms.textField({
         label: 'Event class allowlist'|t('password-policy'),
-        instructions: eventClassesInstructions|raw,
+        instructions: 'Comma-separated list of audit-log streams this endpoint receives. Leave empty to use the global setting (currently: `audit_log`). The only supported stream in this release is `audit_log`.'|t('password-policy'),
         id: 'eventClasses',
         name: 'eventClasses',
         value: eventClassesValue,

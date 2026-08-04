@@ -232,22 +232,13 @@
         </div>
     {% endset %}
 
-    {# Compose `<strong>` HTML via `tag()` (auto-escapes contents) rather
-       than injecting the markup through a translated source string —
-       translators can't inject script-shaped HTML when each `<strong>`
-       is built in Twig. #}
-    {% set rulesInstructions %}
-        {{ 'Each rule defaults to'|t('password-policy') }}
-        {{ tag('strong', { text: 'Global'|t('password-policy') }) }}{{ ', inheriting your global setting. Choose'|t('password-policy') }}
-        {{ tag('strong', { text: 'Off'|t('password-policy') }) }}
-        {{ 'or'|t('password-policy') }}
-        {{ tag('strong', { text: 'On'|t('password-policy') }) }}
-        {{ 'to explicitly override.'|t('password-policy') }}
-    {% endset %}
-
+    {# Instructions go through `Cp::parseMarkdown()`, so emphasis is markdown
+       in the translation string. An `{% set %}` capture would carry this
+       file's indentation into that markdown and render the whole instruction
+       as an indented code block, tags and all. #}
     {{ forms.field({
         label: 'Rule overrides'|t('password-policy'),
-        instructions: rulesInstructions|raw,
+        instructions: 'Each rule defaults to **Global**, inheriting your global setting. Choose **Off** or **On** to explicitly override.'|t('password-policy'),
         id: 'pp-rules-field',
     }, rulesTable) }}
 </div>
