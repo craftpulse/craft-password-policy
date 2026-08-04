@@ -1,5 +1,9 @@
 # Release Notes for Password Policy
 
+## 5.1.3 - 2026-08-04
+### Fixed
+- Corrected support and developer links in `composer.json` and source docblocks to the proper `craft-pulse.com` domain.
+
 ## 5.1.2 - 2026-05-02
 ### Fixed
 - Fixed HIBP requests not enforcing TLS verification when a site-level `config/guzzle.php` had `verify => false`. The plugin now always verifies TLS on the Pwned Passwords API call regardless of the site's Guzzle defaults.
