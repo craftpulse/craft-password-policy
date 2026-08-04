@@ -15,9 +15,9 @@ use craft\base\Model;
 use craft\enums\Color;
 use craft\helpers\Cp;
 use craft\helpers\DateTimeHelper;
+use craftpulse\passwordpolicy\helpers\EncryptedAttributeHelper;
 use craftpulse\passwordpolicy\records\WebhookEndpointRecord;
 use DateTime;
-use Throwable;
 use yii\validators\UrlValidator;
 
 /**
@@ -32,18 +32,18 @@ use yii\validators\UrlValidator;
  * Encryption boundary
  * -------------------
  * `secretCurrent` and `secretPrevious` are encrypted at rest via
- * `Craft::$app->getSecurity()->encryptByKey()`. The boundary is THIS
- * model — the record stores opaque ciphertext, the model surface holds
- * plaintext for use by `WebhookService::dispatch()` (HMAC signing) and
- * for the once-and-only-once display in CP after creation/rotation.
+ * {@see EncryptedAttributeHelper}. The boundary is THIS model — the
+ * record stores opaque ciphertext, the model surface holds plaintext for
+ * use by `WebhookService::dispatch()` (HMAC signing) and for the
+ * once-and-only-once display in CP after creation/rotation.
  *
  *  - `fromRecord()` decrypts both columns when hydrating.
  *  - `toRecordAttributes()` encrypts both columns when persisting.
  *  - The plaintext NEVER round-trips through the DB.
  *
- * Craft's `encryptByKey()` (no key arg) uses the install's `securityKey`
- * from general.php — that's the right primitive. Don't introduce a
- * per-plugin key.
+ * The helper's envelope is Craft's `encryptByKey()` (no key arg), which
+ * uses the install's `securityKey` from general.php — that's the right
+ * primitive. Don't introduce a per-plugin key.
  *
  * Datetime columns come back from ActiveRecord as raw strings;
  * `fromRecord()` hydrates them via `DateTimeHelper::toDateTime()` per
@@ -60,6 +60,19 @@ use yii\validators\UrlValidator;
  */
 class WebhookEndpointModel extends Model
 {
+    // Const Properties
+    // =========================================================================
+
+    /**
+     * Label passed to {@see EncryptedAttributeHelper} so a decrypt failure
+     * names the credential in the warning without logging its value.
+     *
+     * @var string
+     *
+     * @since 5.2.0
+     */
+    public const SECRET_LABEL = 'webhook endpoint signing secret';
+
     // Static Methods
     // =========================================================================
 
@@ -89,9 +102,12 @@ class WebhookEndpointModel extends Model
         $model->id = (int)$record->id;
         $model->name = $record->name;
         $model->url = (string)$record->url;
-        $model->secretCurrent = self::_decryptOrNull((string)$record->secretCurrent);
+        $model->secretCurrent = EncryptedAttributeHelper::decryptOrNull(
+            (string)$record->secretCurrent,
+            self::SECRET_LABEL,
+        );
         $model->secretPrevious = $record->secretPrevious !== null && $record->secretPrevious !== ''
-            ? self::_decryptOrNull((string)$record->secretPrevious)
+            ? EncryptedAttributeHelper::decryptOrNull((string)$record->secretPrevious, self::SECRET_LABEL)
             : null;
         $model->secretRotatedAt = $record->secretRotatedAt !== null
             ? DateTimeHelper::toDateTime($record->secretRotatedAt) ?: null
@@ -272,10 +288,10 @@ class WebhookEndpointModel extends Model
             'name' => $this->name,
             'url' => $this->url,
             'secretCurrent' => $this->secretCurrent !== null && $this->secretCurrent !== ''
-                ? self::_encryptForStorage($this->secretCurrent)
+                ? EncryptedAttributeHelper::encrypt($this->secretCurrent)
                 : '',
             'secretPrevious' => $this->secretPrevious !== null && $this->secretPrevious !== ''
-                ? self::_encryptForStorage($this->secretPrevious)
+                ? EncryptedAttributeHelper::encrypt($this->secretPrevious)
                 : null,
             'secretRotatedAt' => $this->secretRotatedAt?->format('Y-m-d H:i:s'),
             'eventClasses' => !empty($this->eventClasses)
@@ -388,78 +404,5 @@ class WebhookEndpointModel extends Model
                 ),
             ],
         ]);
-    }
-
-    // Private Methods
-    // =========================================================================
-
-    /**
-     * Attempts to decrypt a base64-wrapped ciphertext blob via Craft's
-     * `Security::decryptByKey()`. Returns null on a decrypt failure —
-     * the caller (model hydration) treats null as "unusable secret"
-     * and the service refuses to dispatch against an endpoint with a
-     * null `secretCurrent`. This preserves the failure-mode contract:
-     * corrupted ciphertext or a rotated `securityKey` doesn't crash
-     * the queue worker; the endpoint visibly degrades.
-     *
-     * The base64 wrap is needed because Craft's `encryptByKey` returns
-     * raw binary bytes (HKDF + AES + HMAC envelope). MySQL `text`
-     * columns are utf8mb4 by default and reject sequences that aren't
-     * valid UTF-8. Wrapping in base64 keeps the column ASCII-clean
-     * across MySQL/PostgreSQL/SQLite.
-     *
-     * @param string $cipher base64-encoded ciphertext from the DB
-     * @return string|null
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private static function _decryptOrNull(string $cipher): ?string
-    {
-        if ($cipher === '') {
-            return null;
-        }
-
-        $raw = base64_decode($cipher, true);
-        if ($raw === false) {
-            Craft::warning(
-                'Webhook endpoint secret is not valid base64; cannot decrypt.',
-                'password-policy',
-            );
-
-            return null;
-        }
-
-        try {
-            $decrypted = Craft::$app->getSecurity()->decryptByKey($raw);
-        } catch (Throwable $e) {
-            Craft::warning(
-                'Failed to decrypt webhook endpoint secret: ' . $e->getMessage(),
-                'password-policy',
-            );
-
-            return null;
-        }
-
-        return $decrypted !== false ? $decrypted : null;
-    }
-
-    /**
-     * Encrypts plaintext via Craft's `Security::encryptByKey()` and
-     * wraps the binary output in base64 so it stores cleanly in a
-     * utf8mb4 `text` column. Pairs with `_decryptOrNull()` on the
-     * read side.
-     *
-     * @param string $plaintext
-     * @return string base64-encoded ciphertext suitable for DB storage
-     *
-     * @author CraftPulse
-     * @since 5.2.0
-     */
-    private static function _encryptForStorage(#[\SensitiveParameter] string $plaintext): string
-    {
-        return base64_encode(
-            Craft::$app->getSecurity()->encryptByKey($plaintext),
-        );
     }
 }
