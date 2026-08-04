@@ -230,9 +230,16 @@ class SiemForwarderModel extends Model
         $model->authType = $record->authType !== null && $record->authType !== ''
             ? (string)$record->authType
             : self::AUTH_TYPE_NONE;
-        $model->authToken = $record->authToken !== null && $record->authToken !== ''
-            ? EncryptedAttributeHelper::decryptOrNull((string)$record->authToken, self::TOKEN_LABEL)
+        // Capture the ciphertext before decrypting it: `toRecordAttributes()`
+        // puts this back verbatim on a save that carries no new credential,
+        // and the decrypt below is allowed to fail.
+        $model->_storedAuthTokenCipher = $record->authToken !== null && $record->authToken !== ''
+            ? (string)$record->authToken
             : null;
+        $model->authToken = $model->_storedAuthTokenCipher !== null
+            ? EncryptedAttributeHelper::decryptOrNull($model->_storedAuthTokenCipher, self::TOKEN_LABEL)
+            : null;
+        $model->_hydratedAuthToken = $model->authToken;
         $model->headers = is_array($record->headers) ? $record->headers : null;
         $model->framing = $record->framing !== null && $record->framing !== ''
             ? (string)$record->framing
@@ -389,6 +396,30 @@ class SiemForwarderModel extends Model
      */
     public ?string $url = null;
 
+    // Private Properties
+    // =========================================================================
+
+    /**
+     * @var string|null the plaintext this model was hydrated with, so
+     *     `toRecordAttributes()` can tell an untouched credential from a
+     *     newly submitted one. Null when the row had none, and also when its
+     *     ciphertext couldn't be decrypted.
+     *
+     *     Private on purpose: `Model::attributes()` reflects public
+     *     properties only, so this never reaches `fields()`, `toArray()`, or
+     *     a save response.
+     */
+    private ?string $_hydratedAuthToken = null;
+
+    /**
+     * @var string|null the ciphertext this model was hydrated from, kept
+     *     verbatim so a save that doesn't carry a new credential can put the
+     *     stored one back untouched.
+     *
+     *     Private on purpose: same reasoning as above.
+     */
+    private ?string $_storedAuthTokenCipher = null;
+
     // Public Methods
     // =========================================================================
 
@@ -450,6 +481,29 @@ class SiemForwarderModel extends Model
         }
 
         return sprintf('%s:%d', $this->host, (int)$this->port);
+    }
+
+    /**
+     * Returns whether the row this model was hydrated from carries a
+     * credential, whether or not that credential could be decrypted.
+     *
+     * Deliberately independent of `$authToken`: a decrypt failure (rotated
+     * `securityKey`, ciphertext written by another install) leaves the
+     * plaintext null while the row still holds a credential. Keying the edit
+     * screen's "a credential is stored" note and the `required` rule on the
+     * plaintext instead would tell the operator their credential vanished,
+     * and then refuse the save.
+     *
+     * Exposed as `forwarder.hasStoredCredential` in Twig.
+     *
+     * @return bool
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    public function getHasStoredCredential(): bool
+    {
+        return $this->_storedAuthTokenCipher !== null;
     }
 
     /**
@@ -534,15 +588,25 @@ class SiemForwarderModel extends Model
     /**
      * Returns the persistence-shape attributes for the record layer.
      *
-     * Two things happen here, both deliberate:
+     * Three things happen here, all deliberate:
      *
-     *  - `authToken` is encrypted, so the DB never sees the plaintext
-     *    credential.
+     *  - A newly submitted `authToken` is encrypted, so the DB never sees
+     *    the plaintext credential.
+     *  - A save that carries no new credential puts the stored ciphertext
+     *    back VERBATIM rather than re-encrypting the decrypted plaintext.
+     *    Two reasons. It makes an untouched save leave the column
+     *    byte-identical, so "the ciphertext changed" is a reliable signal
+     *    that the credential actually changed. And it decouples the
+     *    credential's survival from a successful decrypt: a row whose
+     *    ciphertext can't be read right now (rotated `securityKey`,
+     *    ciphertext from another install) keeps it instead of having it
+     *    replaced by an encryption of null.
      *  - The unused half of the row is nulled per `protocol`. A forwarder
      *    switched from HTTP to syslog loses its URL, auth type, token,
      *    and headers in the same save that switches it, instead of
      *    keeping a live credential for a destination it no longer talks
-     *    to.
+     *    to. Setting the auth type to `none` drops the credential the same
+     *    way, and that is the only way to clear one.
      *
      * Circuit-breaker columns are absent on purpose. `SiemService`
      * updates `consecutiveFailures` / `circuitOpenAt` with targeted
@@ -559,9 +623,6 @@ class SiemForwarderModel extends Model
     {
         $isHttp = $this->getIsHttp();
         $authType = $isHttp ? $this->authType : self::AUTH_TYPE_NONE;
-        $hasToken = $authType !== self::AUTH_TYPE_NONE
-            && $this->authToken !== null
-            && $this->authToken !== '';
 
         return [
             'name' => $this->name,
@@ -570,9 +631,7 @@ class SiemForwarderModel extends Model
             'port' => $isHttp ? null : $this->port,
             'url' => $isHttp ? ($this->url ?: null) : null,
             'authType' => $authType,
-            'authToken' => $hasToken
-                ? EncryptedAttributeHelper::encrypt((string)$this->authToken)
-                : null,
+            'authToken' => $this->_authTokenForStorage($authType),
             'headers' => $isHttp && !empty($this->headers) ? $this->headers : null,
             // Not nulled per protocol: the column is not null, and holding
             // the operator's choice through a round trip via HTTP means a
@@ -742,11 +801,17 @@ class SiemForwarderModel extends Model
                     'The authentication type is invalid.',
                 ),
             ],
+            // Required only when there is nothing on the row to fall back
+            // to. The edit screen never re-renders a stored credential, so
+            // an untouched save posts an empty field and must not be read as
+            // "clear it" — and a stored ciphertext that can't be decrypted
+            // right now must not make the row unsaveable either.
             [
                 ['authToken'],
                 'required',
                 'when' => fn(self $forwarder): bool => $forwarder->getIsHttp()
-                    && $forwarder->authType !== self::AUTH_TYPE_NONE,
+                    && $forwarder->authType !== self::AUTH_TYPE_NONE
+                    && !$forwarder->getHasStoredCredential(),
             ],
             [['authToken'], 'string', 'max' => 2048],
             [['headers'], 'validateHeaders'],
@@ -763,5 +828,54 @@ class SiemForwarderModel extends Model
                 ),
             ],
         ]);
+    }
+
+    // Private Methods
+    // =========================================================================
+
+    /**
+     * Returns the value the `authToken` column should hold after this save.
+     *
+     * An auth type of `none` clears the column, and that is the only way to
+     * clear a credential. Otherwise the column keeps its stored ciphertext
+     * unless the plaintext on this model actually differs from what the row
+     * was hydrated with, in which case the new plaintext is encrypted.
+     *
+     * Three states end in "keep the stored bytes", and they cover the two
+     * ways the plaintext can be untouched:
+     *
+     *  - The edit screen posted an empty credential field, which it always
+     *    does unless the operator typed a new one, and the controller left
+     *    the hydrated plaintext in place.
+     *  - The operator retyped the same credential.
+     *  - The stored ciphertext couldn't be decrypted, so the plaintext is
+     *    null on both sides. Re-encrypting null would destroy the only copy
+     *    of a credential that a restored `securityKey` could still read.
+     *
+     * On a new row `$_storedAuthTokenCipher` is null, so a submitted
+     * plaintext is the only thing that can produce a value here.
+     *
+     * @param string $authType the auth type being persisted, already
+     *     normalised for the protocol
+     * @return string|null base64-wrapped ciphertext, or null
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _authTokenForStorage(string $authType): ?string
+    {
+        if ($authType === self::AUTH_TYPE_NONE) {
+            return null;
+        }
+
+        if (
+            $this->authToken === null
+            || $this->authToken === ''
+            || $this->authToken === $this->_hydratedAuthToken
+        ) {
+            return $this->_storedAuthTokenCipher;
+        }
+
+        return EncryptedAttributeHelper::encrypt($this->authToken);
     }
 }

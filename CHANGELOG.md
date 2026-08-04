@@ -99,6 +99,8 @@
 - Added an HTTP destination type to SIEM forwarders, which POSTs each audit row's canonical JSON to an HTTPS collector with an optional bearer or basic credential and any custom request headers the platform needs (Enterprise).
 - Added per-forwarder syslog message framing, defaulting to the octet counting RFC 5425 requires of a receiver on port 6514, with newline delimiting available for a receiver that expects line-delimited input (Enterprise).
 - A SIEM forwarder's HTTP credential is encrypted at rest, is never rendered back into the edit form, and never appears in a save response (Enterprise).
+- A save that does not change a SIEM forwarder's credential leaves the stored value byte for byte as it was, so a change in the column always means the credential changed; setting the authentication type to None is what clears one (Enterprise).
+- A SIEM forwarder whose stored credential cannot be decrypted, for example after the install's security key changes, keeps it and stays saveable rather than having it replaced (Enterprise).
 - The HTTP destination refuses a plaintext URL, re-checks the scheme after resolving an environment variable, never follows a redirect, and treats anything other than a 2xx as a failure (Enterprise).
 - Switching a forwarder from the HTTP destination to syslog now clears its URL, authentication type, credential, and custom headers in the same save (Enterprise).
 - A forwarder carrying a protocol neither transport handles now records a failure instead of being sent over the syslog transport regardless (Enterprise).

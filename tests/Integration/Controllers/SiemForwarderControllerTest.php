@@ -27,6 +27,7 @@
 use craft\db\Query;
 use craft\web\Response;
 use craftpulse\passwordpolicy\controllers\SiemForwarderController;
+use craftpulse\passwordpolicy\helpers\EncryptedAttributeHelper;
 use craftpulse\passwordpolicy\models\SiemForwarderModel;
 use craftpulse\passwordpolicy\PasswordPolicy;
 use craftpulse\passwordpolicy\tests\Support\Factories\UserFactory;
@@ -177,6 +178,133 @@ it('saves an HTTP forwarder with credential and custom headers', function() {
 
     expect($loaded?->authToken)->toBe('posted-token')
         ->and($loaded?->headers)->toBe(['X-Env' => 'production']);
+});
+
+it('keeps the credential decryptable across an untouched re-save', function() {
+    // The whole round trip, through the controller, ending at the column:
+    // save → decrypt what landed → re-save with an empty credential field →
+    // decrypt again. Unit coverage on the model and the service both passed
+    // while a browser walk reported the credential unreadable after a
+    // no-op re-save, so this asserts on the bytes in the row rather than on
+    // the model surface.
+    $this->request->stubBodyParams = [
+        'name' => 'Collector',
+        'protocol' => 'http',
+        'url' => 'https://collector.example.test/ingest',
+        'authType' => 'bearer',
+        'authToken' => 'smoke-credential-value-123',
+        'headers' => [['name' => 'X-Env', 'value' => 'production']],
+        'enabled' => '1',
+    ];
+
+    runSiemForwarderAction('save');
+
+    $firstRow = siemForwarderRow();
+    $firstCipher = (string)$firstRow['authToken'];
+
+    expect(EncryptedAttributeHelper::decryptOrNull($firstCipher, 'test'))
+        ->toBe('smoke-credential-value-123');
+
+    // Reopen and save without touching anything: the credential field is
+    // never re-rendered, so it posts empty.
+    $this->request->stubBodyParams = [
+        'forwarderId' => (string)$firstRow['id'],
+        'name' => 'Collector',
+        'protocol' => 'http',
+        'url' => 'https://collector.example.test/ingest',
+        'authType' => 'bearer',
+        'authToken' => '',
+        'headers' => [['name' => 'X-Env', 'value' => 'production']],
+        'enabled' => '1',
+    ];
+
+    runSiemForwarderAction('save');
+
+    $secondRow = siemForwarderRow();
+
+    expect(EncryptedAttributeHelper::decryptOrNull((string)$secondRow['authToken'], 'test'))
+        ->toBe('smoke-credential-value-123')
+        // And the column is byte-identical: a save that carries no new
+        // credential puts the stored ciphertext back rather than
+        // re-encrypting the plaintext. "The ciphertext changed" therefore
+        // means the credential changed.
+        ->and((string)$secondRow['authToken'])->toBe($firstCipher);
+});
+
+it('keeps an unreadable stored credential instead of nulling it on save', function() {
+    // A ciphertext this install can't decrypt (rotated `securityKey`, a row
+    // restored from another environment) hydrates as a null plaintext. The
+    // save must not turn that into an encryption of nothing, and must not be
+    // refused either: the operator can still fix the key, and destroying the
+    // only copy of the credential forecloses that.
+    $this->request->stubBodyParams = [
+        'protocol' => 'http',
+        'url' => 'https://collector.example.test/ingest',
+        'authType' => 'bearer',
+        'authToken' => 'original-credential',
+        'enabled' => '1',
+    ];
+    runSiemForwarderAction('save');
+
+    $row = siemForwarderRow();
+    $unreadable = (string)$row['authToken'] . 'corrupt';
+
+    Craft::$app->getDb()->createCommand()
+        ->update(
+            '{{%passwordpolicy_siem_forwarders}}',
+            ['authToken' => $unreadable],
+            ['id' => $row['id']],
+        )
+        ->execute();
+
+    expect(PasswordPolicy::$plugin->getSiem()->getForwarderById((int)$row['id'])?->authToken)
+        ->toBeNull();
+
+    $this->request->stubBodyParams = [
+        'forwarderId' => (string)$row['id'],
+        'name' => 'Renamed while the credential is unreadable',
+        'protocol' => 'http',
+        'url' => 'https://collector.example.test/ingest',
+        'authType' => 'bearer',
+        'authToken' => '',
+        'enabled' => '1',
+    ];
+
+    runSiemForwarderAction('save');
+
+    $afterRow = siemForwarderRow();
+
+    expect($afterRow['name'])->toBe('Renamed while the credential is unreadable')
+        ->and((string)$afterRow['authToken'])->toBe($unreadable);
+});
+
+it('clears the credential when the auth type is set to none', function() {
+    // The only way to clear one, now that an empty field means "keep".
+    $this->request->stubBodyParams = [
+        'protocol' => 'http',
+        'url' => 'https://collector.example.test/ingest',
+        'authType' => 'bearer',
+        'authToken' => 'to-be-cleared',
+        'enabled' => '1',
+    ];
+    runSiemForwarderAction('save');
+
+    $row = siemForwarderRow();
+
+    $this->request->stubBodyParams = [
+        'forwarderId' => (string)$row['id'],
+        'protocol' => 'http',
+        'url' => 'https://collector.example.test/ingest',
+        'authType' => 'none',
+        'authToken' => '',
+        'enabled' => '1',
+    ];
+    runSiemForwarderAction('save');
+
+    $afterRow = siemForwarderRow();
+
+    expect($afterRow['authType'])->toBe('none')
+        ->and($afterRow['authToken'])->toBeNull();
 });
 
 it('keeps the stored credential when the field is submitted empty', function() {
@@ -337,9 +465,48 @@ it('never renders a stored credential back into the form', function() {
     $html = renderSiemForwarderEditScreen($forwarder);
 
     expect($html)->not->toContain('stored-secret-value')
-        // But it does say a credential is on file, so an operator doesn't
-        // read the empty field as "no token".
-        ->and($html)->toContain('A token is stored.');
+        // Nor is the instruction claiming one is on file: this model was
+        // built by hand, not hydrated from a row, so there is no stored
+        // ciphertext to keep.
+        ->and($html)->not->toContain('A credential is stored.');
+});
+
+it('renders instructions as prose with inline code, not as a code block', function() {
+    // `Cp::field()` runs instructions through `Cp::parseMarkdown()`, which
+    // encodes invalid tags and then parses GFM. An `{% set %}` capture carries
+    // the template's indentation into that markdown, so every instruction
+    // composed that way rendered as an indented code block with any
+    // `tag('code', …)` HTML escaped into visible angle brackets.
+    $forwarder = new SiemForwarderModel();
+    $forwarder->protocol = SiemForwarderModel::PROTOCOL_HTTP;
+    $forwarder->url = 'https://collector.example.test/ingest';
+
+    $html = renderSiemForwarderEditScreen($forwarder);
+
+    expect($html)->toContain('<code>$PP_SIEM_URL</code>')
+        ->and($html)->toContain('<code>$PP_SIEM_CA_BUNDLE</code>')
+        ->and($html)->toContain('<code>user:password</code>')
+        ->and($html)->toContain('<code>audit_log</code>')
+        // The escaped forms of the same thing, and the code block that
+        // produced them.
+        ->and($html)->not->toContain('&lt;code&gt;')
+        ->and($html)->not->toContain('<pre>');
+});
+
+it('notes a stored credential on a forwarder hydrated from a row', function() {
+    $forwarder = new SiemForwarderModel();
+    $forwarder->protocol = SiemForwarderModel::PROTOCOL_HTTP;
+    $forwarder->url = 'https://collector.example.test/ingest';
+    $forwarder->authType = SiemForwarderModel::AUTH_TYPE_BEARER;
+    $forwarder->authToken = 'stored-secret-value';
+    PasswordPolicy::$plugin->getSiem()->saveForwarder($forwarder);
+
+    $hydrated = PasswordPolicy::$plugin->getSiem()->getForwarderById((int)$forwarder->id);
+
+    $html = renderSiemForwarderEditScreen($hydrated);
+
+    expect($html)->toContain('A credential is stored.')
+        ->and($html)->not->toContain('stored-secret-value');
 });
 
 it('renders every field disabled in read-only mode', function() {

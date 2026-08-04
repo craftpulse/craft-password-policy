@@ -453,6 +453,69 @@ it('encrypts the auth token at rest: the DB column never holds plaintext', funct
         ->toBe('plaintext-token-value');
 });
 
+it('reuses the stored ciphertext when the credential is unchanged', function() {
+    $forwarder = makeHttpForwarder([
+        'authType' => SiemForwarderModel::AUTH_TYPE_BEARER,
+        'authToken' => 'unchanged-credential',
+    ]);
+
+    $firstCipher = (new Query())
+        ->select(['authToken'])
+        ->from('{{%passwordpolicy_siem_forwarders}}')
+        ->where(['id' => $forwarder->id])
+        ->scalar();
+
+    // Hydrate and re-save without touching the credential, which is what the
+    // CP does on every save that isn't a credential change.
+    $reloaded = $this->service->getForwarderById((int)$forwarder->id);
+    $reloaded->name = 'Renamed';
+
+    expect($this->service->saveForwarder($reloaded))->toBeTrue();
+
+    $secondCipher = (new Query())
+        ->select(['authToken'])
+        ->from('{{%passwordpolicy_siem_forwarders}}')
+        ->where(['id' => $forwarder->id])
+        ->scalar();
+
+    expect($secondCipher)->toBe($firstCipher)
+        ->and($this->service->getForwarderById((int)$forwarder->id)?->authToken)
+        ->toBe('unchanged-credential');
+});
+
+it('encrypts a genuinely new credential', function() {
+    $forwarder = makeHttpForwarder([
+        'authType' => SiemForwarderModel::AUTH_TYPE_BEARER,
+        'authToken' => 'first-credential',
+    ]);
+
+    $reloaded = $this->service->getForwarderById((int)$forwarder->id);
+    $reloaded->authToken = 'second-credential';
+
+    expect($this->service->saveForwarder($reloaded))->toBeTrue()
+        ->and($this->service->getForwarderById((int)$forwarder->id)?->authToken)
+        ->toBe('second-credential');
+});
+
+it('does not require a retyped credential on an existing forwarder', function() {
+    // The edit screen never re-renders the credential, so the model that
+    // comes back from a save has whatever the row holds. Requiring the field
+    // would make every unrelated edit impossible without retyping it.
+    $forwarder = makeHttpForwarder([
+        'authType' => SiemForwarderModel::AUTH_TYPE_BEARER,
+        'authToken' => 'stored-credential',
+    ]);
+
+    $reloaded = $this->service->getForwarderById((int)$forwarder->id);
+    $reloaded->authToken = null;
+
+    expect($reloaded->getHasStoredCredential())->toBeTrue()
+        ->and($reloaded->validate())->toBeTrue()
+        ->and($this->service->saveForwarder($reloaded))->toBeTrue()
+        ->and($this->service->getForwarderById((int)$forwarder->id)?->authToken)
+        ->toBe('stored-credential');
+});
+
 it('drops the credential when a forwarder is switched to syslog', function() {
     $forwarder = makeHttpForwarder([
         'authType' => SiemForwarderModel::AUTH_TYPE_BEARER,

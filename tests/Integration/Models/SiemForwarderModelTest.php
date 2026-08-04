@@ -160,6 +160,27 @@ it('rejects an unsupported auth type', function() {
         ->and($model->getErrors('authType'))->not->toBeEmpty();
 });
 
+it('reports no stored credential on a model that was never hydrated', function() {
+    // `getHasStoredCredential()` answers for the ROW, not the property, so a
+    // hand-built model with a plaintext on it still has nothing stored.
+    $model = httpForwarderModel();
+    $model->authType = SiemForwarderModel::AUTH_TYPE_BEARER;
+    $model->authToken = 'typed-but-not-saved';
+
+    expect($model->getHasStoredCredential())->toBeFalse();
+});
+
+it('still requires a credential on a new HTTP forwarder', function() {
+    // The `required` rule is relaxed only when the row already holds one.
+    $model = httpForwarderModel();
+    $model->authType = SiemForwarderModel::AUTH_TYPE_BEARER;
+    $model->authToken = null;
+
+    expect($model->getHasStoredCredential())->toBeFalse()
+        ->and($model->validate())->toBeFalse()
+        ->and($model->getErrors('authToken'))->not->toBeEmpty();
+});
+
 it('omits the auth token from the serialization surface', function() {
     // `actionSave` returns `asModelSuccess($forwarder, …)`, which
     // serializes through `fields()`. A token in there would be echoed

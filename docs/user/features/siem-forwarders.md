@@ -69,7 +69,7 @@ The plugin POSTs the canonical JSON of each audit row to the configured URL, one
 |---|---|---|
 | Endpoint URL | Yes | The collector's HTTPS URL. Accepts an environment variable reference such as `$PP_SIEM_URL`. |
 | Authentication | Yes | **None**, **Bearer token**, or **Basic**. |
-| Credential | When authentication is not None | Sent as the `Authorization` header. Encrypted at rest, and never shown again after saving. Accepts an environment variable reference such as `$PP_SIEM_TOKEN`. |
+| Credential | When authentication is not None | Sent as the `Authorization` header. Encrypted at rest, and never shown again after saving: leave the field empty on a later save to keep the stored one. Accepts an environment variable reference such as `$PP_SIEM_TOKEN`. |
 | Custom headers | No | Name and value pairs added to every request. Values accept environment variable references. |
 
 What the request looks like:
@@ -226,6 +226,13 @@ One screen, in sections. Which fields the **Destination** section shows follows 
 - **Circuit breaker**: current circuit state, plus the **Reset circuit** and **Send test event** buttons. This section only renders on a forwarder that has been saved.
 
 Switching a saved forwarder from HTTP to syslog clears its URL, authentication type, credential, and custom headers in the same save, so a credential is never left behind for a destination the forwarder no longer talks to. The reverse switch clears host and port.
+
+The credential field is never re-rendered, so it posts empty on every save that isn't a credential change, and an empty field means "keep the stored one". Two consequences worth knowing:
+
+- A save that doesn't change the credential leaves the stored value byte for byte as it was. Nothing is re-encrypted, so a change in the `authToken` column always means the credential itself changed.
+- Setting **Authentication** to **None** is how you clear a credential. There is no way to blank one while keeping a Bearer or Basic scheme, because that scheme cannot work without it.
+
+If the stored credential ever becomes unreadable, for example after the install's `securityKey` changes, the row keeps it rather than discarding it, the edit screen still saves, and forwarding fails with the reason in the plugin log. Restoring the original key restores the credential; entering a new one replaces it.
 
 ### Send test event
 
