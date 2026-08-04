@@ -9,15 +9,22 @@
     {{ hiddenInput('forwarderId', forwarder.id) }}
 {% endif %}
 
+{# The protocol select toggles the two destination groups below. Class-based
+   `targetPrefix` (leading dot, per `_components/fieldtypes/Date/settings.twig`)
+   rather than an id, because each transport owns more than one group and an
+   id can only match once. #}
+{% set syslogClass = 'pp-protocol-syslog-tls' ~ (forwarder.isHttp ? ' hidden' : '') %}
+{% set httpClass = 'pp-protocol-http' ~ (forwarder.isHttp ? '' : ' hidden') %}
+
 {# =========================================================================
-   General — name, host, port, protocol, enabled
+   General — name, protocol, enabled
    ========================================================================= #}
 
 <div id="general">
     {{ forms.textField({
         first: true,
         label: 'Name'|t('app'),
-        instructions: 'Optional display label. Defaults to "host:port" when empty.'|t('password-policy'),
+        instructions: 'Optional display label. Defaults to the destination when empty.'|t('password-policy'),
         id: 'name',
         name: 'name',
         value: forwarder.name,
@@ -26,39 +33,18 @@
         disabled: readOnly,
     }) }}
 
-    {{ forms.textField({
-        label: 'Host'|t('password-policy'),
-        instructions: 'The destination hostname or IP for the SIEM endpoint.'|t('password-policy'),
-        id: 'host',
-        name: 'host',
-        value: forwarder.host,
-        required: true,
-        errors: forwarder.getErrors('host'),
-        disabled: readOnly,
-    }) }}
-
-    {{ forms.textField({
-        label: 'Port'|t('password-policy'),
-        instructions: 'The destination port. Defaults to {default} (RFC 5425 / IANA syslog-over-TLS).'|t('password-policy', { default: 6514 }),
-        id: 'port',
-        name: 'port',
-        type: 'number',
-        value: forwarder.port,
-        inputAttributes: { style: 'width: 8rem', min: 1, max: 65535 },
-        required: true,
-        errors: forwarder.getErrors('port'),
-        disabled: readOnly,
-    }) }}
-
     {{ forms.selectField({
         label: 'Protocol'|t('password-policy'),
-        instructions: 'Only syslog-over-TLS is supported in this release. Webhook delivery ships separately.'|t('password-policy'),
+        instructions: 'Syslog over TLS reaches a collector you run. HTTP POSTs each audit row to an HTTPS collector, for a platform that only ingests over HTTPS.'|t('password-policy'),
         id: 'protocol',
         name: 'protocol',
         options: [
-            { label: 'syslog-TLS'|t('password-policy'), value: 'syslog-tls' },
+            { label: 'Syslog over TLS'|t('password-policy'), value: 'syslog-tls' },
+            { label: 'HTTP'|t('password-policy'), value: 'http' },
         ],
         value: forwarder.protocol,
+        toggle: true,
+        targetPrefix: '.pp-protocol-',
         errors: forwarder.getErrors('protocol'),
         disabled: readOnly,
     }) }}
@@ -76,25 +62,161 @@
 <hr>
 
 {# =========================================================================
-   TLS — verify + CA bundle
+   Destination — syslog address + framing, or HTTPS URL + credentials
+   ========================================================================= #}
+
+<div id="destination">
+    <h2>{{ 'Destination'|t('password-policy') }}</h2>
+
+    <div class="{{ syslogClass }}">
+        {{ forms.textField({
+            label: 'Host'|t('password-policy'),
+            instructions: 'The receiver’s hostname or IP.'|t('password-policy'),
+            id: 'host',
+            name: 'host',
+            value: forwarder.host,
+            required: true,
+            errors: forwarder.getErrors('host'),
+            disabled: readOnly,
+        }) }}
+
+        {{ forms.textField({
+            label: 'Port'|t('password-policy'),
+            instructions: 'The destination port. Defaults to {default} (RFC 5425 / IANA syslog-over-TLS).'|t('password-policy', { default: 6514 }),
+            id: 'port',
+            name: 'port',
+            type: 'number',
+            value: forwarder.port,
+            inputAttributes: { style: 'width: 8rem', min: 1, max: 65535 },
+            required: true,
+            errors: forwarder.getErrors('port'),
+            disabled: readOnly,
+        }) }}
+
+        {{ forms.selectField({
+            label: 'Message framing'|t('password-policy'),
+            instructions: 'How each message is delimited on the stream. Octet counting is what RFC 5425 requires of a receiver on port 6514. Choose newline for a receiver that expects line-delimited messages, which is what rsyslog’s imtcp accepts by default.'|t('password-policy'),
+            id: 'framing',
+            name: 'framing',
+            options: [
+                { label: 'Octet-counted (RFC 5425)'|t('password-policy'), value: 'octet-counted' },
+                { label: 'Newline-delimited'|t('password-policy'), value: 'newline' },
+            ],
+            value: forwarder.framing,
+            errors: forwarder.getErrors('framing'),
+            disabled: readOnly,
+        }) }}
+    </div>
+
+    <div class="{{ httpClass }}">
+        {# Compose `<code>` HTML via `tag()` rather than injecting through
+           the translation source — keeps translation strings plain text. #}
+        {% set urlInstructions %}
+            {{ 'The collector’s HTTPS URL. Supports env variables (e.g. {example}). Plain http is refused: the request carries audit rows and, on most destinations, a credential.'|t('password-policy', {
+                example: tag('code', { text: '$PP_SIEM_URL' }),
+            })|raw }}
+        {% endset %}
+        {{ forms.autosuggestField({
+            label: 'Endpoint URL'|t('password-policy'),
+            instructions: urlInstructions|raw,
+            id: 'url',
+            name: 'url',
+            value: forwarder.url,
+            suggestEnvVars: true,
+            required: true,
+            errors: forwarder.getErrors('url'),
+            disabled: readOnly,
+        }) }}
+
+        {{ forms.selectField({
+            label: 'Authentication'|t('password-policy'),
+            instructions: 'How the request authenticates. Choose None when the credential belongs in the URL or in a vendor-named header below.'|t('password-policy'),
+            id: 'authType',
+            name: 'authType',
+            options: [
+                { label: 'None'|t('password-policy'), value: 'none' },
+                { label: 'Bearer token'|t('password-policy'), value: 'bearer' },
+                { label: 'Basic'|t('password-policy'), value: 'basic' },
+            ],
+            value: forwarder.authType,
+            errors: forwarder.getErrors('authType'),
+            disabled: readOnly,
+        }) }}
+
+        {% set tokenInstructions %}
+            {{ 'Sent as the Authorization header. For Basic, enter {shape}. Encrypted at rest, and never shown again after saving. Supports env variables (e.g. {example}).'|t('password-policy', {
+                shape: tag('code', { text: 'user:password' }),
+                example: tag('code', { text: '$PP_SIEM_TOKEN' }),
+            })|raw }}
+            {% if forwarder.authToken is not empty %}
+                {{ 'A token is stored. Leave this field empty to keep it.'|t('password-policy') }}
+            {% endif %}
+        {% endset %}
+        {{ forms.autosuggestField({
+            label: 'Credential'|t('password-policy'),
+            instructions: tokenInstructions|raw,
+            id: 'authToken',
+            name: 'authToken',
+            value: '',
+            suggestEnvVars: true,
+            errors: forwarder.getErrors('authToken'),
+            disabled: readOnly,
+        }) }}
+
+        {% set headerRows = {} %}
+        {% for headerName, headerValue in forwarder.headers ?? {} %}
+            {% set headerRows = headerRows|merge([{ name: headerName, value: headerValue }]) %}
+        {% endfor %}
+        {{ forms.editableTableField({
+            label: 'Custom headers'|t('password-policy'),
+            instructions: 'Extra request headers, for the vendor schemes an authentication type cannot express. Values support env variables. Content-Type is set by the forwarder and cannot be overridden, and Authorization is only available when Authentication is None.'|t('password-policy'),
+            name: 'headers',
+            id: 'headers',
+            cols: {
+                name: {
+                    heading: 'Name'|t('password-policy'),
+                    type: 'singleline',
+                    code: true,
+                },
+                value: {
+                    heading: 'Value'|t('password-policy'),
+                    type: 'singleline',
+                    code: true,
+                },
+            },
+            rows: headerRows,
+            errors: forwarder.getErrors('headers'),
+            addRowLabel: 'Add a header'|t('password-policy'),
+            allowAdd: not readOnly,
+            allowDelete: not readOnly,
+            allowReorder: false,
+            static: readOnly,
+        }) }}
+    </div>
+</div>
+
+<hr>
+
+{# =========================================================================
+   TLS — verify (syslog only) + CA bundle (both transports)
    ========================================================================= #}
 
 <div id="tls">
     <h2>{{ 'TLS'|t('password-policy') }}</h2>
 
-    {{ forms.lightswitchField({
-        label: 'Verify TLS certificate'|t('password-policy'),
-        instructions: "Require the SIEM endpoint's certificate chain to verify against the system trust store (or the bundled CA below). Default on. Turn off only when terminating against a self-signed endpoint that you trust by network path."|t('password-policy'),
-        id: 'tlsCertVerify',
-        name: 'tlsCertVerify',
-        on: forwarder.tlsCertVerify,
-        disabled: readOnly,
-    }) }}
+    <div class="{{ syslogClass }}">
+        {{ forms.lightswitchField({
+            label: 'Verify TLS certificate'|t('password-policy'),
+            instructions: "Require the receiver's certificate chain to verify against the system trust store (or the bundled CA below). Default on. Turn off only when terminating against a self-signed endpoint that you trust by network path. Applies to the syslog transport only: an HTTP forwarder always verifies, because it carries a credential."|t('password-policy'),
+            id: 'tlsCertVerify',
+            name: 'tlsCertVerify',
+            on: forwarder.tlsCertVerify,
+            disabled: readOnly,
+        }) }}
+    </div>
 
-    {# Compose `<code>` HTML via `tag()` rather than injecting through
-       the translation source — keeps translation strings plain text. #}
     {% set caBundleInstructions %}
-        {{ 'Path to a PEM-format CA bundle for verifying the endpoint. Supports env variables (e.g. {example}). Leave empty to use the system trust store.'|t('password-policy', {
+        {{ 'Path to a PEM-format CA bundle for verifying the destination. Supports env variables (e.g. {example}). Leave empty to use the system trust store. Honoured by both transports.'|t('password-policy', {
             example: tag('code', { text: '$PP_SIEM_CA_BUNDLE' }),
         })|raw }}
     {% endset %}

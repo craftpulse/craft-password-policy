@@ -147,7 +147,7 @@ class SiemForwarderController extends Controller
         $response = $this->asCpScreen()
             ->title($isNew
                 ? Craft::t('password-policy', 'New SIEM forwarder')
-                : ($forwarder->name ?: sprintf('%s:%d', $forwarder->host, $forwarder->port)))
+                : $forwarder->getDisplayName())
             ->selectedSubnavItem('siem-forwarders')
             ->addCrumb(
                 Craft::t('password-policy', 'Password Policy'),
@@ -263,11 +263,31 @@ class SiemForwarderController extends Controller
 
         $forwarder->name = $request->getBodyParam('name') ?: null;
         $forwarder->protocol = (string)$request->getBodyParam('protocol', SiemForwarderModel::PROTOCOL_SYSLOG_TLS);
-        $forwarder->host = (string)$request->getBodyParam('host', '');
-        $forwarder->port = (int)$request->getBodyParam('port', SiemForwarderModel::DEFAULT_SYSLOG_TLS_PORT);
+        $forwarder->host = $request->getBodyParam('host') ?: null;
+        $port = $request->getBodyParam('port');
+        $forwarder->port = ($port === null || $port === '') ? null : (int)$port;
+        $forwarder->url = $request->getBodyParam('url') ?: null;
+        $forwarder->authType = (string)$request->getBodyParam('authType', SiemForwarderModel::AUTH_TYPE_NONE);
+        $forwarder->framing = (string)$request->getBodyParam(
+            'framing',
+            SiemForwarderModel::FRAMING_OCTET_COUNTED,
+        );
+        $forwarder->headers = $this->_normalizeHeaders($request->getBodyParam('headers'));
         $forwarder->tlsCertVerify = (bool)$request->getBodyParam('tlsCertVerify', true);
         $forwarder->tlsCaBundlePath = $request->getBodyParam('tlsCaBundlePath') ?: null;
         $forwarder->enabled = (bool)$request->getBodyParam('enabled', true);
+
+        // The credential is never rendered back into the form, so an empty
+        // POST means "keep what's stored" rather than "clear it". The model
+        // it was hydrated from already carries the decrypted value; a fresh
+        // model carries null and validation refuses that when the auth type
+        // needs one. Clearing a stored token is done by switching the auth
+        // type to `none`, which `toRecordAttributes()` acts on.
+        $submittedToken = $request->getBodyParam('authToken');
+
+        if (is_string($submittedToken) && $submittedToken !== '') {
+            $forwarder->authToken = $submittedToken;
+        }
 
         $eventClasses = $request->getBodyParam('eventClasses');
         $forwarder->eventClasses = $this->_normalizeEventClasses($eventClasses);
@@ -384,6 +404,48 @@ class SiemForwarderController extends Controller
         ));
 
         return $cleaned !== [] ? $cleaned : null;
+    }
+
+    /**
+     * Normalizes the editable table's `headers` POST shape into the
+     * name => value map the model validates and the record stores.
+     *
+     * The table posts a list of rows, each `['name' => …, 'value' => …]`.
+     * Rows with an empty name are dropped: an operator who clicks "Add a
+     * header" and then saves without filling it in means nothing by it.
+     * Names and values are trimmed; a name that survives with an empty
+     * value reaches the model's validator, which rejects it, rather than
+     * being silently dropped.
+     *
+     * @param mixed $raw
+     * @return array<string, string>|null
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _normalizeHeaders(mixed $raw): ?array
+    {
+        if (!is_array($raw)) {
+            return null;
+        }
+
+        $headers = [];
+
+        foreach ($raw as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $name = is_string($row['name'] ?? null) ? trim($row['name']) : '';
+
+            if ($name === '') {
+                continue;
+            }
+
+            $headers[$name] = is_string($row['value'] ?? null) ? trim($row['value']) : '';
+        }
+
+        return $headers !== [] ? $headers : null;
     }
 
     /**

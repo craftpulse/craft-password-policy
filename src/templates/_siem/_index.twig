@@ -60,7 +60,7 @@
 
     <div class="readable">
         <p>
-            {{ "Audit-log rows are forwarded to every active SIEM endpoint over syslog-TLS in RFC 5424 framing. Forwarder failures never block the originating audit write; the queue retries unforwarded rows on the next pass."|t('password-policy') }}
+            {{ "Audit-log rows are forwarded to every active SIEM destination, as an RFC 5424 message over syslog-TLS or as a JSON POST over HTTPS. Forwarder failures never block the originating audit write; the queue retries unforwarded rows on the next pass."|t('password-policy') }}
         </p>
     </div>
 
@@ -68,7 +68,7 @@
         <blockquote class="note tip">
             <p>
                 <strong>{{ 'No forwarders yet.'|t('password-policy') }}</strong>
-                {{ 'Click "New forwarder" to register a syslog-over-TLS endpoint.'|t('password-policy') }}
+                {{ 'Click "New forwarder" to register a syslog receiver or an HTTPS collector.'|t('password-policy') }}
             </p>
         </blockquote>
     {% else %}
@@ -86,14 +86,15 @@
                 </thead>
                 <tbody>
                     {% for forwarder in forwarders %}
-                        {% set displayName = forwarder.name ?: "#{forwarder.host}:#{forwarder.port}" %}
                         {% set editUrl = cpUrl("password-policy/siem/#{forwarder.id}") %}
 
                         <tr>
                             <td>
-                                <a href="{{ editUrl }}">{{ displayName }}</a>
+                                <a href="{{ editUrl }}">{{ forwarder.displayName }}</a>
                             </td>
-                            <td class="code">{{ forwarder.host }}:{{ forwarder.port }}</td>
+                            {# `host:port` on the syslog transport, the URL on
+                               the HTTP one — one rule, on the model. #}
+                            <td class="code">{{ forwarder.endpointLabel }}</td>
                             <td>{{ forwarder.protocol }}</td>
                             {# Routes through `SiemForwarderModel::getEnabledLabelHtml()`
                                and `getCircuitLabelHtml()` so the pills match Craft's

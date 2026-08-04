@@ -25,9 +25,31 @@ use yii\base\Component;
 /**
  * Class SiemService
  *
- * Forwards audit-log rows to one or more registered SIEM endpoints over
- * syslog-TLS (RFC 5424 framing on a `tls://` stream socket). The first
- * forwarder in the matrix; HTTP webhook ships separately as G9.
+ * Forwards audit-log rows to one or more registered SIEM destinations.
+ * Two transports, chosen per forwarder by its `protocol` column:
+ *
+ *  - `syslog-tls` writes an RFC 5424 message per row to a `tls://`
+ *    stream socket, framed per the forwarder's `framing` column (RFC 5425
+ *    octet counting by default). This reaches a self-hosted collector
+ *    (rsyslog, syslog-ng, Graylog, QRadar, a Splunk indexer with a
+ *    TCP-SSL input).
+ *  - `http` POSTs the same canonical JSON to an HTTPS collector, with an
+ *    optional `Authorization` header and an optional map of custom
+ *    headers for vendor schemes. This reaches a SaaS collector that only
+ *    ingests over HTTPS.
+ *
+ * Everything either side of the transport is shared: eligibility, the
+ * circuit breaker, the never-throws contract, `sendTestEvent()`, and the
+ * body itself. An unsupported `protocol` value (reachable only by direct
+ * SQL — the CP and the model rule both refuse it) is a recorded failure
+ * with a warning, never a misdelivery to the other transport.
+ *
+ * The HTTP transport is deliberately raw: the body is the canonical JSON
+ * audit row and nothing else. A destination that needs a vendor envelope
+ * around it (Splunk HEC's event wrapper, Datadog's array of log items)
+ * needs that envelope built somewhere, and this service does not build
+ * one. See `docs/user/features/siem-forwarders.md` for which
+ * destinations that reaches.
  *
  * Architectural anchor: `project_audit_capture_principle.md`. Capture is
  * universal — every edition writes audit rows; the audit_log table ships
@@ -84,6 +106,30 @@ class SiemService extends Component
      * @since 5.2.0
      */
     public const CACHE_KEY_CIRCUIT = 'pp:siem-forwarder-circuit:';
+
+    /**
+     * Maximum number of bytes read from a non-2xx response body when
+     * building the operator-facing failure message on the HTTP transport.
+     * The collector controls what it echoes back; this caps the read so a
+     * hostile or chatty endpoint can't balloon the plugin log.
+     *
+     * @var int
+     *
+     * @since 5.2.0
+     */
+    public const ERROR_BODY_READ_LIMIT = 512;
+
+    /**
+     * Total Guzzle request timeout for the HTTP transport, in seconds.
+     * Covers connect + TLS handshake + send + receive. A collector that
+     * doesn't respond inside the window is a failure for circuit-breaker
+     * purposes; the sweep retries the row on its next pass.
+     *
+     * @var int
+     *
+     * @since 5.2.0
+     */
+    public const HTTP_TIMEOUT_SECONDS = 10;
 
     /**
      * RFC 5424 syslog facility for "local0" — the conventional facility
@@ -156,14 +202,16 @@ class SiemService extends Component
     }
 
     /**
-     * Sends a syslog-over-TLS frame for `$auditRow` to `$forwarder`.
+     * Sends `$auditRow` to `$forwarder` over whichever transport its
+     * `protocol` names.
      *
-     * Returns true when the full frame writes successfully, false on any
-     * failure (connect timeout, TLS handshake error, partial write).
-     * NEVER throws — the failure-mode contract requires that originating
-     * audit writes are decoupled from forwarder health, and the only
-     * caller is the queue job's `processItem`, which records the
-     * boolean outcome on the row.
+     * Returns true when the destination accepted the row, false on any
+     * failure (connect timeout, TLS handshake error, partial write, a
+     * non-2xx HTTP response, a resolved URL that isn't https, an
+     * unsupported protocol). NEVER throws — the failure-mode contract
+     * requires that originating audit writes are decoupled from forwarder
+     * health, and the only caller is the queue job's `processItem`, which
+     * records the boolean outcome on the row.
      *
      * Updates the circuit-breaker state on every call:
      *
@@ -192,7 +240,24 @@ class SiemService extends Component
         }
 
         try {
-            $this->_writeToSocket($forwarder, $this->_buildSyslogFrame($auditRow));
+            match ($forwarder->protocol) {
+                SiemForwarderModel::PROTOCOL_HTTP => $this->_postToHttp($forwarder, $auditRow),
+                SiemForwarderModel::PROTOCOL_SYSLOG_TLS => $this->_writeToSocket(
+                    $forwarder,
+                    $this->_buildSyslogFrame($auditRow),
+                ),
+                // Fail closed. Nothing else in the class branches on the
+                // column, so without this an unrecognised value would take
+                // whichever transport happened to be the fallback and
+                // deliver an audit row somewhere the operator never
+                // configured. A recorded failure plus the warning below is
+                // the loud outcome instead.
+                default => throw new RuntimeException(sprintf(
+                    'Unsupported forwarder protocol "%s".',
+                    $forwarder->protocol,
+                )),
+            };
+
             $this->_recordSuccess($forwarder);
 
             return true;
@@ -385,6 +450,10 @@ class SiemService extends Component
      * model fails validation; the caller pulls per-field errors off the
      * model.
      *
+     * Encryption of `authToken` and the per-protocol nulling of the
+     * unused half of the row both happen at the model boundary in
+     * `SiemForwarderModel::toRecordAttributes()`.
+     *
      * @param SiemForwarderModel $forwarder
      * @return bool
      *
@@ -406,16 +475,10 @@ class SiemService extends Component
             $forwarder->uid = $forwarder->uid ?: StringHelper::UUID();
         }
 
-        $record->name = $forwarder->name;
-        $record->protocol = $forwarder->protocol;
-        $record->host = $forwarder->host;
-        $record->port = $forwarder->port;
-        $record->tlsCertVerify = $forwarder->tlsCertVerify;
-        $record->tlsCaBundlePath = $forwarder->tlsCaBundlePath;
-        $record->eventClasses = !empty($forwarder->eventClasses)
-            ? array_values($forwarder->eventClasses)
-            : null;
-        $record->enabled = $forwarder->enabled;
+        foreach ($forwarder->toRecordAttributes() as $key => $value) {
+            $record->{$key} = $value;
+        }
+
         $record->uid = $forwarder->uid ?? StringHelper::UUID();
 
         // Save without re-validating — model already passed
@@ -447,7 +510,7 @@ class SiemService extends Component
      * from "endpoint refused or timed out."
      *
      * @param SiemForwarderModel $forwarder
-     * @return bool true when the endpoint accepted the frame, false on
+     * @return bool true when the destination accepted the row, false on
      *     refusal / timeout
      *
      * @throws RuntimeException when the audit row can't be located
@@ -495,6 +558,105 @@ class SiemService extends Component
     // =========================================================================
 
     /**
+     * Builds the request headers for the HTTP transport.
+     *
+     * `Content-Type` is fixed: the body is canonical JSON. Custom headers
+     * come next, each value resolved through {@see _resolveEnvValue()} so
+     * a credential can live in the environment rather than the database.
+     * The `Authorization` header derived from `authType` goes last; a
+     * `basic` credential is the operator's `user:password` string, which is
+     * base64-encoded here (HTTP Basic's own encoding, not a secrecy
+     * measure).
+     *
+     * The model's header validator already refuses a custom entry that
+     * would collide with either of those, so the ordering here can't
+     * silently overwrite operator intent.
+     *
+     * An unresolvable value throws rather than being dropped. A dropped
+     * credential header reaches the collector as an unauthenticated
+     * request, and the operator then debugs a 401 from the far end instead
+     * of reading "this env var is not set" in their own log.
+     *
+     * @param SiemForwarderModel $forwarder
+     * @return array<string, string>
+     *
+     * @throws RuntimeException when a header value or the auth token is
+     *     empty, or names an env variable that isn't set
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _buildHttpHeaders(SiemForwarderModel $forwarder): array
+    {
+        $headers = ['Content-Type' => 'application/json'];
+
+        foreach ($forwarder->headers ?? [] as $name => $value) {
+            $resolved = $this->_resolveEnvValue($value);
+
+            if ($resolved === null) {
+                throw new RuntimeException(sprintf(
+                    'The %s header is empty once resolved.',
+                    $name,
+                ));
+            }
+
+            $headers[(string)$name] = $resolved;
+        }
+
+        if ($forwarder->authType === SiemForwarderModel::AUTH_TYPE_NONE) {
+            return $headers;
+        }
+
+        $token = $this->_resolveEnvValue($forwarder->authToken);
+
+        if ($token === null) {
+            throw new RuntimeException('The forwarder auth token is empty once resolved.');
+        }
+
+        $headers['Authorization'] = match ($forwarder->authType) {
+            SiemForwarderModel::AUTH_TYPE_BASIC => 'Basic ' . base64_encode($token),
+            SiemForwarderModel::AUTH_TYPE_BEARER => 'Bearer ' . $token,
+            default => throw new RuntimeException(sprintf(
+                'Unsupported forwarder authentication type "%s".',
+                $forwarder->authType,
+            )),
+        };
+
+        return $headers;
+    }
+
+    /**
+     * Builds the operator-facing failure message for a non-2xx response:
+     * an `HTTP <status>` status line plus a bounded slice of the response
+     * body (capped at {@see ERROR_BODY_READ_LIMIT} bytes,
+     * whitespace-trimmed). Many collectors return an empty body on error,
+     * in which case only the status line is kept. NEVER echoes back the
+     * request body or any credential.
+     *
+     * @param int $statusCode the non-2xx HTTP status returned
+     * @param string $responseBody the raw response body
+     * @return string
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _buildResponseError(int $statusCode, string $responseBody): string
+    {
+        $message = 'HTTP ' . $statusCode;
+        $snippet = trim($responseBody);
+
+        if ($snippet === '') {
+            return $message;
+        }
+
+        if (strlen($snippet) > self::ERROR_BODY_READ_LIMIT) {
+            $snippet = substr($snippet, 0, self::ERROR_BODY_READ_LIMIT) . '...';
+        }
+
+        return $message . ': ' . $snippet;
+    }
+
+    /**
      * Builds an RFC 5424 syslog frame for `$auditRow`.
      *
      * Frame shape:
@@ -512,9 +674,9 @@ class SiemService extends Component
      * - MSG = canonical JSON of the audit row via
      *   `AuditLogService::canonicalize()` — recursively key-sorted,
      *   BOM-free, `JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE`. This
-     *   is the SAME byte sequence the webhook forwarder signs and sends,
-     *   so SIEM and webhook consumers see an identical body (the
-     *   byte-parity contract documented on `WebhookService`).
+     *   is the SAME byte sequence the HTTP transport POSTs and the webhook
+     *   forwarder signs and sends, so every consumer sees an identical
+     *   body (the byte-parity contract documented on `WebhookService`).
      *
      * @param array<string, mixed> $auditRow
      * @return string
@@ -572,6 +734,130 @@ class SiemService extends Component
         $configured = PasswordPolicy::$plugin->getSettings()->siemCircuitFailureThreshold;
 
         return $configured > 0 ? $configured : 5;
+    }
+
+    /**
+     * Wraps an RFC 5424 message in the transport framing `$forwarder` is
+     * configured for, and returns the exact bytes to write to the stream.
+     *
+     * Two framings, and switching one is a wire-format change in both
+     * directions, which is why it's a per-forwarder column rather than a
+     * flip:
+     *
+     *  - `octet-counted` produces `MSG-LEN SP SYSLOG-MSG` per RFC 5425
+     *    §4.3, where MSG-LEN is the message's octet count. §4.3.1 makes
+     *    reading that length a MUST for a transport receiver, so this is
+     *    the conformant shape for port 6514 and the default. No trailing
+     *    newline: the length delimits the message.
+     *  - `newline` appends `"\n"`, RFC 6587-style non-transparent framing,
+     *    which is what rsyslog's `imtcp` accepts by default.
+     *
+     * @param SiemForwarderModel $forwarder
+     * @param string $frame the RFC 5424 syslog message
+     * @return string
+     *
+     * @throws RuntimeException on a framing value neither branch handles
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _framePayload(SiemForwarderModel $forwarder, string $frame): string
+    {
+        return match ($forwarder->framing) {
+            SiemForwarderModel::FRAMING_NEWLINE => $frame . "\n",
+            SiemForwarderModel::FRAMING_OCTET_COUNTED => strlen($frame) . ' ' . $frame,
+            default => throw new RuntimeException(sprintf(
+                'Unsupported forwarder message framing "%s".',
+                $forwarder->framing,
+            )),
+        };
+    }
+
+    /**
+     * POSTs the canonical JSON of `$auditRow` to `$forwarder`'s HTTPS
+     * collector. Throws on any non-success outcome — `forward()` wraps the
+     * call in the failure-mode try/catch that records the failure and
+     * bumps the circuit breaker.
+     *
+     * The Guzzle configuration mirrors `WebhookService::dispatch()` and is
+     * load-bearing in four places:
+     *
+     *  - `verify => true` (or the operator's own CA bundle) so peer
+     *    verification is never off. Unlike the syslog transport there is
+     *    no per-forwarder opt-out: this request carries a credential, and
+     *    an unverified peer is where a credential gets stolen. This also
+     *    overrides a site-level `config/guzzle.php` that sets
+     *    `verify => false`.
+     *  - `http_errors => false` so a non-2xx doesn't throw a Guzzle
+     *    exception with the request attached; the status is read and turned
+     *    into a bounded diagnostic below instead.
+     *  - `allow_redirects => false`. A 307/308 from the registered host
+     *    would otherwise re-POST the audit row AND the credential to
+     *    whatever `Location` the response names, on a host the operator
+     *    never approved. A 3xx is a failure here.
+     *  - A bounded error-body read, so a hostile or chatty collector can't
+     *    balloon the plugin log.
+     *
+     * The resolved-URL https re-check is the fifth. The model rule only
+     * sees a literal URL; an env-var reference resolves here, and this is
+     * the only place a `$PP_SIEM_URL` that resolves to plaintext http can
+     * be caught.
+     *
+     * @param SiemForwarderModel $forwarder
+     * @param array<string, mixed> $auditRow
+     * @return void
+     *
+     * @throws RuntimeException on an empty or non-https resolved URL, a
+     *     transport failure, or a non-2xx response
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _postToHttp(SiemForwarderModel $forwarder, array $auditRow): void
+    {
+        $url = App::parseEnv((string)$forwarder->url);
+
+        if (!is_string($url) || $url === '') {
+            throw new RuntimeException('The forwarder endpoint URL is empty once resolved.');
+        }
+
+        if (stripos($url, 'https://') !== 0) {
+            throw new RuntimeException(
+                'The resolved endpoint URL is not https://; refusing to send audit rows over plaintext.',
+            );
+        }
+
+        $verify = true;
+
+        if ($forwarder->tlsCaBundlePath !== null && $forwarder->tlsCaBundlePath !== '') {
+            $resolvedBundle = App::parseEnv($forwarder->tlsCaBundlePath);
+
+            if (is_string($resolvedBundle) && $resolvedBundle !== '') {
+                $verify = $resolvedBundle;
+            }
+        }
+
+        $client = Craft::createGuzzleClient([
+            'verify' => $verify,
+            'http_errors' => false,
+            'allow_redirects' => false,
+            'timeout' => self::HTTP_TIMEOUT_SECONDS,
+        ]);
+
+        $response = $client->request('POST', $url, [
+            'headers' => $this->_buildHttpHeaders($forwarder),
+            'body' => AuditLogService::canonicalize($auditRow),
+        ]);
+
+        $statusCode = $response->getStatusCode();
+
+        // Only a 2xx is a success. 3xx (redirect, not followed), 4xx, and
+        // 5xx all count as failures.
+        if ($statusCode < 200 || $statusCode >= 300) {
+            throw new RuntimeException(
+                $this->_buildResponseError($statusCode, $response->getBody()->getContents()),
+            );
+        }
     }
 
     /**
@@ -672,9 +958,47 @@ class SiemService extends Component
     }
 
     /**
-     * Opens a TLS stream to `$forwarder` and writes the syslog frame.
-     * Throws on any failure — caller wraps in the failure-mode try/catch
-     * inside `forward()`.
+     * Resolves an operator-supplied value that may be an env-var
+     * reference, and returns null when the result isn't usable.
+     *
+     * "Not usable" covers three cases: null or empty input, a resolved
+     * value that is empty, and an env reference that came back unchanged
+     * (Craft's `App::parseEnv()` returns the literal `$VAR` string when
+     * the variable isn't set, so an unchanged `$`-prefixed value means the
+     * environment has no such variable). The last case is the one worth
+     * catching: sending the literal `$PP_SIEM_TOKEN` as a credential looks
+     * like an authentication failure from the collector's side and tells
+     * the operator nothing.
+     *
+     * @param string|null $value
+     * @return string|null
+     *
+     * @author CraftPulse
+     * @since 5.2.0
+     */
+    private function _resolveEnvValue(?string $value): ?string
+    {
+        if ($value === null || trim($value) === '') {
+            return null;
+        }
+
+        $resolved = App::parseEnv($value);
+
+        if (!is_string($resolved) || trim($resolved) === '') {
+            return null;
+        }
+
+        if (str_starts_with($value, '$') && $resolved === $value) {
+            return null;
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * Opens a TLS stream to `$forwarder` and writes the syslog message,
+     * framed per {@see _framePayload()}. Throws on any failure — caller
+     * wraps in the failure-mode try/catch inside `forward()`.
      *
      * Stream context honors:
      *  - `verify_peer` per the forwarder's `tlsCertVerify`
@@ -690,14 +1014,21 @@ class SiemService extends Component
      * @param string $frame the RFC 5424 syslog frame
      * @return void
      *
-     * @throws RuntimeException on connect failure, TLS handshake error,
-     *     or partial write
+     * @throws RuntimeException on a missing host or port, connect failure,
+     *     TLS handshake error, or partial write
      *
      * @author CraftPulse
      * @since 5.2.0
      */
     private function _writeToSocket(SiemForwarderModel $forwarder, string $frame): void
     {
+        // Both are `required` on this protocol, so a row reaching here
+        // without them was written around the model. Refuse rather than
+        // open a socket to `tls://:0`.
+        if ($forwarder->host === null || $forwarder->host === '' || $forwarder->port === null) {
+            throw new RuntimeException('The forwarder has no host and port to connect to.');
+        }
+
         $contextOptions = [
             'ssl' => [
                 'verify_peer' => $forwarder->tlsCertVerify,
@@ -745,9 +1076,9 @@ class SiemService extends Component
         // RuntimeException, which `forward()` records as a failure.
         stream_set_timeout($socket, self::TLS_CONNECT_TIMEOUT);
 
-        // Append a newline so a downstream syslog reader using
-        // line-delimited framing can split frames cleanly.
-        $payload = $frame . "\n";
+        // Frame per the forwarder's `framing` column: an RFC 5425 octet
+        // count, or the legacy trailing newline.
+        $payload = $this->_framePayload($forwarder, $frame);
         $written = @fwrite($socket, $payload);
 
         // `stream_get_meta_data()` must be read BEFORE the socket is
