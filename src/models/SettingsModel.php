@@ -331,76 +331,6 @@ class SettingsModel extends Model
     public bool $geoIpEnabled = false;
 
     /**
-     * @var bool whether SIEM forwarding is enabled
-     *
-     * @since 5.2.0
-     */
-    public bool $siemEnabled = false;
-
-    /**
-     * @var string SIEM destination type: 'syslog', 'http', or 'event'
-     *
-     * @since 5.2.0
-     */
-    public string $siemDestinationType = 'syslog';
-
-    /**
-     * @var string|null SIEM HTTP endpoint URL (supports env vars)
-     *
-     * @since 5.2.0
-     */
-    public ?string $siemEndpointUrl = null;
-
-    /**
-     * @var string SIEM authentication type: 'bearer', 'basic', or 'header'
-     *
-     * @since 5.2.0
-     */
-    public string $siemAuthType = 'bearer';
-
-    /**
-     * @var string|null SIEM authentication token (supports env vars, never shown after save)
-     *
-     * @since 5.2.0
-     */
-    public ?string $siemAuthToken = null;
-
-    /**
-     * @var array|null custom SIEM HTTP headers
-     *
-     * @since 5.2.0
-     */
-    public ?array $siemCustomHeaders = null;
-
-    /**
-     * @var string how IP addresses are included in SIEM payloads: 'masked', 'hashed', 'raw', or 'excluded'
-     *
-     * @since 5.2.0
-     */
-    public string $siemIpHandling = 'masked';
-
-    /**
-     * @var string how device info is included in SIEM payloads: 'label' or 'excluded'
-     *
-     * @since 5.2.0
-     */
-    public string $siemDeviceHandling = 'label';
-
-    /**
-     * @var bool whether webhook events are enabled
-     *
-     * @since 5.2.0
-     */
-    public bool $webhooksEnabled = false;
-
-    /**
-     * @var array registered webhook configurations
-     *
-     * @since 5.2.0
-     */
-    public array $webhooks = [];
-
-    /**
      * @var bool whether the API token management system is enabled
      *
      * @since 5.2.0
@@ -776,8 +706,6 @@ class SettingsModel extends Model
                     'minLength',
                     'maxLength',
                     'adminAlertEmail',
-                    'siemEndpointUrl',
-                    'siemAuthToken',
                 ],
             ],
         ];
@@ -851,8 +779,6 @@ class SettingsModel extends Model
                     'enableAuditLog',
                     'enableNewDeviceAlerts',
                     'geoIpEnabled',
-                    'siemEnabled',
-                    'webhooksEnabled',
                     'apiEnabled',
                 ],
                 'boolean',
@@ -870,30 +796,6 @@ class SettingsModel extends Model
                 'in',
                 'range' => ['individual', 'minimum'],
                 'message' => Craft::t('password-policy', 'The complexity mode must be either "individual" or "minimum".'),
-            ],
-            [
-                ['siemDestinationType'],
-                'in',
-                'range' => ['syslog', 'http', 'event'],
-                'message' => Craft::t('password-policy', 'The SIEM destination type is invalid.'),
-            ],
-            [
-                ['siemAuthType'],
-                'in',
-                'range' => ['bearer', 'basic', 'header'],
-                'message' => Craft::t('password-policy', 'The SIEM auth type is invalid.'),
-            ],
-            [
-                ['siemIpHandling'],
-                'in',
-                'range' => ['masked', 'hashed', 'raw', 'excluded'],
-                'message' => Craft::t('password-policy', 'The SIEM IP handling mode is invalid.'),
-            ],
-            [
-                ['siemDeviceHandling'],
-                'in',
-                'range' => ['label', 'excluded'],
-                'message' => Craft::t('password-policy', 'The SIEM device handling mode is invalid.'),
             ],
             [
                 ['inactiveAction'],

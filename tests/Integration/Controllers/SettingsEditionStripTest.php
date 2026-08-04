@@ -76,8 +76,8 @@ function tieredSettings(): array
         'enableNewDeviceAlerts' => true,
         'deviceRetentionDays' => 90,
         'geoIpEnabled' => true,
-        'siemEnabled' => true,
-        'webhooksEnabled' => true,
+        'siemForwardEventClasses' => ['audit_log'],
+        'webhookSecretGracePeriodHours' => 48,
         'apiEnabled' => true,
     ];
 }
@@ -100,8 +100,8 @@ it('strips Pro and Enterprise keys on Lite', function() {
         ->and($result)->toHaveKey('enableAuditLog')
         ->and($result)->toHaveKey('auditLogRetentionDays')
         ->and($result)->not->toHaveKey('geoIpEnabled')
-        ->and($result)->not->toHaveKey('siemEnabled')
-        ->and($result)->not->toHaveKey('webhooksEnabled')
+        ->and($result)->not->toHaveKey('siemForwardEventClasses')
+        ->and($result)->not->toHaveKey('webhookSecretGracePeriodHours')
         ->and($result)->not->toHaveKey('apiEnabled');
 });
 
@@ -125,8 +125,8 @@ it('keeps Pro keys but strips Enterprise keys (incl. new-device alerts) on Pro',
         ->and($result)->not->toHaveKey('enableNewDeviceAlerts')
         ->and($result)->not->toHaveKey('deviceRetentionDays')
         ->and($result)->not->toHaveKey('geoIpEnabled')
-        ->and($result)->not->toHaveKey('siemEnabled')
-        ->and($result)->not->toHaveKey('webhooksEnabled')
+        ->and($result)->not->toHaveKey('siemForwardEventClasses')
+        ->and($result)->not->toHaveKey('webhookSecretGracePeriodHours')
         ->and($result)->not->toHaveKey('apiEnabled');
 });
 

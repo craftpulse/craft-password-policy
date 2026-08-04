@@ -92,25 +92,6 @@ Lite/Pro installs cannot save these via the CP: the settings save-action strip b
 | `webhookCircuitCooldownSeconds` | `int` | `300` | Seconds an endpoint's breaker stays open before the half-open probe. No CP field. |
 | `webhookSecretGracePeriodHours` | `int` | `24` | Hours a rotated signing secret stays stored so receivers can still verify against it. 1 to 168. No CP field. See [Webhooks](./features/webhooks.md#secret-rotation). |
 
-#### Declared but not consumed
-
-The settings below are declared on the settings model and stripped from a sub-Enterprise save, but nothing in the plugin reads them. They are leftovers from the 5.2.0 development line, when SIEM forwarding and webhook delivery were configured as one global destination. Both features shipped as multi-destination registries instead, and each destination carries its own configuration row.
-
-Setting any of these has no effect. They are listed here so the table matches the settings model, not because they do anything.
-
-| Setting | Type | Default | What actually applies instead |
-|---------|------|---------|-------------------------------|
-| `siemEnabled` | `bool` | `false` | Nothing gates forwarding globally. A forwarder forwards when its own **Enabled** switch is on and its circuit breaker is closed, on an Enterprise install. See [SIEM forwarders](./features/siem-forwarders.md). |
-| `siemDestinationType` | `string` | `'syslog'` | Nothing. Syslog over TLS is the only transport, and a forwarder row's `protocol` column accepts no other value. |
-| `siemEndpointUrl` | `?string` | `null` | Nothing. A syslog forwarder is addressed by host and port; there is no URL on the forwarder row. |
-| `siemAuthType` | `string` | `'bearer'` | Nothing. A syslog-over-TLS connection authenticates by certificate, not by a request credential. |
-| `siemAuthToken` | `?string` | `null` | Nothing, and it is not encrypted: it stores whatever you write, like any other setting. |
-| `siemCustomHeaders` | `?array` | `null` | Nothing. A syslog message carries no headers. |
-| `siemIpHandling` | `string` | `'masked'` | Nothing. The audit log stores `ipHash` only, so there is no raw IP for a forwarder to shape. |
-| `siemDeviceHandling` | `string` | `'label'` | Nothing. |
-| `webhooksEnabled` | `bool` | `false` | Nothing gates delivery globally. An endpoint receives when its own **Enabled** switch is on and its circuit breaker is closed, on an Enterprise install. See [Webhooks](./features/webhooks.md). |
-| `webhooks` | `array` | `[]` | The `passwordpolicy_webhook_endpoints` table, managed from **Password Policy → Webhooks** or from `password-policy/webhook/create`. |
-
 ## Compliance notes
 
 ### NIST 800-63B Rev. 4 alignment

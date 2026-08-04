@@ -320,9 +320,12 @@ it('omits secrets from the resolved policy response', function() {
     $json = json_encode($response->data);
 
     expect($json)->not->toContain('auditPiiKey')
-        ->and($json)->not->toContain('siemAuthToken')
-        ->and($json)->not->toContain('secretCurrent')
-        ->and($json)->not->toContain('webhooks');
+        // Credential-shaped keys from the forwarder and webhook rows. Not
+        // settings: the ten orphaned `siem*` / `webhooks` settings were
+        // deleted in 5.2.0, and each destination now carries its own
+        // encrypted credential column.
+        ->and($json)->not->toContain('authToken')
+        ->and($json)->not->toContain('secretCurrent');
 });
 
 it('returns 400 when userUid is missing on resolve-policy', function() {
