@@ -559,10 +559,28 @@ class Install extends Migration
     }
 
     /**
-     * Creates the SIEM forwarders table — the registry of syslog-over-TLS
-     * endpoints the plugin forwards audit-log rows to (G8). Mirror of
-     * {@see m260507_132250_AddSiemForwardersTable}; that migration runs on
-     * upgrade-from-2.6 sites, this private method runs on fresh installs.
+     * Creates the SIEM forwarders table — the registry of destinations the
+     * plugin forwards audit-log rows to (G8). Mirror of
+     * {@see m260507_132250_AddSiemForwardersTable} for the syslog columns
+     * and {@see m260804_165223_AddHttpDestinationToSiemForwarders} for the
+     * HTTP ones; those migrations run on installs that already carry the
+     * table, this private method runs on fresh installs.
+     *
+     * Two destination types share the table, and `protocol` decides which
+     * half of it a row uses:
+     *
+     *  - `syslog-tls` addresses a receiver by `host` + `port` and carries
+     *    the two `tls*` columns plus `framing`.
+     *  - `http` addresses a collector by `url` and carries `authType`,
+     *    the encrypted `authToken`, and the `headers` map.
+     *
+     * `host`, `port`, and `url` are therefore all nullable; the model
+     * requires each one conditionally on `protocol`.
+     *
+     * `framing` defaults to `octet-counted`, which is what RFC 5425
+     * §4.3.1 requires of a syslog-over-TLS transport receiver. `newline`
+     * is the alternative for a receiver that wants RFC 6587-style
+     * delimiting, which is what rsyslog's `imtcp` accepts by default.
      *
      * Capture is universal across editions; the forwarder *registry* is
      * exposure (Enterprise-only CP surface). The table exists empty on
@@ -586,8 +604,17 @@ class Install extends Migration
             'id' => $this->primaryKey(),
             'name' => $this->string()->null(),
             'protocol' => $this->string(32)->notNull()->defaultValue('syslog-tls'),
-            'host' => $this->string()->notNull(),
-            'port' => $this->integer()->notNull(),
+            'host' => $this->string()->null(),
+            'port' => $this->integer()->null(),
+            'url' => $this->string(2048)->null(),
+            'authType' => $this->string(32)->notNull()->defaultValue('none'),
+            // `text`, not `string`: the column holds base64-wrapped
+            // ciphertext from `Security::encryptByKey()`, whose length
+            // isn't bounded by the plaintext credential's. Same reasoning
+            // as `secretCurrent` on the webhook endpoints table.
+            'authToken' => $this->text()->null(),
+            'headers' => $this->json()->null(),
+            'framing' => $this->string(32)->notNull()->defaultValue('octet-counted'),
             'tlsCertVerify' => $this->boolean()->notNull()->defaultValue(true),
             'tlsCaBundlePath' => $this->string()->null(),
             'eventClasses' => $this->json()->null(),

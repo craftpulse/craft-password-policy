@@ -16,14 +16,28 @@ use craft\db\ActiveRecord;
  * Class SiemForwarderRecord
  *
  * ActiveRecord for the `passwordpolicy_siem_forwarders` table — the
- * registry of syslog-over-TLS endpoints the plugin forwards audit-log
- * rows to (G8).
+ * registry of destinations the plugin forwards audit-log rows to (G8).
+ *
+ * `protocol` decides which half of the row is in use: `syslog-tls` uses
+ * `host` + `port` + `framing` + the two `tls*` columns, `http` uses
+ * `url` + `authType` + `authToken` + `headers`. All three address columns
+ * are therefore nullable, and `SiemForwarderModel` requires each one
+ * conditionally on the protocol.
+ *
+ * `authToken` holds base64-wrapped ciphertext, never a plaintext
+ * credential. The encryption boundary is
+ * {@see \craftpulse\passwordpolicy\models\SiemForwarderModel}.
  *
  * @property int $id
  * @property string|null $name
  * @property string $protocol
- * @property string $host
- * @property int $port
+ * @property string|null $host
+ * @property int|null $port
+ * @property string|null $url
+ * @property string $authType
+ * @property string|null $authToken
+ * @property array|null $headers
+ * @property string $framing
  * @property bool $tlsCertVerify
  * @property string|null $tlsCaBundlePath
  * @property array|null $eventClasses
