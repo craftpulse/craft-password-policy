@@ -99,15 +99,9 @@ Pro adds:
 - **[Advanced validators](./features/validators.md)**: sequential / repeated / contextual character checks beyond the universal length / complexity / blocklist surface.
 - **[Custom blocklist editor](./features/blocklist.md)**: admin-managed deny-list of company-specific words on top of the bundled common-password blocklist.
 
-Set the edition in `config/project/project.yaml`:
-
-```yaml
-plugins:
-  password-policy:
-    edition: pro
-```
-
-Then run `./craft up` to apply.
+Switch the edition in the control panel under **Settings** > **Plugins** >
+**Password Policy**. Other environments pick the change up through project
+config on their next deploy's `./craft up`.
 
 ### Enterprise
 

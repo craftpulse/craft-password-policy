@@ -44,19 +44,9 @@ The CP should show **Password Policy → Settings** with the redesigned sidebar 
 
 ## Upgrading to Pro
 
-In `config/project/project.yaml`:
-
-```yaml
-plugins:
-  password-policy:
-    edition: pro
-```
-
-Bump `dateModified` at the top of `project.yaml` (Craft uses this as the project-config change-detection timestamp), then:
-
-```bash
-./craft up
-```
+Switch the edition in the control panel under **Settings** > **Plugins** >
+**Password Policy**. Other environments pick the change up through project
+config on their next deploy's `./craft up`.
 
 The Pro subnav (Policies, Blocklist, Notifications) appears in the CP under **Password Policy**. None of your Lite settings change, Pro is purely additive. On the force-reset side that means Pro adds the ability to force a reset on one named user, on top of the expired-only mass reset Lite already has. See [Force password reset](../features/force-reset.md).
 
