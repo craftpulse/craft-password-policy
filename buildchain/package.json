@@ -20,7 +20,7 @@
     "autoprefixer": "^10.4.0",
     "eslint": "^8.0.0",
     "eslint-plugin-vue": "^9.0.0",
-    "postcss": "^8.4.0",
+    "postcss": "^8.5.25",
     "rollup-plugin-visualizer": "^5.0.0",
     "stylelint": "^14.0.0",
     "stylelint-config-recommended": "^6.0.0",
